@@ -589,6 +589,29 @@
 
   let currentUserId = null;
 
+  /**
+   * Si la lectura remota al iniciar sesión falló, no se escribe nada en
+   * Supabase durante la sesión: subir el estado que tengamos en memoria
+   * reemplazaría datos del servidor que nunca llegamos a ver.
+   */
+  let lecturaRemotaOk = false;
+
+  /** Último aviso de sincronización mostrado, para no repetirlo en cada guardado. */
+  let avisoSync = '';
+
+  /**
+   * Avisa en pantalla, y una sola vez, cuando cambia el estado de la
+   * sincronización. Un `console.error` no alcanza: fue exactamente así como
+   * la app estuvo guardando solo en el navegador sin que se notara.
+   */
+  function avisarSync(mensaje) {
+    if (mensaje === avisoSync) return;
+    const seRecupero = !mensaje && avisoSync;
+    avisoSync = mensaje;
+    if (mensaje) toast(mensaje);
+    else if (seRecupero) toast('Sincronización restablecida');
+  }
+
   function save() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -620,6 +643,13 @@
 
   async function syncToSupabase() {
     if (!currentUserId || !window.supabaseClient) return;
+
+    // Escribir sin haber podido leer sería pisar el estado remoto a ciegas.
+    if (!lecturaRemotaOk) {
+      avisarSync('Sin conexión con la base: los cambios quedan solo en este navegador.');
+      return;
+    }
+
     try {
       const { error } = await window.supabaseClient.from('app_state').upsert(
         {
@@ -630,13 +660,21 @@
         { onConflict: 'user_id' },
       );
       if (error) throw error;
+      avisarSync('');
     } catch (err) {
       console.error('No se pudo sincronizar con Supabase', err);
+      avisarSync('No se pudieron guardar los cambios en la base. Quedaron en este navegador.');
     }
   }
 
+  /**
+   * Lee el estado del usuario en Supabase.
+   * @returns {Promise<'ok'|'vacio'|'error'>} `vacio` es una cuenta sin datos
+   *   todavía; `error` es no haber podido preguntar. Distinguirlos es el
+   *   punto: con `vacio` se puede subir la copia local, con `error` no.
+   */
   async function loadFromSupabase() {
-    if (!currentUserId || !window.supabaseClient) return false;
+    if (!currentUserId || !window.supabaseClient) return 'error';
     try {
       const { data, error } = await window.supabaseClient
         .from('app_state')
@@ -647,17 +685,20 @@
       if (error) throw error;
       if (data?.payload) {
         state = normalize(data.payload);
-        return true;
+        return 'ok';
       }
+      return 'vacio';
     } catch (err) {
       console.error('No se pudo leer el estado remoto de Supabase', err);
+      return 'error';
     }
-    return false;
   }
 
   async function hydrateStateForUser(user) {
     currentUserId = user?.id || null;
     STORAGE_KEY = user?.id ? `${STORAGE_BASE}/${user.id}` : STORAGE_BASE;
+    lecturaRemotaOk = false;
+    avisoSync = '';
 
     if (!currentUserId) {
       state = estadoVacio();
@@ -665,13 +706,27 @@
       return;
     }
 
-    const remoteLoaded = await loadFromSupabase();
-    if (!remoteLoaded) {
-      const localLoaded = loadFromLocalStorage();
-      if (localLoaded) {
-        await syncToSupabase();
-      }
+    // Explícito: no heredar en memoria nada de la sesión anterior.
+    state = estadoVacio();
+
+    const remoto = await loadFromSupabase();
+    lecturaRemotaOk = remoto !== 'error';
+
+    if (remoto === 'ok') return;
+
+    const hayLocal = loadFromLocalStorage();
+
+    if (remoto === 'vacio') {
+      // Cuenta sin datos en la base: la copia de este navegador pasa a ser la
+      // de referencia. Es el único caso en que se sube sin haber leído nada.
+      if (hayLocal) await syncToSupabase();
+      return;
     }
+
+    // La base no contestó. Se sigue en modo local y sin escribir, para no
+    // destruir lo que haya del otro lado.
+    avisarSync('No se pudo leer la base. Estás viendo la copia de este '
+      + 'navegador y los cambios no se sincronizan. Recargá para reintentar.');
   }
 
   /** Meta mensual válida: entero entre 1 y 99. */

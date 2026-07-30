@@ -14,7 +14,8 @@ tareas-diarias/
 ├── auth.js      ← la sesión (Supabase Auth)
 ├── config.js    ← ⚠ acá van tus credenciales
 ├── db/
-│   ├── schema.sql
+│   ├── supabase-app-state.sql  ← la tabla que la app usa hoy
+│   ├── schema.sql              ← el esquema por tablas (etapa futura)
 │   └── MIGRACION.md
 └── README.md
 ```
@@ -26,9 +27,15 @@ tareas-diarias/
 
 **1. Crear el proyecto en Supabase.** En [supabase.com](https://supabase.com), proyecto nuevo.
 
-**2. Cargar el esquema.** Copiar [`db/schema.sql`](db/schema.sql) entero en el *SQL Editor* y
-ejecutarlo. Crea las tablas, las políticas de Row Level Security y el alta automática de
-preferencias.
+**2. Crear la tabla de datos.** Copiar [`db/supabase-app-state.sql`](db/supabase-app-state.sql)
+entero en el *SQL Editor* y ejecutarlo. **Este paso es obligatorio**: es la tabla donde la app
+guarda tus tareas. El script termina con una consulta de comprobación que tiene que devolver
+**una fila**; si devuelve cero, la política de Row Level Security no quedó creada y la base va a
+rechazar todo, incluso al dueño de los datos.
+
+[`db/schema.sql`](db/schema.sql) es otra cosa: el esquema normalizado por tablas de la
+**etapa 3** de [`db/MIGRACION.md`](db/MIGRACION.md), que la app todavía no usa. No hace falta
+cargarlo para que funcione.
 
 **3. Pegar las credenciales.** En *Project Settings → API* están la **URL** y la **anon key**.
 Van en `config.js`:
@@ -84,12 +91,30 @@ correo. Los mensajes de error de Supabase se muestran traducidos.
 
 Al pie del menú lateral aparecen el **email de la sesión** y **Cerrar sesión**.
 
-**Los datos siguen guardándose en el navegador**, pero ahora **separados por usuario**: la clave
-pasa a ser `tareas-diarias/v1/<id de usuario>`. Dos cuentas en la misma máquina no comparten
-diario, y al cerrar sesión no queda nada del usuario anterior en memoria.
-
 Si ya tenías un diario cargado de antes de que existiera el login, la primera cuenta que entre
 lo adopta en lugar de empezar vacía.
+
+## Dónde viven los datos
+
+Se guardan en **dos lados a la vez**:
+
+- **Supabase**, tabla `app_state`: una fila por usuario con todo el estado en un `jsonb`. Es la
+  copia buena, la que sobrevive a cambiar de navegador, de equipo o de dominio.
+- **localStorage**, bajo `tareas-diarias/v1/<id de usuario>`: copia local, atada al navegador
+  **y al dominio**. Dos cuentas en la misma máquina no comparten diario.
+
+Al iniciar sesión se lee Supabase primero. Si la cuenta no tiene nada allá, sube la copia local.
+
+**Si la base no contesta, la app no escribe.** Se queda en modo local, avisa en pantalla y no
+sincroniza hasta que recargues. Es a propósito: subir el estado que quedó en memoria sin haber
+podido leer el remoto reemplazaría datos del servidor a ciegas.
+
+> Ese aviso importa. Antes, un fallo de Supabase solo dejaba un `console.error` y la app seguía
+> como si nada, guardando únicamente en el navegador. Al cambiar de dominio o de navegador, esos
+> datos quedaban fuera de alcance sin que nada lo hubiera advertido.
+
+La causa más probable de que la base rechace todo es que **falte la política de RLS** — ver la
+consulta de comprobación al final de [`db/supabase-app-state.sql`](db/supabase-app-state.sql).
 
 > **Todavía falta el paso grande.** Hoy la sesión es real pero los datos son locales: entrar
 > desde otro dispositivo muestra un diario vacío. Llevar los datos a Postgres es la
@@ -324,7 +349,7 @@ Es reversible: el mismo botón pasa a decir **Desbloquear período**. El bloqueo
 
 ## Datos
 
-Todo se guarda en el `localStorage` del navegador bajo la clave `tareas-diarias/v1`. No hay servidor ni cuentas: los datos viven en ese equipo y ese navegador.
+El estado completo va a Supabase y al `localStorage`, bajo la clave `tareas-diarias/v1/<id de usuario>` — ver [Dónde viven los datos](#dónde-viven-los-datos). Lo que sigue describe la forma de ese estado, que es la misma en los dos lados.
 
 Las tareas se guardan en `months`, indexadas por `YYYY-MM`; solo aparecen los meses que fueron modificados. Los estados van aparte, en `status`, con clave `idDeTarea|YYYY-MM-DD`. Los meses bloqueados están en `locked` y la preferencia de indicadores en `showSummary`. Si tenías datos del formato anterior (una única lista global), se migran solos al mes más antiguo con estados cargados, así los meses siguientes lo heredan y no se pierde nada.
 
