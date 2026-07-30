@@ -1042,6 +1042,7 @@
     lock: $('#btn-lock'),
     lockText: $('#lock-text'),
     lockedNote: $('#locked-note'),
+    controls: $('.controls'),
     controlsCenter: $('#controls-center'),
     monthBar: $('#month-bar'),
     board: $('#board'),
@@ -1070,7 +1071,10 @@
     const onHelp = ui.page === 'help';
     const { days, count } = visibleDays();
 
-    // El selector de mes se muestra siempre: los indicadores también son mensuales.
+    // El selector de mes se muestra en la planilla y en los indicadores: ambos
+    // son mensuales. En la guía no hay período que elegir, así que la barra de
+    // controles entera desaparece — si no, quedaría sola con las flechas de mes.
+    el.controls.hidden = onHelp;
     el.monthLabel.textContent = labelDeMes();
 
     // El atajo junto al mes alterna entre planilla e indicadores. En la guía no

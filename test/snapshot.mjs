@@ -27,7 +27,15 @@ function capturar(doc) {
     if (!n) return '(ausente)';
     return [...n.attributes].map(a => `${a.name}="${a.value}"`).sort().join(' ');
   };
+  // Qué secciones quedan ocultas. Va aparte del innerHTML porque ocultar un
+  // bloque no cambia su contenido: sin esto, el test no vería la diferencia.
+  const visibilidad = ['.controls', '.month-nav', '#controls-center', '#range-nav',
+    '#month-bar', '#board', '#legend', '#analysis', '#help', '#btn-page-toggle']
+    .map(sel => `${sel}:${doc.querySelector(sel)?.hidden ? 'oculto' : 'visible'}`)
+    .join(' ');
+
   return {
+    visibilidad,
     grid: html('#grid'),
     gridClase: doc.querySelector('#grid')?.className ?? '',
     resumen: html('#summary'),
