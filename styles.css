@@ -340,12 +340,20 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .drawer-icon {
   display: grid;
   place-items: center;
-  width: 20px;
+  width: 24px;
+  min-width: 24px;
   flex: none;
-  font-size: .95rem;
+  font-size: 1.05rem;
+  line-height: 1;
   color: var(--text-faint);
 }
 .drawer-item.is-active .drawer-icon { color: var(--accent); }
+
+#btn-sign-out .drawer-icon {
+  width: 28px;
+  min-width: 28px;
+  font-size: 1.2rem;
+}
 
 /* La sesión queda anclada al fondo del cajón */
 .drawer-session {
@@ -739,6 +747,63 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.help-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.help-step {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: .9rem 1rem;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: var(--bg);
+  border: 1px solid transparent;
+  transition: border-color .2s ease, background .2s ease;
+}
+
+.help-step:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-sunken);
+}
+
+.help-icon {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 1.3rem;
+}
+
+.help-step h3 {
+  margin: 0 0 .3rem;
+  font-size: 1rem;
+}
+
+.help-step p,
+.help-step ul {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.help-step ul {
+  padding-left: 1.25rem;
+}
+
+.help-step li {
+  margin-bottom: .35rem;
 }
 
 /* ---------------- Resumen ---------------- */
@@ -1259,7 +1324,12 @@ tbody tr:hover .move-stack,
 .chip.is-optional { background: var(--weekend-bg); color: var(--text-faint); font-weight: 700; }
 .legend-hint { margin-left: auto; color: var(--text-faint); }
 
-/* ---------------- Diálogos ---------------- */
+@media (max-width: 640px) {
+  .legend { justify-content: center; }
+  .legend-item { width: 100%; justify-content: center; }
+  .legend-item .chip { margin-right: .25rem; }
+  .legend-hint { display: none; }
+}
 
 .dialog {
   border: 1px solid var(--border);
@@ -1440,7 +1510,8 @@ tbody tr:hover .move-stack,
 .grid.view-month { --cell-w: 38px; }
 
 /* vista diaria: la única columna de día ocupa el ancho sobrante */
-.grid.view-day .col-day { width: auto; min-width: 140px; }
+.grid.view-day { table-layout: fixed; }
+.grid.view-day .col-day { min-width: 0; }
 .grid.view-day thead .col-day:not(.is-today) .dnum { font-size: 1.05rem; }
 /* el "hoy" es una píldora: crecen círculo y número juntos para que no se desborde */
 .grid.view-day thead .col-day.is-today .dnum {
@@ -1472,8 +1543,18 @@ tbody tr:hover .move-stack,
   .view-switch { flex: 1; }
   .seg { padding: .45rem .35rem; min-width: 0; }
 
-  .month-bar { gap: .3rem; }
-  .month-bar .btn { font-size: .78rem; padding: .38rem .55rem; }
+  .month-bar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto auto;
+    gap: .35rem;
+    align-items: stretch;
+  }
+  .month-bar .btn { font-size: .78rem; padding: .38rem .55rem; width: 100%; }
+  .month-bar #btn-copy-prev { grid-column: 1; grid-row: 1; }
+  .month-bar #btn-lock { grid-column: 2; grid-row: 1; margin-left: 0; }
+  .month-bar #btn-delete-sel { grid-column: 1; grid-row: 2; }
+  .month-bar #btn-reset-sel { grid-column: 2; grid-row: 2; }
 
   .summary { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
   .tile { padding: .6rem .7rem; }

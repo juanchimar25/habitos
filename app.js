@@ -209,8 +209,8 @@
 
   /** Estado de navegación (no se persiste). */
   const ui = {
-    /** Sección visible: la planilla o solo los indicadores. */
-    page: /** @type {'home'|'indicators'} */ ('home'),
+    /** Sección visible: la planilla, los indicadores o la ayuda. */
+    page: /** @type {'home'|'indicators'|'help'} */ ('home'),
     year: today.getFullYear(),
     month: today.getMonth(),
     view: /** @type {'day'|'week'|'month'} */ ('week'),
@@ -892,13 +892,15 @@
       ? 'Ver el análisis de este mes'
       : 'Volver a la planilla';
 
+    const onHelp = ui.page === 'help';
     // Vista y navegación del rango solo aplican a la planilla.
     el.controlsCenter.hidden = !onHome;
     el.rangeNav.hidden = !onHome || ui.view === 'month';
     el.monthBar.hidden = !onHome;
     el.board.hidden = !onHome;
     el.legend.hidden = !onHome;
-    el.analysis.hidden = onHome;
+    el.analysis.hidden = onHome || onHelp;
+    $('#help').hidden = !onHelp;
 
     for (const item of el.drawer.querySelectorAll('[data-page]')) {
       item.classList.toggle('is-active', item.dataset.page === ui.page);
@@ -908,8 +910,10 @@
     if (!onHome) {
       el.panelTiles.open = state.panels.tiles;
       el.panelCharts.open = state.panels.charts;
-      renderSummary();
-      renderCharts();
+      if (ui.page === 'indicators') {
+        renderSummary();
+        renderCharts();
+      }
       return;
     }
 
@@ -2011,6 +2015,35 @@
       `${task.name}, ${fmtFull.format(date)}: ${next ? STATUS_LABEL[next] : 'sin cargar'}`);
 
     refreshTotals();
+    scrollCellIntoView(cell);
+  }
+
+  function scrollCellIntoView(cell) {
+    if (!cell || !el.tableWrap.contains(cell)) return;
+
+    const container = el.tableWrap;
+    const cellRect = cell.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const leftSticky = el.grid.querySelector('.col-task')?.getBoundingClientRect().width || 0;
+    const rightSticky = el.grid.querySelector('.col-total')?.getBoundingClientRect().width || 0;
+    const padding = 8;
+
+    let targetLeft = container.scrollLeft;
+    const cellLeft = cellRect.left - containerRect.left + container.scrollLeft;
+    const cellRight = cellLeft + cellRect.width;
+    const visibleLeft = container.scrollLeft + leftSticky + padding;
+    const visibleRight = container.scrollLeft + container.clientWidth - rightSticky - padding;
+
+    if (cellLeft < visibleLeft) {
+      targetLeft = Math.max(0, cellLeft - leftSticky - padding);
+    } else if (cellRight > visibleRight) {
+      targetLeft = Math.min(container.scrollWidth - container.clientWidth,
+        cellRight - container.clientWidth + rightSticky + padding);
+    }
+
+    if (targetLeft !== container.scrollLeft) {
+      container.scrollLeft = targetLeft;
+    }
   }
 
   /** Recalcula fila de totales, columna de totales y tarjetas sin reconstruir la tabla. */
@@ -2637,12 +2670,41 @@
   // Tema
   // ---------------------------------------------------------
 
+  function loadSavedTheme() {
+    try {
+      const rawTheme = localStorage.getItem('tareas-diarias/theme');
+      if (rawTheme) {
+        const parsed = JSON.parse(rawTheme);
+        if (parsed === 'light' || parsed === 'dark') return parsed;
+      }
+    } catch (err) {
+      // Ignorar si no hay acceso a localStorage o los datos no son JSON.
+    }
+    return null;
+  }
+
   function applyTheme() {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (!state.theme) {
+      state.theme = loadSavedTheme();
+    }
     const theme = state.theme || (prefersDark ? 'dark' : 'light');
     document.documentElement.dataset.theme = theme;
+    document.body.style.background = theme === 'dark' ? '#0d1220' : '#f4f6fb';
+    document.body.style.color = theme === 'dark' ? '#e7ecf7' : '#16203a';
     el.theme.textContent = theme === 'dark' ? '☀' : '☾';
     el.theme.title = theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro';
+
+    try {
+      localStorage.setItem('tareas-diarias/theme', JSON.stringify(theme));
+    } catch (err) {
+      // Ignorar fallos de localStorage.
+    }
+    try {
+      localStorage.setItem(`${STORAGE_KEY}/theme`, JSON.stringify(theme));
+    } catch (err) {
+      // Ignorar fallos de localStorage.
+    }
   }
 
   el.theme.addEventListener('click', () => {

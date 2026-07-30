@@ -7,9 +7,86 @@
   <meta name="theme-color" content="#0f172a">
   <title>Hábitos</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,2 98,50 2,50' fill='%238158a4'/><polygon points='2,50 98,50 50,98' fill='%233d4a7b'/><path d='M27 46 L45 64 L74 30' fill='none' stroke='%23fff' stroke-width='13'/></svg>">
+  <style>html{background:#f4f6fb;color:#16203a}html[data-theme='dark']{background:#0d1220;color:#e7ecf7}body{background:transparent;color:inherit}</style>
+  <script>
+    (function() {
+      try {
+        const themeKey = 'tareas-diarias/theme';
+        let theme = null;
+        const rawTheme = localStorage.getItem(themeKey);
+
+        if (rawTheme) {
+          const parsed = JSON.parse(rawTheme);
+          if (parsed === 'light' || parsed === 'dark') {
+            theme = parsed;
+          }
+        }
+
+        if (!theme) {
+          const baseKey = 'tareas-diarias/v1';
+          const raw = localStorage.getItem(baseKey);
+          if (raw) {
+            const data = JSON.parse(raw);
+            if (data && (data.theme === 'light' || data.theme === 'dark')) {
+              theme = data.theme;
+            }
+          }
+        }
+
+        if (!theme) {
+          for (let i = 0; i < localStorage.length; i += 1) {
+            const key = localStorage.key(i);
+            if (!key || !key.startsWith('tareas-diarias/v1/')) continue;
+            const value = localStorage.getItem(key);
+            if (!value) continue;
+            let data;
+            try {
+              data = JSON.parse(value);
+            } catch {
+              data = value;
+            }
+            if (data === 'light' || data === 'dark') {
+              theme = data;
+              break;
+            }
+            if (data && (data.theme === 'light' || data.theme === 'dark')) {
+              theme = data.theme;
+              break;
+            }
+          }
+        }
+
+        if (!theme) {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.background = theme === 'dark' ? '#0d1220' : '#f4f6fb';
+        document.documentElement.style.color = theme === 'dark' ? '#e7ecf7' : '#16203a';
+      } catch (err) {
+        // Ignorar si localStorage no está disponible o los datos no son JSON.
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <script>
+    (function() {
+      try {
+        const theme = document.documentElement.dataset.theme;
+        if (theme === 'dark') {
+          document.body.style.background = '#0d1220';
+          document.body.style.color = '#e7ecf7';
+        } else {
+          document.body.style.background = '#f4f6fb';
+          document.body.style.color = '#16203a';
+        }
+      } catch (err) {
+        // Ignorar si no se puede aplicar.
+      }
+    })();
+  </script>
 
   <!-- Puerta de sesión: se muestra hasta que haya usuario -->
   <div class="auth-gate" id="auth-gate" hidden>
@@ -103,6 +180,12 @@
       <input type="file" id="file-import" accept="application/json,.json" hidden>
     </div>
 
+    <div class="drawer-group drawer-group-bottom">
+      <button type="button" class="drawer-item" data-page="help">
+        <span class="drawer-icon" aria-hidden="true">❔</span> Cómo usar
+      </button>
+    </div>
+
     <!-- Al pie del menú, siempre abajo -->
     <div class="drawer-session" id="drawer-session" hidden>
       <div class="session-info">
@@ -175,6 +258,85 @@
         </summary>
         <div class="charts" id="charts"></div>
       </details>
+    </section>
+
+    <section class="help" id="help" aria-label="Cómo usar la aplicación" hidden>
+      <div class="help-card">
+        <h2>Cómo usar Hábitos</h2>
+
+        <div class="help-step">
+          <span class="help-icon" aria-hidden="true">🚀</span>
+          <div>
+            <h3>Comenzar</h3>
+            <p>En la vista principal (Diario) podés agregar tareas, editar su frecuencia y marcar el estado de cada día.</p>
+          </div>
+        </div>
+
+        <div class="help-step">
+          <span class="help-icon" aria-hidden="true">�️</span>
+          <div>
+            <h3>Administrar tareas</h3>
+            <ul>
+              <li>Usá el botón <strong>+ Agregar tarea</strong> para crear nuevas tareas.</li>
+              <li>La opción <strong>Plantillas</strong> agrega listas de tareas prediseñadas al mes visible.</li>
+              <li>Podés seleccionar varias tareas y luego <strong>Eliminar</strong> o <strong>Resetear estados</strong> en bloque.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="help-step">
+          <span class="help-icon" aria-hidden="true">📊</span>
+          <div>
+            <h3>Estados</h3>
+            <p>Seleccionando cada intersección de una tarea con un día se podrá modificar su estado a:</p>
+            <ul>
+              <li><strong>Cumplido</strong> (✓)</li>
+              <li><strong>Parcial</strong> (~)</li>
+              <li><strong>No cumplido</strong> (✕)</li>
+              <li><strong>No requerido</strong> (–)</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="help-step">
+          <span class="help-icon" aria-hidden="true">🗓️</span>
+          <div>
+            <h3>Vistas</h3>
+            <p>En la parte superior podés elegir entre tres posibles vistas y, adicionalmente, un botón que te lleva al día de hoy:</p>
+            <ul>
+              <li><strong>Diario</strong>: enfocado en un solo día.</li>
+              <li><strong>Semanal</strong>: muestra una semana completa.</li>
+              <li><strong>Mensual</strong>: te permite ver todo el mes.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="help-step">
+          <span class="help-icon" aria-hidden="true">📈</span>
+          <div>
+            <h3>Análisis</h3>
+            <p>La sección de análisis explica los indicadores y los gráficos.</p>
+            <ul>
+              <li><strong>Indicadores</strong>: muestran tu desempeño y resumen tu actividad.</li>
+              <li><strong>Gráficos</strong>: ayudan a visualizar tendencias, comparaciones y evolución.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="help-step">
+          <span class="help-icon" aria-hidden="true">💾</span>
+          <div>
+            <h3>Datos y seguridad</h3>
+            <ul>
+              <li>Podés descargar una copia de seguridad de tus datos.</li>
+              <li>Podés restaurar una copia de seguridad cuando lo necesites.</li>
+              <li>Podés bloquear períodos para evitar cambios accidentales.</li>
+            </ul>
+          </div>
+        </div>
+
+        <p>El menú lateral también te permite navegar entre <strong>Diario</strong>, <strong>Análisis</strong> y esta guía.</p>
+      </div>
     </section>
 
     <section class="board" id="board">
