@@ -1,6 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+
+  "//": "La app es una sola página con rutas propias (/diario, /analisis, /comousar). Los rewrites corren DESPUÉS de buscar el archivo en disco, así que styles.css, app.js y compañía se sirven normal y solo las rutas inventadas caen en index.html, donde el router decide qué mostrar.",
+
   "rewrites": [
-    { "source": "/((?!.*\\.).*)", "destination": "/index.html" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
