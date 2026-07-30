@@ -1,0 +1,19 @@
+# Qué NO subir a Vercel. Todo esto sigue en el repositorio: lo único que
+# cambia es que deja de publicarse en el dominio.
+#
+# Se listan solo los archivos que hoy se sirven de verdad. README.md,
+# package.json y compañía ya quedaban tapados por el rewrite a index.html.
+
+# Scripts de base de datos: se ejecutan a mano en el SQL Editor de Supabase.
+db/
+
+# Pruebas: corren en local con `npm test`, el navegador no las necesita.
+test/
+
+# Configuración de los otros hostings. Se mantienen versionadas para no
+# perder la portabilidad a Netlify y GitHub Pages, pero en Vercel no se usan.
+_redirects
+404.html
+
+node_modules/
+.claude/
