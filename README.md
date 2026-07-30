@@ -83,6 +83,27 @@ Eso obliga al servidor a devolver `index.html` ante cualquier ruta, porque los a
 En un subdirectorio (`usuario.github.io/repo/`) también funciona: la app deduce su carpeta de la
 URL de `app.js`, así que las rutas quedan `/repo/diario` y compañía.
 
+## Pruebas
+
+La app sigue sin build ni dependencias en tiempo de ejecución: `package.json` existe **solo**
+para las pruebas, y nada de `node_modules` llega al navegador.
+
+```sh
+npm install
+npm run check     # sintaxis de los tres .js
+npm test          # compara el DOM contra la referencia
+npm run snapshot  # regraba la referencia (solo si el cambio es intencional)
+```
+
+`npm test` monta la app entera dentro de jsdom —el `index.html` real, el `app.js` real— con el
+reloj congelado y datos sembrados, y compara el HTML que produce contra una referencia guardada.
+Son 18 escenarios: las tres vistas, los cuatro modos de la columna Estatus, análisis, guía, mes
+bloqueado, sin tareas, selección múltiple, los diálogos, y dos de datos corruptos que ejercen las
+guardas de `normalize()`.
+
+Sirve para refactorizar: si el HTML sale igual, el comportamiento no cambió. No reemplaza probar
+en el navegador —no cubre CSS, gestos ni la sesión—, pero atrapa las regresiones de render.
+
 ## Sesión
 
 La app pide iniciar sesión antes de mostrar nada. Se puede **crear cuenta** desde la misma

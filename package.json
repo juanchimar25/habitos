@@ -1,0 +1,14 @@
+{
+  "name": "tareas-diarias",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Planilla mensual de hábitos. La app no usa nada de esto: se sirve como archivos estáticos y no tiene build. Este package.json existe solo para las pruebas.",
+  "scripts": {
+    "test": "node test/snapshot.mjs comparar",
+    "snapshot": "node test/snapshot.mjs guardar",
+    "check": "node --check app.js && node --check auth.js && node --check config.js"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}

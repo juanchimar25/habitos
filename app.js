@@ -171,6 +171,13 @@
 
   const LOCALE = 'es-AR';
 
+  /** Rótulo del botón de confirmar cuando quien lo abre no pide otro. */
+  const OK_POR_DEFECTO = 'Eliminar';
+
+  /** Formatos que se validan al leer datos de afuera. */
+  const RE_DIA = /^\d{4}-\d{2}-\d{2}$/;
+  const RE_MES = /^\d{4}-\d{2}$/;
+
   // ---------------------------------------------------------
   // Estado
   // ---------------------------------------------------------
@@ -391,6 +398,20 @@
   /** "Julio 2026" — mes y año se arman por separado para evitar el "de" del locale. */
   function monthYearLabel(date) {
     return `${fmtMonthName.format(date)} ${date.getFullYear()}`;
+  }
+
+  /** Lo mismo, desde año y mes sueltos. Sin argumentos, el mes visible. */
+  function labelDeMes(year = ui.year, month = ui.month) {
+    return monthYearLabel(new Date(year, month, 1));
+  }
+
+  /** "Lunes 27" para un solo día; "27 jul – 2 ago" para un tramo. */
+  function spanLabel(days) {
+    const a = days[0];
+    const b = days[days.length - 1];
+    return sameDay(a, b)
+      ? fmtDayLong.format(a)
+      : `${fmtShort.format(a)} – ${fmtShort.format(b)}`;
   }
 
   const fmtDow = new Intl.DateTimeFormat(LOCALE, { weekday: 'short' });
@@ -746,7 +767,7 @@
         : [];
       const customMode = t.customMode === 'count' ? 'count' : 'weekdays';
       const target = clampTarget(t.target);
-      const start = typeof t.start === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.start)
+      const start = typeof t.start === 'string' && RE_DIA.test(t.start)
         ? t.start
         : null;
 
@@ -766,12 +787,22 @@
     return clean;
   }
 
+  /*  Lo que llega de un archivo importado puede ser cualquier cosa —null, un
+      número, un arreglo— y todos los recorridos de abajo asumen un objeto
+      plano de clave/valor. Estas dos guardas encapsulan esa comprobación. */
+
+  const esDiccionario = valor =>
+    Boolean(valor) && typeof valor === 'object' && !Array.isArray(valor);
+
+  /** El diccionario, o uno vacío si no lo es. */
+  const comoObjeto = valor => (esDiccionario(valor) ? valor : {});
+
   /** Mes más antiguo (`YYYY-MM`) que aparece en los estados guardados. */
   function earliestStatusMonth(status) {
     let earliest = null;
-    for (const key of Object.keys(status && typeof status === 'object' ? status : {})) {
+    for (const key of Object.keys(comoObjeto(status))) {
       const iso = String(key).split('|')[1];
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) continue;
+      if (!RE_DIA.test(iso || '')) continue;
       const month = iso.slice(0, 7);
       if (!earliest || month < earliest) earliest = month;
     }
@@ -784,10 +815,10 @@
 
     const months = {};
 
-    if (data.months && typeof data.months === 'object' && !Array.isArray(data.months)) {
+    if (esDiccionario(data.months)) {
       for (const [key, list] of Object.entries(data.months)) {
         // Una lista vacía es información válida: significa "este mes no tiene tareas".
-        if (!/^\d{4}-\d{2}$/.test(key) || !Array.isArray(list)) continue;
+        if (!RE_MES.test(key) || !Array.isArray(list)) continue;
         months[key] = cleanTaskList(list);
       }
     } else if (Array.isArray(data.tasks)) {
@@ -802,19 +833,17 @@
     }
 
     const status = {};
-    const src = data.status && typeof data.status === 'object' ? data.status : {};
     const ids = new Set(Object.values(months).flat().map(t => t.id));
-    for (const [key, value] of Object.entries(src)) {
+    for (const [key, value] of Object.entries(comoObjeto(data.status))) {
       if (!['done', 'partial', 'missed', 'skip'].includes(value)) continue;
       const [taskId, iso] = String(key).split('|');
-      if (!ids.has(taskId) || !/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) continue;
+      if (!ids.has(taskId) || !RE_DIA.test(iso || '')) continue;
       status[key] = value;
     }
 
     const locked = {};
-    const srcLocked = data.locked && typeof data.locked === 'object' ? data.locked : {};
-    for (const [key, value] of Object.entries(srcLocked)) {
-      if (/^\d{4}-\d{2}$/.test(key) && value === true) locked[key] = true;
+    for (const [key, value] of Object.entries(comoObjeto(data.locked))) {
+      if (RE_MES.test(key) && value === true) locked[key] = true;
     }
 
     const theme = data.theme === 'light' || data.theme === 'dark' ? data.theme : null;
@@ -947,6 +976,38 @@
 
   const $ = sel => document.querySelector(sel);
 
+  /**
+   * Nodo con clase y texto de una sola vez. Es el patrón más repetido del
+   * render: escribirlo en tres líneas cada vez sepulta, entre ruido, las
+   * decisiones que sí importan.
+   *
+   * Los vacíos se saltean en lugar de asignarse: poner `className = ''`
+   * dejaría un `class=""` en el HTML que hoy no está.
+   */
+  function elem(tag, className = '', text = '') {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== '') node.textContent = text;
+    return node;
+  }
+
+  /**
+   * Botón con los atributos que siempre viajan juntos.
+   *
+   * `title` y `label` van separados a propósito: no siempre coinciden. El
+   * title suele entrecomillar el nombre de la tarea («Leer») y el
+   * aria-label no, porque el lector de pantalla leería las comillas.
+   */
+  function boton(className, { text = '', title = '', label = '', action = '', disabled = false } = {}) {
+    const btn = elem('button', className, text);
+    btn.type = 'button';
+    if (action) btn.dataset.action = action;
+    if (title) btn.title = title;
+    if (label) btn.setAttribute('aria-label', label);
+    if (disabled) btn.disabled = true;
+    return btn;
+  }
+
   const el = {
     monthLabel: $('#month-label'),
     rangeLabel: $('#range-label'),
@@ -959,6 +1020,7 @@
     taskDialog: $('#task-dialog'),
     taskForm: $('#task-form'),
     taskDialogTitle: $('#task-dialog-title'),
+    taskSubmit: $('#task-submit'),
     taskName: $('#task-name'),
     taskError: $('#task-error'),
     customField: $('#custom-field'),
@@ -989,6 +1051,7 @@
     menu: $('#btn-menu'),
     pageToggle: $('#btn-page-toggle'),
     analysis: $('#analysis'),
+    help: $('#help'),
     charts: $('#charts'),
     templates: $('#btn-templates'),
     templatesDialog: $('#templates-dialog'),
@@ -1008,7 +1071,7 @@
     const { days, count } = visibleDays();
 
     // El selector de mes se muestra siempre: los indicadores también son mensuales.
-    el.monthLabel.textContent = monthYearLabel(new Date(ui.year, ui.month, 1));
+    el.monthLabel.textContent = labelDeMes();
 
     // El atajo junto al mes alterna entre planilla e indicadores. En la guía no
     // aparece: ahí se sale por el menú.
@@ -1026,7 +1089,7 @@
     el.board.hidden = !onHome;
     el.legend.hidden = !onHome;
     el.analysis.hidden = onHome || onHelp;
-    $('#help').hidden = !onHelp;
+    el.help.hidden = !onHelp;
 
     for (const item of el.drawer.querySelectorAll('[data-page]')) {
       item.classList.toggle('is-active', item.dataset.page === ui.page);
@@ -1044,11 +1107,9 @@
     }
 
     if (days.length) {
-      const a = days[0];
-      const b = days[days.length - 1];
-      el.rangeLabel.textContent = sameDay(a, b)
-        ? fmtDayLong.format(a)
-        : `${fmtShort.format(a)} – ${fmtShort.format(b)}`;
+      // A diferencia de rangeLabel(), acá el mes completo también se rotula
+      // como tramo: el rótulo queda oculto en esa vista, pero se mantiene.
+      el.rangeLabel.textContent = spanLabel(days);
       el.rangeLabel.title = `Ventana ${ui.windowIndex + 1} de ${count}`;
     }
 
@@ -1076,7 +1137,7 @@
     const locked = isLocked();
     const prev = previousMonth();
     const prevTasks = tasksOf(prev.year, prev.month);
-    const prevName = monthYearLabel(new Date(prev.year, prev.month, 1));
+    const prevName = labelDeMes(prev.year, prev.month);
 
     el.copyPrev.disabled = locked || prevTasks.length === 0;
     el.copyPrev.title = locked
@@ -1094,7 +1155,6 @@
 
     el.lockedNote.hidden = !locked;
     el.empty.querySelector('[data-add-task]').disabled = locked;
-
   }
 
   function renderTable(days) {
@@ -1103,8 +1163,8 @@
     const frag = document.createDocumentFragment();
 
     // --- thead ---
-    const thead = document.createElement('thead');
-    const hrow = document.createElement('tr');
+    const thead = elem('thead');
+    const hrow = elem('tr');
     hrow.appendChild(taskColumnHeader());
 
     for (const d of days) {
@@ -1112,15 +1172,10 @@
       if (isWeekend(d)) cell.classList.add('is-weekend');
       if (sameDay(d, today)) cell.classList.add('is-today');
 
-      const dow = document.createElement('span');
-      dow.className = 'dow';
-      dow.textContent = fmtDow.format(d).replace('.', '').slice(0, 3);
-
-      const dnum = document.createElement('span');
-      dnum.className = 'dnum';
-      dnum.textContent = String(d.getDate());
-
-      cell.append(dow, dnum);
+      cell.append(
+        elem('span', 'dow', fmtDow.format(d).replace('.', '').slice(0, 3)),
+        elem('span', 'dnum', String(d.getDate())),
+      );
       cell.title = fmtFull.format(d);
       hrow.appendChild(cell);
     }
@@ -1130,17 +1185,16 @@
     frag.appendChild(thead);
 
     // --- tbody ---
-    const tbody = document.createElement('tbody');
+    const tbody = elem('tbody');
 
     const tasks = currentTasks();
     tasks.forEach((task, index) => {
-      const tr = document.createElement('tr');
+      const tr = elem('tr');
       tr.dataset.taskId = task.id;
       tr.appendChild(taskHeaderCell(task, index, tasks.length));
 
       for (const d of days) {
-        const td = document.createElement('td');
-        td.className = 'cell-td';
+        const td = elem('td', 'cell-td');
         // El tinte del cuerpo marca los días no requeridos por la frecuencia,
         // no los fines de semana: eso queda en el encabezado y en el pie.
         if (!isRequiredDay(task, d)) td.classList.add('is-optional');
@@ -1158,22 +1212,19 @@
     frag.appendChild(tbody);
 
     // --- tfoot ---
-    const tfoot = document.createElement('tfoot');
-    const frow = document.createElement('tr');
+    const tfoot = elem('tfoot');
+    const frow = elem('tr');
     frow.appendChild(th('Tareas Diarias Completadas', 'col-task', 'row'));
 
     for (const d of days) {
       const { points, max } = dayTotals(d);
 
-      const td = document.createElement('td');
-      td.className = 'col-day';
+      const td = elem('td', 'col-day');
       if (isWeekend(d)) td.classList.add('is-weekend');
 
-      const span = document.createElement('span');
-      span.className = 'day-total';
+      const span = elem('span', 'day-total', num(points));
       if (points === 0) span.classList.add('is-zero');
       else if (max > 0 && points >= max) span.classList.add('is-full');
-      span.textContent = num(points);
       td.appendChild(span);
       td.title = `${fmtFull.format(d)}: ${num(points)} de ${num(max)} puntos`;
       frow.appendChild(td);
@@ -1218,7 +1269,7 @@
     // El reseteo alcanza solo lo visible, así que el botón lo anticipa.
     if (count) {
       const rango = rangeLabel(visibleDays().days);
-      el.deleteSel.title = `Las saca de ${monthYearLabel(new Date(ui.year, ui.month, 1))}`;
+      el.deleteSel.title = `Las saca de ${labelDeMes()}`;
       el.resetSel.title = `Deja en «sin cargar» las celdas de ${rango}`;
     }
 
@@ -1227,55 +1278,41 @@
   }
 
   function th(text, className, scope) {
-    const node = document.createElement('th');
-    node.className = className;
+    const node = elem('th', className, text || '');
     if (scope) node.scope = scope;
-    if (text) node.textContent = text;
     return node;
   }
 
   function taskHeaderCell(task, index, total) {
-    const cell = document.createElement('th');
-    cell.className = 'col-task';
-    cell.scope = 'row';
-
-    const wrap = document.createElement('div');
-    wrap.className = 'task-cell';
-
+    const cell = th('', 'col-task', 'row');
+    const wrap = elem('div', 'task-cell');
     const locked = isLocked();
 
-    const pick = document.createElement('input');
+    const pick = elem('input', 'task-pick');
     pick.type = 'checkbox';
-    pick.className = 'task-pick';
     pick.dataset.taskId = task.id;
     pick.checked = ui.selected.has(task.id);
     pick.disabled = locked;
     pick.title = `Seleccionar «${task.name}»`;
     pick.setAttribute('aria-label', `Seleccionar ${task.name}`);
 
-    const move = document.createElement('div');
-    move.className = 'move-stack';
+    const move = elem('div', 'move-stack');
     move.append(
-      moveButton('up', '▲', task, locked || index === 0, `Subir «${task.name}»`),
-      moveButton('down', '▼', task, locked || index === total - 1, `Bajar «${task.name}»`),
+      moveButton('up', '▲', locked || index === 0, `Subir «${task.name}»`),
+      moveButton('down', '▼', locked || index === total - 1, `Bajar «${task.name}»`),
     );
 
     // El nombre hace de agarre para arrastrar: blanco grande y no interactivo.
-    const info = document.createElement('div');
-    info.className = 'task-info';
+    const info = elem('div', 'task-info');
     if (!locked) {
       info.dataset.dragHandle = '';
       info.title = 'Arrastrá para reordenar';
     }
 
-    const name = document.createElement('span');
-    name.className = 'task-name';
-    name.textContent = task.name;
+    const name = elem('span', 'task-name', task.name);
     name.title = task.name;
 
-    const freq = document.createElement('span');
-    freq.className = 'task-freq';
-    freq.textContent = freqLabel(task);
+    const freq = elem('span', 'task-freq', freqLabel(task));
     // La fecha de inicio no se escribe en la fila para no alargarla; se consulta acá.
     freq.title = task.start
       ? `${freqLabel(task)} — empieza el ${fmtShort.format(parseDateKey(task.start))}`
@@ -1283,55 +1320,44 @@
 
     info.append(name, freq);
 
-    const actions = document.createElement('div');
-    actions.className = 'task-actions';
-
-    const edit = document.createElement('button');
-    edit.type = 'button';
-    edit.className = 'mini-btn';
-    edit.dataset.action = 'edit';
-    edit.title = `Editar «${task.name}»`;
-    edit.setAttribute('aria-label', `Editar ${task.name}`);
-    edit.textContent = '✎';
-
     // El borrado vive en el casillero de selección + la fila de abajo.
-    edit.disabled = locked;
-    actions.appendChild(edit);
+    const actions = elem('div', 'task-actions');
+    actions.appendChild(boton('mini-btn', {
+      text: '✎',
+      action: 'edit',
+      title: `Editar «${task.name}»`,
+      label: `Editar ${task.name}`,
+      disabled: locked,
+    }));
+
     wrap.append(pick, move, info, actions);
     cell.appendChild(wrap);
     return cell;
   }
 
-  function moveButton(dir, glyph, task, disabled, label) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'move-btn';
-    btn.dataset.action = dir === 'up' ? 'move-up' : 'move-down';
-    btn.disabled = disabled;
-    btn.title = label;
-    btn.setAttribute('aria-label', label);
-    btn.textContent = glyph;
-    return btn;
+  function moveButton(dir, glyph, disabled, label) {
+    // Acá title y aria-label sí coinciden: ambos nombran la tarea igual.
+    return boton('move-btn', {
+      text: glyph,
+      action: dir === 'up' ? 'move-up' : 'move-down',
+      title: label,
+      label,
+      disabled,
+    });
   }
 
   /** Fila final, siempre visible, para seguir sumando tareas. */
   function addTaskRow(colSpan) {
-    const tr = document.createElement('tr');
-    tr.className = 'add-row';
-
-    const head = document.createElement('th');
-    head.className = 'col-task';
-    head.scope = 'row';
+    const tr = elem('tr', 'add-row');
+    const head = th('', 'col-task', 'row');
 
     // El rótulo lo define syncSelection(): con dos o más tareas tildadas,
     // este mismo botón pasa a ser el de borrado múltiple.
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'add-task-btn';
+    const btn = boton('add-task-btn');
     btn.dataset.addTask = '';
     head.appendChild(btn);
 
-    const filler = document.createElement('td');
+    const filler = elem('td');
     filler.colSpan = colSpan;
 
     tr.append(head, filler);
@@ -1339,9 +1365,7 @@
   }
 
   function statusButton(task, date) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'cell';
+    const btn = boton('cell');
     btn.dataset.taskId = task.id;
     btn.dataset.date = dateKey(date);
 
@@ -1375,21 +1399,16 @@
   function taskColumnHeader() {
     const cell = th('', 'col-task', 'col');
 
-    const wrap = document.createElement('div');
-    wrap.className = 'task-head';
+    const wrap = elem('div', 'task-head');
 
-    const all = document.createElement('input');
+    const all = elem('input', 'task-pick');
     all.type = 'checkbox';
-    all.className = 'task-pick';
     all.dataset.pickAll = '';
     all.disabled = isLocked();
     all.title = 'Seleccionar todas las tareas';
     all.setAttribute('aria-label', 'Seleccionar todas las tareas');
 
-    const label = document.createElement('span');
-    label.textContent = 'Tareas';
-
-    wrap.append(all, label);
+    wrap.append(all, elem('span', '', 'Tareas'));
     cell.appendChild(wrap);
     return cell;
   }
@@ -1398,19 +1417,14 @@
   function complianceHeader() {
     const cell = th('', 'col-total', 'col');
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'col-total-btn';
+    const btn = boton('col-total-btn', {
+      text: 'Estatus',
+      title: `Clic para ver ${modeLabel(nextComplianceMode())}`,
+    });
     btn.dataset.complianceMode = '';
-    btn.textContent = 'Estatus';
 
     // El modo activo se lee en el propio encabezado, no solo en el tooltip.
-    const mode = document.createElement('span');
-    mode.className = 'cp-mode';
-    mode.textContent = modeLabel(state.complianceMode);
-    btn.appendChild(mode);
-
-    btn.title = `Clic para ver ${modeLabel(nextComplianceMode())}`;
+    btn.appendChild(elem('span', 'cp-mode', modeLabel(state.complianceMode)));
 
     cell.appendChild(btn);
     return cell;
@@ -1425,17 +1439,10 @@
 
   /** Celda de cumplimiento: símbolo y/o porcentaje, según el modo activo. */
   function complianceCell(totals, extraClass = '') {
-    const td = document.createElement('td');
-    td.className = `col-total compliance ${extraClass}`.trim();
-
-    const glyph = document.createElement('span');
-    glyph.className = 'cp-glyph';
-
-    const ratio = document.createElement('span');
-    ratio.className = 'cp-pct';
+    const td = elem('td', `col-total compliance ${extraClass}`.trim());
 
     // Ambos se dibujan siempre; cuál se ve lo decide la clase `cpm-*` de la tabla.
-    td.append(glyph, ratio);
+    td.append(elem('span', 'cp-glyph'), elem('span', 'cp-pct'));
     applyCompliance(td, totals);
     return td;
   }
@@ -1598,10 +1605,6 @@
     );
   }
 
-  /**
-   * @param sub texto suelto, o un arreglo que se lista con viñetas.
-   *   Con un solo elemento se dibuja como texto: una viñeta sola queda rara.
-   */
   // ---------------------------------------------------------
   // Gráficos
   // ---------------------------------------------------------
@@ -1651,46 +1654,29 @@
   }
 
   function chartCard(title, hint) {
-    const card = document.createElement('figure');
-    card.className = 'chart-card';
-
-    const cap = document.createElement('figcaption');
-    cap.className = 'chart-title';
-    cap.textContent = title;
-    card.appendChild(cap);
-
-    if (hint) {
-      const p = document.createElement('p');
-      p.className = 'chart-hint';
-      p.textContent = hint;
-      card.appendChild(p);
-    }
+    const card = elem('figure', 'chart-card');
+    card.appendChild(elem('figcaption', 'chart-title', title));
+    if (hint) card.appendChild(elem('p', 'chart-hint', hint));
     return card;
   }
 
   /** Leyenda: cuadradito de color + símbolo + etiqueta + valor. */
   function chartLegend(items) {
-    const box = document.createElement('ul');
-    box.className = 'chart-legend';
+    const box = elem('ul', 'chart-legend');
     for (const item of items) {
-      const li = document.createElement('li');
+      const li = elem('li');
 
       // El símbolo va FUERA del cuadradito: adentro quedaría como texto sobre
       // un relleno saturado y el ámbar no llega a contraste. Afuera, la
       // identidad la dan el color, el símbolo y la palabra, nunca el tono solo.
-      const swatch = document.createElement('span');
-      swatch.className = 'lg-swatch';
+      const swatch = elem('span', 'lg-swatch');
       swatch.style.background = item.color;
 
-      const name = document.createElement('span');
-      name.className = 'lg-name';
-      name.textContent = item.glyph ? `${item.glyph}  ${item.label}` : item.label;
-
-      const value = document.createElement('span');
-      value.className = 'lg-value';
-      value.textContent = item.value;
-
-      li.append(swatch, name, value);
+      li.append(
+        swatch,
+        elem('span', 'lg-name', item.glyph ? `${item.glyph}  ${item.label}` : item.label),
+        elem('span', 'lg-value', item.value),
+      );
       box.appendChild(li);
     }
     return box;
@@ -1758,8 +1744,7 @@
     small.textContent = 'cargado';
     plot.append(big, small);
 
-    const wrap = document.createElement('div');
-    wrap.className = 'pie-wrap';
+    const wrap = elem('div', 'pie-wrap');
     wrap.appendChild(plot);
     wrap.appendChild(chartLegend(segments.map(s => ({
       color: s.color,
@@ -1866,33 +1851,24 @@
       return card;
     }
 
-    const list = document.createElement('ul');
-    list.className = 'hbars';
+    const list = elem('ul', 'hbars');
 
     for (const row of rows) {
-      const li = document.createElement('li');
+      const li = elem('li');
 
-      const name = document.createElement('span');
-      name.className = 'hb-name';
-      name.textContent = row.name;
+      const name = elem('span', 'hb-name', row.name);
       name.title = row.name;
 
       // La escala se topea en la meta. Si una tarea llega al 600%, escalar a
       // ese máximo aplasta a todas las demás y el rango que importa —45 a
       // 100%— deja de leerse. El número al costado conserva el valor exacto,
       // y la barra que se pasa termina en escuadra contra el borde.
-      const track = document.createElement('span');
-      track.className = 'hb-track';
-      const fill = document.createElement('i');
-      fill.className = `hb-fill st-${row.status}${row.ratio > 100 ? ' is-over' : ''}`;
+      const track = elem('span', 'hb-track');
+      const fill = elem('i', `hb-fill st-${row.status}${row.ratio > 100 ? ' is-over' : ''}`);
       fill.style.width = `${Math.min(row.ratio, 100)}%`;
       track.appendChild(fill);
 
-      const value = document.createElement('span');
-      value.className = 'hb-value';
-      value.textContent = pct(row.ratio);
-
-      li.append(name, track, value);
+      li.append(name, track, elem('span', 'hb-value', pct(row.ratio)));
       li.title = `${row.name}: ${pct(row.ratio)} de cumplimiento`;
       list.appendChild(li);
     }
@@ -1904,10 +1880,7 @@
   }
 
   function emptyChart(text) {
-    const p = document.createElement('p');
-    p.className = 'chart-empty';
-    p.textContent = text;
-    return p;
+    return elem('p', 'chart-empty', text);
   }
 
   function renderCharts() {
@@ -1916,9 +1889,12 @@
     el.charts.append(pieChart(days), weekdayChart(days), taskChart(days));
   }
 
+  /**
+   * @param sub texto suelto, o un arreglo que se lista con viñetas.
+   *   Con un solo elemento se dibuja como texto: una viñeta sola queda rara.
+   */
   function tile(label, value, sub, tone = '') {
-    const node = document.createElement('div');
-    node.className = tone ? `tile tone-${tone}` : 'tile';
+    const node = elem('div', tone ? `tile tone-${tone}` : 'tile');
     node.innerHTML = '<p class="tile-label"></p><p class="tile-value"></p>';
     node.querySelector('.tile-label').textContent = label;
 
@@ -1927,11 +1903,7 @@
     const valueEl = node.querySelector('.tile-value');
     if (values.length > 1) {
       valueEl.classList.add('is-stacked');
-      for (const v of values) {
-        const line = document.createElement('span');
-        line.textContent = v;
-        valueEl.appendChild(line);
-      }
+      for (const v of values) valueEl.appendChild(elem('span', '', v));
     } else {
       valueEl.textContent = values[0];
     }
@@ -1939,18 +1911,11 @@
     const items = (Array.isArray(sub) ? sub : [sub]).filter(Boolean);
 
     if (items.length > 1) {
-      const list = document.createElement('ul');
-      list.className = 'tile-list';
-      for (const item of items) {
-        const li = document.createElement('li');
-        li.textContent = item;
-        list.appendChild(li);
-      }
+      const list = elem('ul', 'tile-list');
+      for (const item of items) list.appendChild(elem('li', '', item));
       node.appendChild(list);
     } else {
-      const p = document.createElement('p');
-      p.className = 'tile-sub';
-      p.textContent = items[0] || '';
+      const p = elem('p', 'tile-sub', items[0] || '');
       p.title = items[0] || '';
       node.appendChild(p);
     }
@@ -2262,16 +2227,15 @@
 
   // Chips de días de la semana
   for (const wd of WEEKDAYS) {
-    const label = document.createElement('label');
-    label.className = 'wd';
+    const label = elem('label', 'wd');
     label.title = wd.long;
-    const input = document.createElement('input');
+
+    const input = elem('input');
     input.type = 'checkbox';
     input.value = String(wd.js);
     input.name = 'weekday';
-    const span = document.createElement('span');
-    span.textContent = wd.short;
-    label.append(input, span);
+
+    label.append(input, elem('span', '', wd.short));
     el.weekdayRow.appendChild(label);
   }
 
@@ -2311,7 +2275,7 @@
     const task = taskId ? currentTasks().find(t => t.id === taskId) : null;
 
     el.taskDialogTitle.textContent = task ? 'Editar tarea' : 'Nueva tarea';
-    $('#task-submit').textContent = task ? 'Guardar cambios' : 'Crear tarea';
+    el.taskSubmit.textContent = task ? 'Guardar cambios' : 'Crear tarea';
     el.taskName.value = task ? task.name : '';
     el.taskError.hidden = true;
 
@@ -2397,7 +2361,7 @@
     if (!task) return;
 
     confirmAction(
-      `Se va a eliminar «${task.name}» de ${monthYearLabel(new Date(ui.year, ui.month, 1))}, `
+      `Se va a eliminar «${task.name}» de ${labelDeMes()}, `
       + 'junto con los estados cargados ese mes.',
       () => {
         deleteTasks(new Set([taskId]));
@@ -2416,7 +2380,7 @@
 
     confirmAction(
       `Se van a eliminar estas ${tasks.length} tareas de `
-      + `${monthYearLabel(new Date(ui.year, ui.month, 1))}, junto con los estados `
+      + `${labelDeMes()}, junto con los estados `
       + 'cargados ese mes:',
       () => {
         deleteTasks(new Set(tasks.map(t => t.id)));
@@ -2429,11 +2393,6 @@
     );
   }
 
-  /**
-   * @param text  párrafo principal
-   * @param onOk  qué hacer al confirmar
-   * @param opts  `items` se lista con viñetas debajo; `note` es una aclaración al pie
-   */
   /** Claves de estado de esas tareas dentro del mes visible. */
   function statusKeysOf(ids, month) {
     return Object.keys(state.status).filter(key => {
@@ -2455,11 +2414,7 @@
   function rangeLabel(days) {
     if (!days.length) return '';
     if (ui.view === 'month') return monthYearLabel(days[0]);
-    const a = days[0];
-    const b = days[days.length - 1];
-    return sameDay(a, b)
-      ? fmtDayLong.format(a)
-      : `${fmtShort.format(a)} – ${fmtShort.format(b)}`;
+    return spanLabel(days);
   }
 
   function askResetSelected() {
@@ -2490,28 +2445,33 @@
         toast(`${keys.length} estado(s) reseteados`);
       },
       {
+        ok: 'Resetear',
         items: tasks.map(t => t.name),
         note: 'Las tareas y su configuración no se tocan, y fuera del rango '
           + 'visible no se borra nada.',
       },
     );
-    el.confirmOk.textContent = 'Resetear';
   }
 
+  /**
+   * @param text  párrafo principal
+   * @param onOk  qué hacer al confirmar
+   * @param opts  `items` se lista con viñetas debajo; `note` es una aclaración
+   *   al pie; `ok` es el rótulo del botón, que vuelve solo a "Eliminar" al
+   *   cerrarse el diálogo.
+   */
   function confirmAction(text, onOk, opts = {}) {
     el.confirmText.textContent = text;
 
     const items = opts.items || [];
     el.confirmList.innerHTML = '';
     el.confirmList.hidden = !items.length;
-    for (const item of items) {
-      const li = document.createElement('li');
-      li.textContent = item;
-      el.confirmList.appendChild(li);
-    }
+    for (const item of items) el.confirmList.appendChild(elem('li', '', item));
 
     el.confirmNote.textContent = opts.note || '';
     el.confirmNote.hidden = !opts.note;
+
+    el.confirmOk.textContent = opts.ok || OK_POR_DEFECTO;
 
     ui.onConfirm = onOk;
     el.confirmDialog.showModal();
@@ -2538,7 +2498,7 @@
   function openTemplates() {
     if (!ensureEditable()) return;
 
-    const mes = monthYearLabel(new Date(ui.year, ui.month, 1));
+    const mes = labelDeMes();
     el.templatesIntro.textContent =
       `Las tareas se agregan a ${mes}. Las que ya existan con el mismo nombre se omiten.`;
 
@@ -2565,34 +2525,20 @@
   }
 
   function templateCard(tpl) {
-    const card = document.createElement('article');
-    card.className = 'tpl';
+    const card = elem('article', 'tpl');
 
-    const head = document.createElement('header');
-    head.className = 'tpl-head';
-
-    const title = document.createElement('h3');
-    title.className = 'tpl-name';
-    title.textContent = tpl.name;
-
-    const add = document.createElement('button');
-    add.type = 'button';
-    add.className = 'btn btn-primary tpl-add';
-    add.textContent = 'Agregar';
+    const add = boton('btn btn-primary tpl-add', { text: 'Agregar' });
     add.addEventListener('click', () => applyTemplate(tpl));
 
-    head.append(title, add);
+    const head = elem('header', 'tpl-head');
+    head.append(elem('h3', 'tpl-name', tpl.name), add);
 
-    const desc = document.createElement('p');
-    desc.className = 'tpl-desc';
-    desc.textContent = `${tpl.tasks.length} tareas · ${tpl.description}`;
+    const desc = elem('p', 'tpl-desc', `${tpl.tasks.length} tareas · ${tpl.description}`);
 
-    const list = document.createElement('ul');
-    list.className = 'tpl-tasks';
+    const list = elem('ul', 'tpl-tasks');
     for (const item of tpl.tasks) {
       const task = templateTask(item);
-      const li = document.createElement('li');
-      li.textContent = task.name;
+      const li = elem('li', '', task.name);
       li.title = `${task.name} — ${freqLabel(task)}`;
       list.appendChild(li);
     }
@@ -2692,8 +2638,8 @@
     const source = tasksOf(prev.year, prev.month);
     if (!source.length) return;
 
-    const prevName = monthYearLabel(new Date(prev.year, prev.month, 1));
-    const thisName = monthYearLabel(new Date(ui.year, ui.month, 1));
+    const prevName = labelDeMes(prev.year, prev.month);
+    const thisName = labelDeMes();
     const current = currentTasks().length;
 
     confirmAction(
@@ -2701,8 +2647,8 @@
       + 'Las tareas que no estén en el mes anterior se pierden junto con sus estados de este mes; '
       + 'los periodos anteriores no se verán modificados.',
       () => copyFromPreviousMonth(source),
+      { ok: 'Reemplazar' },
     );
-    el.confirmOk.textContent = 'Reemplazar';
   });
 
   /**
@@ -2732,7 +2678,7 @@
 
   el.lock.addEventListener('click', () => {
     const key = monthKey(ui.year, ui.month);
-    const name = monthYearLabel(new Date(ui.year, ui.month, 1));
+    const name = labelDeMes();
 
     if (isLocked()) {
       delete state.locked[key];
@@ -2782,16 +2728,19 @@
           render();
           toast('Datos importados');
         },
+        { ok: 'Importar' },
       );
-      el.confirmOk.textContent = 'Importar';
     } catch (err) {
       console.error(err);
       toast('El archivo no es válido');
     }
   });
 
+  // Red de seguridad: el rótulo lo fija confirmAction en cada apertura, pero
+  // dejarlo en el valor por defecto evita que un diálogo cerrado se quede
+  // mostrando "Reemplazar" si alguien lo abriera por otro camino.
   el.confirmDialog.addEventListener('close', () => {
-    el.confirmOk.textContent = 'Eliminar';
+    el.confirmOk.textContent = OK_POR_DEFECTO;
   });
 
   // ---------------------------------------------------------
