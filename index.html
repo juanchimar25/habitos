@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Planilla mensual de hábitos con puntaje por tarea y por día.">
+  <meta name="theme-color" content="#0f172a">
+  <title>Hábitos</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,2 98,50 2,50' fill='%238158a4'/><polygon points='2,50 98,50 50,98' fill='%233d4a7b'/><path d='M27 46 L45 64 L74 30' fill='none' stroke='%23fff' stroke-width='13'/></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Puerta de sesión: se muestra hasta que haya usuario -->
+  <div class="auth-gate" id="auth-gate" hidden>
+    <div class="auth-card">
+      <svg class="brand-mark auth-mark" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <polygon points="50,2 98,50 2,50" fill="var(--brand-top)"/>
+        <polygon points="2,50 98,50 50,98" fill="var(--brand-bottom)"/>
+        <path d="M27 46 L45 64 L74 30" fill="none" stroke="#fff" stroke-width="13"
+              stroke-linecap="butt" stroke-linejoin="miter"/>
+      </svg>
+
+      <h1 class="auth-brand">Hábitos</h1>
+      <h2 class="auth-title" id="auth-title">Iniciar sesión</h2>
+
+      <p class="auth-notice" id="auth-notice" hidden></p>
+
+      <form class="auth-form" id="auth-form" novalidate>
+        <label class="field">
+          <span class="field-label">Email</span>
+          <input type="email" id="auth-email" autocomplete="email" required>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Contraseña</span>
+          <input type="password" id="auth-password" autocomplete="current-password" required>
+        </label>
+
+        <p class="form-error" id="auth-error" role="alert" hidden></p>
+
+        <button type="submit" class="btn btn-primary auth-submit" id="auth-submit">Entrar</button>
+        <button type="button" class="btn btn-ghost auth-toggle" id="auth-toggle">Crear una cuenta</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="app-root" hidden>
+
+  <header class="app-header">
+    <button type="button" id="btn-menu" class="btn icon-btn menu-btn"
+            aria-label="Abrir menú" aria-expanded="false" aria-controls="drawer">☰</button>
+
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <polygon points="50,2 98,50 2,50" fill="var(--brand-top)"/>
+        <polygon points="2,50 98,50 50,98" fill="var(--brand-bottom)"/>
+        <path d="M27 46 L45 64 L74 30" fill="none" stroke="#fff" stroke-width="13"
+              stroke-linecap="butt" stroke-linejoin="miter"/>
+      </svg>
+      <div class="brand-text">
+        <h1>Hábitos</h1>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button type="button" id="btn-theme" class="btn icon-btn" title="Cambiar tema" aria-label="Cambiar tema">☾</button>
+    </div>
+  </header>
+
+  <div class="drawer-backdrop" id="drawer-backdrop"></div>
+
+  <nav class="drawer" id="drawer" aria-label="Menú principal">
+    <div class="drawer-head">
+      <span class="drawer-title">Menú</span>
+      <button type="button" id="btn-menu-close" class="btn icon-btn" aria-label="Cerrar menú">✕</button>
+    </div>
+
+    <div class="drawer-group">
+      <button type="button" class="drawer-item" data-page="home">
+        <span class="drawer-icon" aria-hidden="true">▦</span> Diario
+      </button>
+      <button type="button" class="drawer-item" data-page="indicators">
+        <span class="drawer-icon" aria-hidden="true">◔</span> Análisis
+      </button>
+    </div>
+
+    <div class="drawer-group">
+      <p class="drawer-label">Tareas</p>
+      <button type="button" id="btn-templates" class="drawer-item">
+        <span class="drawer-icon" aria-hidden="true">▤</span> Plantillas
+      </button>
+    </div>
+
+    <div class="drawer-group">
+      <p class="drawer-label">Datos</p>
+      <button type="button" id="btn-export" class="drawer-item">
+        <span class="drawer-icon" aria-hidden="true">↓</span> Exportar
+      </button>
+      <button type="button" id="btn-import" class="drawer-item">
+        <span class="drawer-icon" aria-hidden="true">↑</span> Importar
+      </button>
+      <input type="file" id="file-import" accept="application/json,.json" hidden>
+    </div>
+
+    <!-- Al pie del menú, siempre abajo -->
+    <div class="drawer-session" id="drawer-session" hidden>
+      <div class="session-info">
+        <span class="session-label">Sesión</span>
+        <span class="session-user" id="session-user"></span>
+      </div>
+      <button type="button" id="btn-sign-out" class="drawer-item session-out">
+        <span class="drawer-icon" aria-hidden="true">⏻</span> Cerrar sesión
+      </button>
+    </div>
+  </nav>
+
+  <main class="app-main">
+
+    <section class="controls" aria-label="Controles de período">
+      <div class="control-group month-nav">
+        <button type="button" id="prev-month" class="btn icon-btn" aria-label="Mes anterior">‹</button>
+        <span id="month-label" class="month-label">—</span>
+        <button type="button" id="next-month" class="btn icon-btn" aria-label="Mes siguiente">›</button>
+        <button type="button" id="btn-page-toggle" class="btn btn-ghost">
+          <span class="nav-icon" aria-hidden="true">◔</span>
+          <span class="nav-text">Análisis</span>
+        </button>
+      </div>
+
+      <div class="control-group controls-center" id="controls-center">
+        <button type="button" id="btn-today" class="btn btn-ghost">Hoy</button>
+        <div class="view-switch" id="view-switch" role="group" aria-label="Vista">
+          <button type="button" class="seg" data-view="day">Diario</button>
+          <button type="button" class="seg" data-view="week">Semanal</button>
+          <button type="button" class="seg" data-view="month">Mensual</button>
+        </div>
+      </div>
+
+      <div class="control-group range-nav" id="range-nav">
+        <button type="button" id="prev-range" class="btn icon-btn" aria-label="Período anterior">‹</button>
+        <span id="range-label" class="range-label">—</span>
+        <button type="button" id="next-range" class="btn icon-btn" aria-label="Período siguiente">›</button>
+      </div>
+    </section>
+
+    <section class="month-bar" id="month-bar" aria-label="Acciones del mes">
+      <button type="button" id="btn-copy-prev" class="btn btn-ghost">
+        <span aria-hidden="true">⧉</span> Copiar tareas del mes anterior
+      </button>
+
+      <!-- Solo aparecen con tareas tildadas -->
+      <button type="button" id="btn-delete-sel" class="btn btn-ghost btn-ghost-danger" hidden>
+        <span aria-hidden="true">🗑</span> <span id="delete-sel-text">Eliminar tareas</span>
+      </button>
+      <button type="button" id="btn-reset-sel" class="btn btn-ghost" hidden>
+        <span aria-hidden="true">↺</span> Resetear estados
+      </button>
+      <button type="button" id="btn-lock" class="btn btn-ghost">
+        <span aria-hidden="true">🔒</span> <span id="lock-text">Bloquear período</span>
+      </button>
+    </section>
+
+    <section class="analysis" id="analysis" aria-label="Análisis del mes">
+      <details class="panel" id="panel-tiles" open>
+        <summary class="panel-head">
+          <span class="panel-caret" aria-hidden="true">▾</span> Indicadores
+        </summary>
+        <div class="summary" id="summary"></div>
+      </details>
+
+      <details class="panel" id="panel-charts" open>
+        <summary class="panel-head">
+          <span class="panel-caret" aria-hidden="true">▾</span> Gráficos
+        </summary>
+        <div class="charts" id="charts"></div>
+      </details>
+    </section>
+
+    <section class="board" id="board">
+      <p class="locked-note" id="locked-note" hidden>
+        <span aria-hidden="true">🔒</span>
+        Período bloqueado. No se pueden cargar estados ni modificar tareas.
+      </p>
+
+      <div class="table-wrap" id="table-wrap">
+        <table class="grid" id="grid">
+          <caption class="sr-only">Tareas por día del mes con puntaje por fila y por columna</caption>
+        </table>
+      </div>
+
+      <div class="empty" id="empty" hidden>
+        <p class="empty-title">Todavía no hay tareas</p>
+        <p class="empty-sub">Creá tu primera tarea para empezar a cargar el mes.</p>
+        <button type="button" class="btn btn-primary" data-add-task>+ Nueva tarea</button>
+      </div>
+    </section>
+
+    <section class="legend" id="legend" aria-label="Referencias">
+      <span class="legend-item"><span class="chip st-done" aria-hidden="true">✓</span> Cumplido · 1 punto</span>
+      <span class="legend-item"><span class="chip st-partial" aria-hidden="true">~</span> Parcial · 0,5 puntos</span>
+      <span class="legend-item"><span class="chip st-missed" aria-hidden="true">✕</span> No cumplido · 0 puntos</span>
+      <span class="legend-item"><span class="chip st-none" aria-hidden="true"></span> Sin cargar</span>
+      <span class="legend-item"><span class="chip is-optional" aria-hidden="true">–</span> No requerido</span>
+      <span class="legend-hint">Clic para avanzar de estado · Shift + clic para retroceder</span>
+    </section>
+  </main>
+  </div><!-- /#app-root -->
+
+  <!-- Alta / edición de tarea -->
+  <dialog id="task-dialog" class="dialog">
+    <form id="task-form" class="dialog-form" novalidate>
+      <h2 id="task-dialog-title">Nueva tarea</h2>
+
+      <label class="field">
+        <span class="field-label">Nombre de la tarea</span>
+        <input type="text" id="task-name" maxlength="80" autocomplete="off" placeholder="Ej: Leer 20 minutos" required>
+      </label>
+
+      <fieldset class="field">
+        <legend class="field-label">Frecuencia</legend>
+        <div class="radio-grid">
+          <div class="radio-col">
+            <label class="radio"><input type="radio" name="freq" value="daily" checked><span>Diaria</span></label>
+            <label class="radio"><input type="radio" name="freq" value="weekdays"><span>Lunes a viernes</span></label>
+            <label class="radio"><input type="radio" name="freq" value="custom"><span>Personalizado</span></label>
+          </div>
+          <div class="radio-col">
+            <label class="radio"><input type="radio" name="freq" value="weekly"><span>Semanal</span></label>
+            <label class="radio"><input type="radio" name="freq" value="biweekly"><span>Quincenal</span></label>
+            <label class="radio"><input type="radio" name="freq" value="monthly"><span>Mensual</span></label>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="field" id="custom-field" hidden>
+        <legend class="field-label">¿Cómo se mide?</legend>
+        <div class="radio-grid">
+          <div class="radio-col">
+            <label class="radio"><input type="radio" name="custom-mode" value="weekdays" checked><span>Días fijos</span></label>
+          </div>
+          <div class="radio-col">
+            <label class="radio"><input type="radio" name="custom-mode" value="count"><span>Meta mensual</span></label>
+          </div>
+        </div>
+
+        <div class="weekday-row" id="weekday-row"></div>
+
+        <div class="count-row" id="count-row" hidden>
+          <input type="number" id="task-target" min="1" max="99" step="1" value="12" inputmode="numeric">
+          <span>veces al mes</span>
+        </div>
+      </fieldset>
+
+      <label class="field">
+        <span class="field-label">Fecha de inicio <span class="field-optional">(opcional)</span></span>
+        <input type="date" id="task-start">
+      </label>
+
+      <p class="form-error" id="task-error" role="alert" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close-dialog>Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="task-submit">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Plantillas -->
+  <dialog id="templates-dialog" class="dialog dialog-wide">
+    <div class="dialog-form">
+      <!-- Recibe el foco al abrir: si no, lo toma el contenedor scrolleable
+           de abajo y el anillo aparece rodeando toda la lista. -->
+      <h2 id="templates-title" tabindex="-1">Plantillas</h2>
+      <p class="confirm-text" id="templates-intro">
+        Agregan sus tareas al mes visible. Las que ya existan con el mismo nombre se omiten.
+      </p>
+      <div class="tpl-list" id="templates-list"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close-dialog>Cerrar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Confirmación genérica -->
+  <dialog id="confirm-dialog" class="dialog">
+    <div class="dialog-form">
+      <h2 id="confirm-title">Confirmar</h2>
+      <p id="confirm-text" class="confirm-text"></p>
+      <ul id="confirm-list" class="confirm-list" hidden></ul>
+      <p id="confirm-note" class="confirm-note" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close-dialog>Cancelar</button>
+        <button type="button" class="btn btn-danger" id="confirm-ok">Eliminar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <!-- El módulo va último: espera a que `window.Habitos` exista. -->
+  <script type="module" src="auth.js"></script>
+</body>
+</html>
