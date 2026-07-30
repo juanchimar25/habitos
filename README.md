@@ -76,7 +76,11 @@ Eso obliga al servidor a devolver `index.html` ante cualquier ruta, porque los a
 `/diario` y `/analisis` no existen en disco. Ya viene resuelto para los tres hostings del paso 4:
 
 - **Netlify** → `_redirects`
-- **Vercel** → `vercel.json`
+- **Vercel** → `vercel.json`. El rewrite es `/(.*)` a secas y alcanza: los rewrites se evalúan
+  *después* de buscar el archivo en disco, así que `styles.css`, `app.js` y compañía se sirven
+  normalmente y solo las rutas que no existen caen en `index.html`.
+  **No lleva comentarios**: el esquema de Vercel rechaza cualquier propiedad que no reconozca,
+  incluida la clave `"//"` que suele usarse para eso, y el deploy falla entero.
 - **GitHub Pages** → `404.html`, que no sabe reescribir y rebota a la raíz pasando la ruta como
   parámetro; el router la traduce y limpia la URL.
 
