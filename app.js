@@ -222,6 +222,75 @@
   };
 
   // ---------------------------------------------------------
+  // Rutas
+  // ---------------------------------------------------------
+
+  /* Cada sección tiene su propia URL. Es una sola página que reescribe la
+     dirección con la History API, así que el hosting tiene que devolver
+     `index.html` ante cualquier ruta — ver `_redirects`, `vercel.json` y
+     `404.html`. */
+
+  const PAGE_DE_RUTA = { diario: 'home', analisis: 'indicators', comousar: 'help' };
+  const RUTA_DE_PAGE = { home: 'diario', indicators: 'analisis', help: 'comousar' };
+
+  const TITULO_DE_PAGE = {
+    home: 'Diario · Hábitos',
+    indicators: 'Análisis · Hábitos',
+    help: 'Cómo usar · Hábitos',
+  };
+
+  /**
+   * Carpeta donde vive la app, deducida de la URL de este mismo script. Así
+   * las rutas funcionan igual en la raíz del dominio que en un subdirectorio
+   * (el caso de GitHub Pages sin dominio propio).
+   */
+  const BASE = new URL('.', document.currentScript.src).pathname;
+
+  function urlDe(page) {
+    return BASE + RUTA_DE_PAGE[page];
+  }
+
+  /** Sección que pide la URL actual. Si no reconoce la ruta, cae en la planilla. */
+  function pageDeUrl() {
+    // `404.html` (GitHub Pages) reenvía a la raíz con la ruta en este parámetro.
+    const desviada = new URLSearchParams(location.search).get('ruta');
+
+    const camino = desviada ?? (location.pathname.startsWith(BASE)
+      ? location.pathname.slice(BASE.length)
+      : location.pathname.replace(/^\//, ''));
+
+    const slug = camino.split('/')[0].replace(/\.html$/, '').toLowerCase();
+    return PAGE_DE_RUTA[slug] || 'home';
+  }
+
+  /**
+   * Cambia de sección y deja la URL en sintonía.
+   * @param {'home'|'indicators'|'help'} page
+   * @param {{ reemplazar?: boolean }} [opciones] `reemplazar` no agrega entrada
+   *   al historial: se usa al abrir la app, para no dejar un paso atrás vacío.
+   */
+  function irA(page, { reemplazar = false } = {}) {
+    ui.page = page;
+    document.title = TITULO_DE_PAGE[page];
+
+    const url = urlDe(page);
+    if (reemplazar) history.replaceState({ page }, '', url);
+    else if (location.pathname !== url) history.pushState({ page }, '', url);
+
+    render();
+  }
+
+  // Atrás y adelante del navegador vuelven a la sección que corresponda.
+  window.addEventListener('popstate', () => {
+    // Sin sesión no hay nada que dibujar: manda la pantalla de login.
+    if (!currentUserId) return;
+
+    ui.page = pageDeUrl();
+    document.title = TITULO_DE_PAGE[ui.page];
+    render();
+  });
+
+  // ---------------------------------------------------------
   // Utilidades de fecha
   // ---------------------------------------------------------
 
@@ -880,19 +949,21 @@
 
   function render() {
     const onHome = ui.page === 'home';
+    const onHelp = ui.page === 'help';
     const { days, count } = visibleDays();
 
     // El selector de mes se muestra siempre: los indicadores también son mensuales.
     el.monthLabel.textContent = monthYearLabel(new Date(ui.year, ui.month, 1));
 
-    // El atajo junto al mes lleva siempre a la otra sección.
+    // El atajo junto al mes alterna entre planilla e indicadores. En la guía no
+    // aparece: ahí se sale por el menú.
+    el.pageToggle.hidden = onHelp;
     el.pageToggle.querySelector('.nav-icon').textContent = onHome ? '◔' : '▦';
     el.pageToggle.querySelector('.nav-text').textContent = onHome ? 'Análisis' : 'Diario';
     el.pageToggle.title = onHome
       ? 'Ver el análisis de este mes'
       : 'Volver a la planilla';
 
-    const onHelp = ui.page === 'help';
     // Vista y navegación del rango solo aplican a la planilla.
     el.controlsCenter.hidden = !onHome;
     el.rangeNav.hidden = !onHome || ui.view === 'month';
@@ -2495,8 +2566,7 @@
     const omitidas = tpl.tasks.length - agregadas;
     save();
     el.templatesDialog.close();
-    ui.page = 'home';
-    render();
+    irA('home');
 
     if (!agregadas) toast('Esas tareas ya estaban en el mes');
     else toast(`${agregadas} tarea(s) agregadas`
@@ -2530,16 +2600,19 @@
 
   // Alterna entre las dos secciones sin pasar por el menú.
   el.pageToggle.addEventListener('click', () => {
-    ui.page = ui.page === 'home' ? 'indicators' : 'home';
-    render();
+    irA(ui.page === 'home' ? 'indicators' : 'home');
   });
 
   el.drawer.addEventListener('click', e => {
     const item = e.target.closest('[data-page]');
     if (!item) return;
-    ui.page = item.dataset.page;
+
+    // Son enlaces de verdad: ctrl/cmd/rueda abren la sección en otra pestaña.
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+
+    e.preventDefault();
     setDrawer(false);
-    render();
+    irA(item.dataset.page);
   });
 
   el.templates.addEventListener('click', () => {
@@ -2790,12 +2863,19 @@
       await hydrateStateForUser(user);
       applyTheme();
 
-      ui.page = 'home';
       ui.year = today.getFullYear();
       ui.month = today.getMonth();
       ui.selected.clear();
       ui.windowIndex = windowIndexFor(today);
-      render();
+
+      // Los enlaces del menú se apuntan acá: `BASE` solo se conoce en runtime.
+      for (const item of el.drawer.querySelectorAll('[data-page]')) {
+        item.href = urlDe(item.dataset.page);
+      }
+
+      // Respeta la sección que pide la URL, así un enlace compartido abre donde
+      // corresponde. `reemplazar` normaliza de paso el desvío de `404.html`.
+      irA(pageDeUrl(), { reemplazar: true });
     },
 
     /** Llamado al cerrar sesión: no queda nada del usuario anterior en memoria. */

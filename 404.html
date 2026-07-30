@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Hábitos</title>
+  <script>
+    /* GitHub Pages no sabe reescribir rutas: ante /diario o /analisis sirve
+       este archivo. Se vuelve a la raíz de la app pasando la ruta pedida como
+       parámetro, y el router de app.js la traduce y limpia la URL.
+
+       En Netlify y Vercel este archivo no llega a usarse: ahí manda
+       `_redirects` / `vercel.json`, que devuelven index.html sin rebote. */
+    (function () {
+      var partes = location.pathname.replace(/^\//, '').split('/');
+
+      // En user.github.io/repo/... el primer segmento es el repositorio, no la ruta.
+      var base = location.hostname.endsWith('github.io') && partes.length > 1
+        ? '/' + partes.shift() + '/'
+        : '/';
+
+      location.replace(base + '?ruta=' + encodeURIComponent(partes.join('/')) + location.hash);
+    }());
+  </script>
+</head>
+<body>
+  <p>Redirigiendo… <a href="/">Ir al inicio</a></p>
+</body>
+</html>

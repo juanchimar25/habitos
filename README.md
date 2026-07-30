@@ -41,12 +41,40 @@ window.SUPABASE_ANON_KEY = 'eyJhbGciOi...';
 La *anon key* es pública por diseño y puede vivir en el navegador: lo que protege los datos es
 Row Level Security. La **service role key nunca va acá**.
 
-**4. Servirla.** En local, `npx serve .` y abrir la URL que imprime. Para usarla de verdad,
-publicarla en Netlify, Vercel o GitHub Pages —los tres gratis— y registrar esa URL en
+**4. Servirla.** En local, `npx serve . --single` y abrir la URL que imprime. Para usarla de
+verdad, publicarla en Netlify, Vercel o GitHub Pages —los tres gratis— y registrar esa URL en
 *Authentication → URL Configuration* de Supabase.
+
+El `--single` importa: cada sección tiene su propia dirección (ver **Rutas**) y el servidor
+tiene que devolver `index.html` en todas.
 
 Si `config.js` sigue con los valores de ejemplo, la pantalla de login lo dice en lugar de fallar
 en silencio.
+
+## Rutas
+
+Las tres secciones tienen dirección propia, se pueden compartir y responden a los botones de
+atrás y adelante del navegador:
+
+| Sección | Dirección |
+| --- | --- |
+| Diario | `/diario` |
+| Análisis | `/analisis` |
+| Cómo usar | `/comousar` |
+
+Sigue siendo **una sola página**: `app.js` reescribe la URL con la History API y muestra la
+sección correspondiente. Cualquier ruta desconocida cae en Diario.
+
+Eso obliga al servidor a devolver `index.html` ante cualquier ruta, porque los archivos
+`/diario` y `/analisis` no existen en disco. Ya viene resuelto para los tres hostings del paso 4:
+
+- **Netlify** → `_redirects`
+- **Vercel** → `vercel.json`
+- **GitHub Pages** → `404.html`, que no sabe reescribir y rebota a la raíz pasando la ruta como
+  parámetro; el router la traduce y limpia la URL.
+
+En un subdirectorio (`usuario.github.io/repo/`) también funciona: la app deduce su carpeta de la
+URL de `app.js`, así que las rutas quedan `/repo/diario` y compañía.
 
 ## Sesión
 

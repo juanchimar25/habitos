@@ -301,6 +301,9 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 .drawer-group { display: flex; flex-direction: column; gap: .15rem; }
 
+/* Empuja este grupo al fondo del menú, justo encima de la sesión activa */
+.drawer-group-bottom { margin-top: auto; }
+
 .drawer-label {
   margin: 0 0 .25rem;
   padding-left: .6rem;
@@ -320,6 +323,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   font-size: .9rem;
   font-weight: 550;
   text-align: left;
+  text-decoration: none;   /* los ítems de navegación son enlaces reales */
   display: flex;
   align-items: center;
   gap: .65rem;
@@ -357,7 +361,8 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 /* La sesión queda anclada al fondo del cajón */
 .drawer-session {
-  margin-top: auto;
+  /* El espacio libre lo absorbe .drawer-group-bottom; con dos `auto` se repartiría */
+  margin-top: 0;
   padding-top: .75rem;
   border-top: 1px solid var(--border);
 }

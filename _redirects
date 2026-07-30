@@ -1,0 +1,5 @@
+# Netlify — la app es una sola página con rutas propias (/diario, /analisis,
+# /comousar). Cualquier ruta devuelve index.html con estado 200 y el router de
+# app.js decide qué sección mostrar. Los archivos que existen de verdad
+# (styles.css, app.js…) se sirven antes que esta regla.
+/*  /index.html  200
