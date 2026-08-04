@@ -35,16 +35,18 @@
   --brand-bottom:  #3d4a7b;
   --brand-text:    #6b3f8e;
 
-  /* El día de hoy, el alta de tarea y la vista activa comparten el color de la
-     marca: son los tres acentos de la app y así se leen como una sola familia.
-     Referencia la variable en vez de repetir el valor, para que sigan atados.
+  /* `--brand-fg` es el texto que se lee ENCIMA de un relleno del color de la
+     marca, y cambia por tema: en claro el color de marca es oscuro y lleva
+     blanco (7,70:1); en oscuro es un lavanda claro y lleva el fondo de la app
+     (9,32:1). Blanco sobre el lavanda da 2,00:1, que es ilegible.
 
-     `--today-fg` es el texto ENCIMA de ese relleno, y cambia por tema: en claro
-     el color de marca es oscuro y lleva blanco (7,70:1); en oscuro es un
-     lavanda claro y lleva el fondo de la app (9,32:1). Blanco sobre el lavanda
-     da 2,00:1, que es ilegible. */
+     Lo usan el botón de entrar, el marcador de hoy, el alta de tarea y la vista
+     activa: los acentos de la app, que así se leen como una sola familia. */
+  --brand-fg:      #ffffff;
+
+  /* El día de hoy referencia la variable en vez de repetir el valor, para que
+     los dos queden atados si el color de marca cambia. */
   --today:         var(--brand-text);
-  --today-fg:      #ffffff;
 
   /* Rellenos de los gráficos. Son los estados del tablero, pero un paso más
      oscuros donde hacía falta: todos superan 3:1 contra la superficie de las
@@ -104,7 +106,7 @@
 
   /* `--today` sigue apuntando al color de marca —no hace falta repetirlo—, pero
      acá ese color es claro, así que encima va texto oscuro. */
-  --today-fg:      #0d1220;
+  --brand-fg:      #0d1220;
 
   /* Pasos propios para el fondo oscuro, no un volteo automático del claro.
      Verificados contra la superficie de las tarjetas (#151c2e). */
@@ -342,7 +344,23 @@ body {
 }
 
 .auth-form { width: 100%; display: flex; flex-direction: column; gap: .9rem; }
-.auth-submit { margin-top: .35rem; padding: .6rem; }
+
+/* Entrar / Crear cuenta lleva el color con que se escribe «Hábitos», no el de
+   acento. Es el mismo par que el resto de los acentos de la app, así que el
+   texto encima se adapta al tema y no queda blanco sobre lavanda. */
+.auth-submit {
+  margin-top: .35rem;
+  padding: .6rem;
+  background: var(--brand-text);
+  border-color: transparent;
+  color: var(--brand-fg);
+  font-weight: 620;
+}
+.auth-submit:hover:not(:disabled) {
+  background: var(--brand-text);
+  border-color: transparent;
+  filter: brightness(1.08);
+}
 .auth-toggle { align-self: center; font-size: .82rem; }
 
 /* Aviso neutro: configuración faltante o mail de confirmación enviado */
@@ -640,10 +658,10 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
    relieve lo da el contraste con el carril hundido, no una elevación. */
 .seg[aria-pressed="true"] {
   background: var(--today);
-  color: var(--today-fg);
+  color: var(--brand-fg);
   font-weight: 620;
 }
-.seg[aria-pressed="true"]:hover { color: var(--today-fg); filter: brightness(1.08); }
+.seg[aria-pressed="true"]:hover { color: var(--brand-fg); filter: brightness(1.08); }
 
 .range-nav[hidden] { display: none; }
 
@@ -703,12 +721,12 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 .jump-cell.is-today {
   background: var(--today);
-  color: var(--today-fg);
+  color: var(--brand-fg);
   font-weight: 650;
 }
 .jump-cell.is-today:hover {
   background: var(--today);
-  color: var(--today-fg);
+  color: var(--brand-fg);
   filter: brightness(1.08);
 }
 
@@ -736,7 +754,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .btn-today {
   background: var(--today);
   border-color: transparent;
-  color: var(--today-fg);
+  color: var(--brand-fg);
   font-weight: 620;
 }
 .btn-today:hover:not(:disabled) { background: var(--today); filter: brightness(1.08); }
@@ -1194,7 +1212,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .dnum { display: block; font-size: .95rem; font-weight: 650; color: var(--text); }
 
 .col-day.is-today .dnum {
-  color: var(--today-fg);
+  color: var(--brand-fg);
   background: var(--today);
   border-radius: 99px;
   width: 22px;

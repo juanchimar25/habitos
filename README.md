@@ -136,7 +136,7 @@ clonado el repositorio. Cuando un cambio de markup es intencional, `npm run snap
 ### Casos de comportamiento
 
 Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue funcionando*. Son
-**275 comprobaciones** repartidas en doce archivos, cada uno sobre una funcionalidad:
+**277 comprobaciones** repartidas en doce archivos, cada uno sobre una funcionalidad:
 
 | Caso | Qué cubre |
 |---|---|
@@ -147,7 +147,7 @@ Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue f
 | `zoom` | Los tres niveles, alto de fila uniforme, ancho para el nombre |
 | `plegado` | «Análisis» en el encabezado y el plegado de controles |
 | `boton-alta` | Ubicación del alta y estado bloqueado |
-| `color-marca` | El color de hoy sigue al de la marca, con contraste AA en ambos temas |
+| `color-marca` | Los rellenos con el color de la marca y su contraste AA en ambos temas |
 | `vendor` | La app arranca con el cliente local y su `integrity` |
 | `red` | Qué primitivas de red toca el cliente real: ningún WebSocket |
 | `landing` | Pantalla partida de la puerta de sesión, apilado en móvil y contraste sobre el degradado |

@@ -125,7 +125,10 @@
 
         <p class="form-error" id="auth-error" role="alert" hidden></p>
 
-        <button type="submit" class="btn btn-primary auth-submit" id="auth-submit">Entrar</button>
+        <!-- Sin `btn-primary`: lleva el color de la marca, no el de acento, y
+             `.auth-submit` se define antes en la hoja — con las dos clases
+             ganaría `btn-primary` por orden de aparición. -->
+        <button type="submit" class="btn auth-submit" id="auth-submit">Entrar</button>
         <button type="button" class="btn btn-ghost auth-toggle" id="auth-toggle">Crear una cuenta</button>
       </form>
     </div>

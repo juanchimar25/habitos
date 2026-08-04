@@ -56,38 +56,52 @@ const contraste = (a, b) => {
 for (const [nombre, tema] of [['CLARO', claro], ['OSCURO', oscuro]]) {
   const marca = valor(tema, '--brand-text');
   const hoy = valor(tema, '--today');
-  const fg = valor(tema, '--today-fg');
+  const fg = valor(tema, '--brand-fg');
   const r = contraste(fg, hoy);
 
   console.log(`\n=== tema ${nombre} ===`);
   console.log(`  --brand-text  ${marca}`);
   console.log(`  --today       ${hoy}`);
-  console.log(`  --today-fg    ${fg}   (${r.toFixed(2)}:1 sobre el relleno)`);
+  console.log(`  --brand-fg    ${fg}   (${r.toFixed(2)}:1 sobre el relleno)`);
 
   ok(`  ${nombre}: el día de hoy usa el color de la marca`, hoy === marca, `${hoy} vs ${marca}`);
   ok(`  ${nombre}: el texto encima llega a AA (4,5:1)`, r >= 4.5, `${r.toFixed(2)}:1`);
 }
 
-// --- las tres superficies leen las mismas variables -------------------------
+/* Superficies rellenas con el color de la marca. `--today` y `--brand-text`
+   valen lo mismo —el primero referencia al segundo—; cuál se nombra depende de
+   si la superficie habla del día de hoy o de la marca. */
 const superficies = [
-  ['marcador del día actual', /\.col-day\.is-today \.dnum \{[^}]*\}/],
-  ['botón + Agregar tarea', /\.btn-today \{[^}]*\}/],
-  ['vista activa del selector', /\.seg\[aria-pressed="true"\] \{[^}]*\}/],
+  ['marcador del día actual', /\.col-day\.is-today \.dnum \{[^}]*\}/, '--today'],
+  ['botón + Agregar tarea', /\.btn-today \{[^}]*\}/, '--today'],
+  ['vista activa del selector', /\.seg\[aria-pressed="true"\] \{[^}]*\}/, '--today'],
+  ['botón Entrar / Crear cuenta', /\n\.auth-submit \{[^}]*\}/, '--brand-text'],
 ];
 
-console.log('\n=== las tres superficies ===');
-for (const [nombre, re] of superficies) {
+console.log('\n=== superficies con relleno de marca ===');
+for (const [nombre, re, token] of superficies) {
   const regla = css.match(re)?.[0] ?? '';
-  const usaFondo = /background:\s*var\(--today\)/.test(regla);
-  const usaTexto = /color:\s*var\(--today-fg\)/.test(regla);
+  const usaFondo = new RegExp(`background:\\s*var\\(${token}\\)`).test(regla);
+  const usaTexto = /color:\s*var\(--brand-fg\)/.test(regla);
   ok(`  ${nombre}`, usaFondo && usaTexto,
-    `fondo:${usaFondo ? 'ok' : 'NO'} texto:${usaTexto ? 'ok' : 'NO'}`);
+    `fondo ${token}:${usaFondo ? 'ok' : 'NO'} texto:${usaTexto ? 'ok' : 'NO'}`);
 }
 
 // --- no debe quedar blanco fijo sobre esos rellenos ------------------------
 const conBlancoFijo = superficies.filter(([, re]) => /color:\s*#fff/.test(css.match(re)?.[0] ?? ''));
 ok('  ninguna deja el blanco fijo', conBlancoFijo.length === 0,
   conBlancoFijo.map(s => s[0]).join(', ') || '(ninguna)');
+
+/* El botón no puede llevar además `btn-primary`: esa clase pinta con el color
+   de acento y se define DESPUÉS en la hoja, así que ganaría por orden. */
+{
+  const html = leer('index.html');
+  const clases = html.match(/id="auth-submit"[^>]*/)?.[0]
+    ?? html.match(/class="([^"]*)"[^>]*id="auth-submit"/)?.[1] ?? '';
+  const etiqueta = html.match(/<button[^>]*id="auth-submit"[^>]*>/)?.[0] ?? '';
+  ok('  el botón no arrastra btn-primary', !/btn-primary/.test(etiqueta),
+    etiqueta.match(/class="[^"]*"/)?.[0] ?? clases);
+}
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');
 process.exit(fallos ? 1 : 0);
