@@ -28,13 +28,23 @@
   --missed-strong: #dc2626;
 
   --weekend-bg:    #e9edf7;
-  --today:         #4f46e5;
   --danger:        #dc2626;
 
   /* colores del logo */
   --brand-top:     #8158a4;
   --brand-bottom:  #3d4a7b;
   --brand-text:    #6b3f8e;
+
+  /* El día de hoy, el alta de tarea y la vista activa comparten el color de la
+     marca: son los tres acentos de la app y así se leen como una sola familia.
+     Referencia la variable en vez de repetir el valor, para que sigan atados.
+
+     `--today-fg` es el texto ENCIMA de ese relleno, y cambia por tema: en claro
+     el color de marca es oscuro y lleva blanco (7,70:1); en oscuro es un
+     lavanda claro y lleva el fondo de la app (9,32:1). Blanco sobre el lavanda
+     da 2,00:1, que es ilegible. */
+  --today:         var(--brand-text);
+  --today-fg:      #ffffff;
 
   /* Rellenos de los gráficos. Son los estados del tablero, pero un paso más
      oscuros donde hacía falta: todos superan 3:1 contra la superficie de las
@@ -85,13 +95,16 @@
   --missed-strong: #ef4444;
 
   --weekend-bg:    #101728;
-  --today:         #8f88f8;
   --danger:        #ef4444;
 
   /* el logo se aclara para no apagarse sobre el fondo oscuro */
   --brand-top:     #a67cc9;
   --brand-bottom:  #5566a3;
   --brand-text:    #cbabe4;
+
+  /* `--today` sigue apuntando al color de marca —no hace falta repetirlo—, pero
+     acá ese color es claro, así que encima va texto oscuro. */
+  --today-fg:      #0d1220;
 
   /* Pasos propios para el fondo oscuro, no un volteo automático del claro.
      Verificados contra la superficie de las tarjetas (#151c2e). */
@@ -351,11 +364,15 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 }
 .drawer-item.is-active .drawer-icon { color: var(--accent); }
 
-#btn-sign-out .drawer-icon {
-  width: 28px;
-  min-width: 28px;
-  font-size: 1.2rem;
-}
+/* Cerrar sesión no lleva tamaño propio: la cruz usa la misma caja que el resto
+   de los íconos del menú.
+
+   El ícono original era U+23FB (símbolo de encendido) y sí llevaba acá un
+   cuerpo más grande, para compensar lo chico que se dibujaba. Ese glifo falta
+   en Roboto y en SF, así que en Android y en iOS salía como caja vacía.
+   Cualquier reemplazo tiene que venir de un bloque con cobertura real en
+   fuentes de sistema; U+2715 la tiene, y además ya se usa para cerrar el menú
+   y en la leyenda de estados. */
 
 /* La sesión queda anclada al fondo del cajón */
 .drawer-session {
@@ -515,13 +532,89 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   text-align: center;
 }
 .seg:hover { color: var(--text); }
+
+/* La vista activa se pinta como «+ Agregar tarea»: mismo color, mismo peso y
+   texto blanco. Las dos son la acción destacada de su barra, así que comparten
+   el color con que el encabezado marca el día de hoy. Sin sombra: acá el
+   relieve lo da el contraste con el carril hundido, no una elevación. */
 .seg[aria-pressed="true"] {
-  background: var(--bg-elev);
-  color: var(--text);
-  box-shadow: var(--shadow-sm);
+  background: var(--today);
+  color: var(--today-fg);
+  font-weight: 620;
 }
+.seg[aria-pressed="true"]:hover { color: var(--today-fg); filter: brightness(1.08); }
 
 .range-nav[hidden] { display: none; }
+
+/* Los íconos heredan el color del botón, así que siguen al tema sin reglas aparte. */
+.cal-icon { width: 17px; height: 17px; display: block; }
+.zoom-icon { width: 15px; height: 15px; flex: none; }
+
+/* El zoom y el plegado responden a la falta de espacio: en escritorio no hay
+   nada que resolver, así que los controles directamente no existen. */
+.zoom-btn,
+.collapse-btn { display: none; }
+
+/* ---------------- Ir a un día o a un mes ---------------- */
+
+.jump-head { display: flex; align-items: center; gap: .5rem; }
+
+.jump-label {
+  flex: 1;
+  text-align: center;
+  font-weight: 650;
+  font-size: .95rem;
+  /* el locale devuelve el mes en minúscula */
+  text-transform: capitalize;
+}
+
+.jump-dows,
+.jump-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+
+.jump-dows {
+  font-size: .68rem;
+  font-weight: 650;
+  color: var(--text-faint);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* doce meses entran de a tres, con nombre completo */
+.jump-grid.is-months { grid-template-columns: repeat(3, 1fr); }
+
+.jump-cell {
+  appearance: none;
+  border: 1px solid transparent;
+  background: var(--bg-sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: .82rem;
+  padding: .5rem .2rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background .13s ease, color .13s ease;
+}
+.jump-cell:hover { background: var(--accent-soft); color: var(--accent); }
+.jump-cell.is-weekend { color: var(--text-muted); }
+
+/* el período que ya se está mirando: contorno, sin robarle el relleno a hoy */
+.jump-cell.is-current { border-color: var(--today); font-weight: 650; }
+
+.jump-cell.is-today {
+  background: var(--today);
+  color: var(--today-fg);
+  font-weight: 650;
+}
+.jump-cell.is-today:hover {
+  background: var(--today);
+  color: var(--today-fg);
+  filter: brightness(1.08);
+}
+
+.jump-grid.is-months .jump-cell { padding: .65rem .2rem; text-transform: capitalize; }
+
+/* los huecos previos al día 1 no son botones, solo ocupan su lugar */
+.jump-blank { visibility: hidden; }
 
 /* ---------------- Barra de acciones del mes ---------------- */
 
@@ -536,6 +629,19 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .month-bar .btn { font-size: .82rem; padding: .4rem .7rem; }
 .month-bar .btn:disabled { opacity: .45; cursor: not-allowed; }
 .month-bar .btn:disabled:hover { background: transparent; }
+
+/* El alta de tarea es la acción principal de la barra, y lleva el mismo color
+   con que el encabezado marca el día de hoy. */
+.btn-today {
+  background: var(--today);
+  border-color: transparent;
+  color: var(--today-fg);
+  font-weight: 620;
+}
+.btn-today:hover:not(:disabled) { background: var(--today); filter: brightness(1.08); }
+/* El `opacity` de la barra alcanzaría, pero el hover general de .btn pinta el
+   fondo transparente y se perdería el color. */
+.month-bar .btn-today:disabled:hover { background: var(--today); }
 
 .btn-ghost-danger { color: var(--missed-fg); }
 .btn-ghost-danger:hover:not(:disabled) { background: var(--missed-bg); color: var(--missed-fg); }
@@ -712,7 +818,6 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .hb-fill.st-partial { background: var(--chart-partial); }
 .hb-fill.st-missed  { background: var(--chart-missed); }
 /* superó la meta: llega al borde en escuadra, y el número dice cuánto */
-.hb-fill.is-over    { border-radius: 0; }
 
 .hb-value {
   font-size: .74rem;
@@ -988,7 +1093,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .dnum { display: block; font-size: .95rem; font-weight: 650; color: var(--text); }
 
 .col-day.is-today .dnum {
-  color: #fff;
+  color: var(--today-fg);
   background: var(--today);
   border-radius: 99px;
   width: 22px;
@@ -1087,26 +1192,6 @@ tbody tr:hover .move-stack,
 }
 .move-btn:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
 .move-btn:disabled { opacity: .25; cursor: default; }
-
-/* fila persistente para agregar tareas */
-.add-row th.col-task { padding: 0; }
-.add-row td { background: var(--bg-elev); }
-
-.add-task-btn {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font: inherit;
-  font-size: .8rem;
-  font-weight: 600;
-  text-align: left;
-  width: 100%;
-  padding: .6rem .5rem .6rem .85rem;
-  cursor: pointer;
-  transition: background .13s ease, color .13s ease;
-}
-.add-task-btn:hover { background: var(--accent-soft); color: var(--accent); }
 
 /* fila tildada */
 .grid tbody tr.is-selected .col-task { background: var(--accent-soft); }
@@ -1428,7 +1513,18 @@ tbody tr:hover .move-stack,
 }
 .field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
 
-.field-optional { font-weight: 500; color: var(--text-faint); }
+/* Aclaración al pie de un campo. Va en el tono tenue del resto de los textos
+   secundarios: explica, no compite con la etiqueta. */
+.field-hint {
+  font-size: .78rem;
+  line-height: 1.35;
+  color: var(--text-faint);
+}
+
+/* La fecha no necesita todo el ancho del diálogo ancho: estirarla hasta el
+   borde la haría parecer el control principal, y el principal es la lista de
+   plantillas que viene abajo. */
+.tpl-start input[type="date"] { width: auto; align-self: start; }
 
 /* meta mensual: número angosto + unidad al lado */
 .count-row { display: flex; align-items: center; gap: .5rem; }
@@ -1530,14 +1626,71 @@ tbody tr:hover .move-stack,
 @media (max-width: 640px) {
   body { font-size: 14px; }
 
-  :root { --task-w: 190px; --total-w: 66px; --cell-w: 40px; }
-  .grid.view-month { --cell-w: 36px; }
+  /* Zoom de la planilla, solo en móvil. Las medidas base las fija el
+     breakpoint y `--zoom` las multiplica, así el nivel elegido y el ajuste por
+     ancho de pantalla conviven: si los niveles fijaran medidas propias le
+     ganarían por especificidad al bloque de 380px y lo dejarían sin efecto.
+
+     El punto de partida es un escalón más chico que antes (era 190/66/40),
+     porque en un teléfono entraban tres días y poco más. */
+  :root {
+    --zoom:      1;
+    --zoom-task: 1;
+    --task-w:    calc(152px * var(--zoom-task));
+    --total-w:   calc(56px * var(--zoom));
+    --cell-w:    calc(33px * var(--zoom));
+
+    /* Alto de fila FIJO, no mínimo: todas las filas miden lo mismo entre el
+       nombre en una línea o en dos. Si lo decidiera el contenido, la planilla
+       quedaría escalonada y las columnas de día perderían el ritmo vertical.
+
+       Se arma con las mismas piezas que ocupa la celda —dos líneas de nombre,
+       una de frecuencia y el padding— para que siga al zoom sin números
+       sueltos que se desincronicen. */
+    --row-h: calc(2.44 * .875rem * var(--zoom)   /* dos líneas de nombre */
+                + 1.45 * .7rem * var(--zoom)     /* una de frecuencia */
+                + .8rem);                        /* padding arriba y abajo */
+  }
+  .grid.view-month { --cell-w: calc(29px * var(--zoom)); }
+
+  /* Dos multiplicadores, no uno. La columna de tareas se mueve MUCHO menos que
+     las celdas de día: es la que tiene que seguir siendo legible, y achicarla
+     al mismo ritmo era lo que dejaba los nombres irreconocibles. Zoom out gana
+     días apretando los días, no el nombre. */
+  :root[data-zoom="comodo"]   { --zoom: 1.25; --zoom-task: 1.12; }
+  :root[data-zoom="compacto"] { --zoom: .82;  --zoom-task: .94; }
 
   /* El encabezado entra en una sola fila: menú, logo centrado y tema. */
   .app-header { padding: .7rem .8rem; gap: .5rem; }
   .brand { gap: .5rem; }
   .brand-mark { width: 34px; height: 34px; }
   .brand-text h1 { font-size: 1.05rem; }
+
+  /* El plegado ocupa, junto al mes, el lugar que en escritorio tiene «Análisis».
+     `display: grid` es lo que usa .icon-btn para centrar su glifo. */
+  .collapse-btn { display: grid; }
+
+  /* En el encabezado, «Análisis» va sin rótulo: el ancho no da para el texto y
+     el título y el aria-label lo siguen nombrando. Sin texto queda como el
+     cambio de tema, así que toma la misma geometría que `.icon-btn` —no puede
+     llevar esa clase directamente porque en escritorio sí muestra el rótulo y
+     el ancho fijo lo cortaría—. */
+  #btn-page-toggle .nav-text { display: none; }
+  #btn-page-toggle {
+    width: 34px;
+    padding: .4rem 0;
+    display: grid;
+    place-items: center;
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  /* Plegado: se van las tres zonas que hay entre la línea del mes y la planilla.
+     Va por clase en el body y no por `hidden`, que ya lo usa el router para
+     ocultarlas según la sección; así las dos condiciones conviven. */
+  body.controls-collapsed #controls-center,
+  body.controls-collapsed #range-nav,
+  body.controls-collapsed #month-bar { display: none; }
 
   /* En angosto las tres zonas pasan a filas apiladas, cada una a lo ancho. */
   .controls { grid-template-columns: 1fr; gap: .6rem; }
@@ -1546,37 +1699,85 @@ tbody tr:hover .move-stack,
   .view-switch { flex: 1; }
   .seg { padding: .45rem .35rem; min-width: 0; }
 
+  /* Comparte fila con «Bloquear período», así que va centrado como el resto de
+     la barra. El ancho lo pone `.month-bar .btn`. */
+  .zoom-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .3rem;
+  }
+
+  /* Todas las posiciones van explícitas: con auto-colocación, un botón nuevo
+     se cuela en la primera celda libre y termina en una fila de más. */
   .month-bar {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: auto auto;
     gap: .35rem;
     align-items: stretch;
   }
   .month-bar .btn { font-size: .78rem; padding: .38rem .55rem; width: 100%; }
-  .month-bar #btn-copy-prev { grid-column: 1; grid-row: 1; }
-  .month-bar #btn-lock { grid-column: 2; grid-row: 1; margin-left: 0; }
+  .month-bar #btn-add-task { grid-column: 1; grid-row: 1; }
+  .month-bar #btn-copy-prev { grid-column: 2; grid-row: 1; }
+  /* Fila que solo existe con tareas tildadas: oculta, no ocupa alto. */
   .month-bar #btn-delete-sel { grid-column: 1; grid-row: 2; }
   .month-bar #btn-reset-sel { grid-column: 2; grid-row: 2; }
+  .month-bar #btn-zoom { grid-column: 1; grid-row: 3; }
+  .month-bar #btn-lock { grid-column: 2; grid-row: 3; margin-left: 0; }
 
   .summary { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
   .tile { padding: .6rem .7rem; }
   .tile-value { font-size: 1.25rem; }
 
   .task-actions, .move-stack { opacity: 1; }
-  .task-cell { padding-left: .5rem; gap: .25rem; }
   .move-btn { padding: 3px; }
   .grid thead th.col-task,
-  .grid tfoot .col-task,
-  .add-task-btn { padding-left: .5rem; }
+  .grid tfoot .col-task { padding-left: .5rem; }
 
-  .cell, .task-cell { min-height: 46px; }
+  /* El zoom no es solo ancho de columnas: baja también el alto de las filas y
+     el cuerpo del nombre de la tarea. Como la columna casi no se achica, una
+     tipografía más chica entra MÁS texto, no menos: por eso zoom out mejora la
+     lectura del nombre en vez de empeorarla.
+
+     La frecuencia acompaña al nombre para que el bloque no se desbalancee —si
+     solo se achicara el nombre, quedarían casi del mismo tamaño—. */
+  /* `height` en la celda de tarea y `min-height` en las de día: la primera es
+     la que fija el alto de la fila, las segundas se estiran hasta él. */
+  .task-cell { height: var(--row-h); }
+  .cell { min-height: var(--row-h); }
+
+  .task-freq { font-size: calc(.7rem * var(--zoom)); }
+
+  /* El nombre se parte en dos líneas en vez de cortarse. En un teléfono sobra
+     alto y falta ancho, y con una sola línea el ellipsis se comía la mitad del
+     nombre por más que la columna creciera. El `title` sigue teniendo el texto
+     completo, pero al tacto no hay hover que lo muestre. */
+  .task-name {
+    font-size: calc(.875rem * var(--zoom));
+    line-height: 1.22;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    /* nombres de una sola palabra larga: se parten antes que desbordar */
+    overflow-wrap: anywhere;
+  }
+
+  /* Cada píxel que no gasta el cromo de la fila es ancho para el nombre: entre
+     casillero, chevrones y editar se iban unos 86px de 152. */
+  .task-cell { gap: .25rem; padding-left: .5rem; padding-right: .35rem; }
 
   .toast { bottom: .75rem; }
 }
 
 @media (max-width: 380px) {
-  :root { --task-w: 172px; --total-w: 62px; }
+  :root {
+    --task-w: calc(132px * var(--zoom-task));
+    --total-w: calc(52px * var(--zoom));
+    /* Sin la línea de frecuencia, el alto de fila deja de reservarle lugar. */
+    --row-h: calc(2.44 * .875rem * var(--zoom) + .8rem);
+  }
   /* en pantallas muy angostas las dos columnas se apilan */
   .radio-grid { grid-template-columns: 1fr; }
   .task-freq { display: none; }
@@ -1591,7 +1792,7 @@ tbody tr:hover .move-stack,
 @media print {
   .app-header, .controls, .month-bar, .legend, .header-actions,
   .drawer, .drawer-backdrop,
-  .task-actions, .move-stack, .task-pick, .add-row { display: none !important; }
+  .task-actions, .move-stack, .task-pick { display: none !important; }
   body { background: #fff; padding: 0; }
   .table-wrap { overflow: visible; box-shadow: none; }
 }

@@ -1,8 +1,13 @@
 /* ============================================================
    Sesión — Supabase Auth
    ------------------------------------------------------------
-   Módulo ES: importa el cliente desde CDN, así el proyecto sigue
-   sin build ni `npm install`.
+   Módulo ES. El cliente NO se importa: lo deja como global el
+   script de `vendor/`, que `index.html` carga antes que esto.
+
+   Se sirve desde nuestro propio dominio en vez de un CDN porque
+   este código corre en el navegador de cada visitante: así la
+   versión queda fija, el `integrity` se verifica y la CSP puede
+   cerrar `script-src` a 'self'. El detalle, en vendor/README.md.
 
    Ojo: al ser un módulo, el navegador lo bloquea sobre `file://`.
    La app tiene que servirse por http(s) — ver el README.
@@ -11,7 +16,7 @@
    existe: solo recibe `start(user)` y `stop()`.
    ============================================================ */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+const { createClient } = window.supabase ?? {};
 
 const $ = sel => document.querySelector(sel);
 
@@ -46,7 +51,9 @@ const configurado = window.SUPABASE_URL
   && window.SUPABASE_ANON_KEY
   && !String(window.SUPABASE_URL).startsWith('PEGAR');
 
-if (!configurado) {
+if (typeof createClient !== 'function') {
+  faltaCliente();
+} else if (!configurado) {
   faltaConfiguracion();
 } else {
   db = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
@@ -65,7 +72,23 @@ function faltaConfiguracion() {
   el.notice.hidden = false;
   el.notice.innerHTML = 'Falta configurar Supabase. Abrí <code>config.js</code> '
     + 'y pegá la URL y la <em>anon key</em> de tu proyecto. '
-    + 'El esquema de la base está en <code>db/schema.sql</code>.';
+    + 'El esquema de la base está en <code>db/supabase-app-state.sql</code>.';
+}
+
+/**
+ * El script de `vendor/` no dejó su global. Las dos causas reales son que el
+ * archivo no se sirvió, o que su `integrity` no coincidió y el navegador lo
+ * bloqueó — que es justamente lo que ese atributo tiene que hacer si alguien
+ * alteró el archivo. Sin este aviso, el síntoma sería un TypeError en consola
+ * y una pantalla de login que no responde.
+ */
+function faltaCliente() {
+  el.gate.hidden = false;
+  el.form.hidden = true;
+  el.notice.hidden = false;
+  el.notice.innerHTML = 'No se pudo cargar el cliente de Supabase. Si el archivo de '
+    + '<code>vendor/</code> cambió, su <code>integrity</code> en <code>index.html</code> '
+    + 'quedó desactualizado y el navegador lo bloquea. Ver <code>vendor/README.md</code>.';
 }
 
 function aplicarSesion(sesion) {

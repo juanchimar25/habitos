@@ -166,6 +166,17 @@
     },
   ];
 
+  /**
+   * Niveles de zoom de la planilla, en el orden en que los cicla su botón.
+   * Solo tienen efecto en móvil: el CSS los aplica dentro del breakpoint
+   * angosto, que es donde el ancho escasea. `normal` es el punto de partida.
+   */
+  const ZOOM_LEVELS = [
+    { id: 'normal',   label: 'Normal' },
+    { id: 'compacto', label: 'Compacto' },
+    { id: 'comodo',   label: 'Cómodo' },
+  ];
+
   /** Días que abarca cada vista. La mensual se resuelve aparte, como el mes entero. */
   const VIEW_SIZE = { day: 1, week: 7 };
 
@@ -209,6 +220,10 @@
     locked: /** @type {Record<string, true>} */ ({}),
     /** Qué muestra la columna de estatus: 'glyph' | 'pct' | 'both' | 'none'. */
     complianceMode: 'glyph',
+    /** Densidad de la planilla en móvil: 'normal' | 'compacto' | 'comodo'. */
+    zoom: 'normal',
+    /** Controles del período plegados (solo tiene efecto en móvil). */
+    controlsCollapsed: false,
     /** Paneles desplegados de la sección Análisis. */
     panels: { tiles: true, charts: true },
     theme: /** @type {'light'|'dark'|null} */ (null),
@@ -488,13 +503,17 @@
   }
 
   /**
-   * Da al mes visible su propia copia de la lista, para poder modificarla
-   * sin afectar los meses anteriores. Devuelve la lista editable.
+   * Da a un mes su propia copia de la lista, para poder modificarla sin afectar
+   * los meses anteriores. Devuelve la lista editable.
+   *
+   * Por omisión trabaja sobre el mes visible, que es lo que quiere casi toda la
+   * app. Las plantillas son la excepción: pueden apuntar a otro mes cuando se
+   * les da una fecha de inicio.
    */
-  function materialize() {
-    const key = monthKey(ui.year, ui.month);
+  function materialize(year = ui.year, month = ui.month) {
+    const key = monthKey(year, month);
     if (!state.months[key]) {
-      state.months[key] = currentTasks().map(t => ({ ...t, weekdays: [...t.weekdays] }));
+      state.months[key] = tasksOf(year, month).map(t => ({ ...t, weekdays: [...t.weekdays] }));
     }
     return state.months[key];
   }
@@ -854,6 +873,8 @@
       complianceMode: CP_MODES.some(m => m.id === data.complianceMode)
         ? data.complianceMode
         : 'glyph',
+      zoom: ZOOM_LEVELS.some(z => z.id === data.zoom) ? data.zoom : 'normal',
+      controlsCollapsed: data.controlsCollapsed === true,
       panels: {
         tiles: data.panels?.tiles !== false,
         charts: data.panels?.charts !== false,
@@ -873,55 +894,74 @@
    * la meta: marcar de más es válido y el total lo muestra.
    */
   function taskTotals(task, days) {
-    // Se separan los puntos de días ya transcurridos: el cumplimiento compara
-    // contra la meta a hoy, así que ambos lados tienen que cubrir la misma
-    // ventana. Si no, marcar un día futuro inflaría el porcentaje.
+    /* La meta es la del PERÍODO COMPLETO de la vista, no la de la parte
+       transcurrida. Una tarea de lunes, miércoles y viernes vista en la semana
+       apunta a 3, esté la semana empezada o terminada, y hacerla dos veces da
+       67%. Medir contra lo transcurrido daba otra cosa: el martes esa misma
+       semana solo llevaba un día exigible, así que dos marcas daban 200%. */
     let points = 0;
-    let elapsedPoints = 0;
     for (const d of days) {
       const s = getStatus(task, d);
-      if (!s) continue;
-      points += POINTS[s];
-      if (d <= today) elapsedPoints += POINTS[s];
+      if (s) points += POINTS[s];
     }
 
-    if (isCountMode(task)) {
-      return { points, elapsedPoints, ...countModeGoal(task, days) };
-    }
+    if (isCountMode(task)) return { points, max: countModeMax(task, days, points) };
 
     const periods = new Set();
-    const elapsed = new Set();
     for (const d of days) {
-      if (!countsTowardGoal(task, d)) continue;
-      const id = periodId(task, d);
-      periods.add(id);
-      // Un período cuenta apenas empieza, igual que un día cuenta desde que amanece.
-      if (d <= today) elapsed.add(id);
+      if (countsTowardGoal(task, d)) periods.add(periodId(task, d));
     }
 
-    return { points, elapsedPoints, max: periods.size, goal: elapsed.size };
+    return { points, max: periods.size };
   }
 
   /**
    * Meta de una tarea con meta mensual: el número que cargó el usuario es para
-   * el mes entero, así que en una ventana más chica se reparte proporcionalmente
-   * entre los días elegibles. El mes completo siempre devuelve el número exacto.
+   * el mes entero, así que en una ventana más chica se reparte proporcionalmente.
+   * El mes completo siempre devuelve el número exacto.
+   *
+   * El reparto se hace sobre los días del MES, no sobre los que la tarea tiene
+   * disponibles. Dividir por los disponibles concentraba la meta entera en el
+   * tramo que quedara: una tarea de 8 al mes iniciada el día 31 terminaba
+   * pidiendo las 8 acciones en ese único día, y hacerla una vez daba 13%.
+   * «8 veces al mes» es un ritmo; empezar tarde reduce lo que se espera, no lo
+   * amontona.
    */
-  function countModeGoal(task, days) {
-    if (!days.length) return { max: 0, goal: 0 };
+  function countModeMax(task, days, points) {
+    if (!days.length) return 0;
 
     const first = days[0];
-    const eligibleInMonth = monthDays(first.getFullYear(), first.getMonth())
-      .filter(d => countsTowardGoal(task, d)).length;
-    if (!eligibleInMonth) return { max: 0, goal: 0 };
+    const share = task.target
+      / monthDays(first.getFullYear(), first.getMonth()).length;
 
-    const share = task.target / eligibleInMonth;
     const inRange = days.filter(d => countsTowardGoal(task, d));
+    return metaEnAcciones(share * inRange.length, points);
+  }
 
-    return {
-      max: share * inRange.length,
-      goal: share * inRange.filter(d => d <= today).length,
-    };
+  /**
+   * Pasa una meta prorrateada a acciones enteras, que es la única unidad en la
+   * que estas tareas se cumplen: «socializar» se hace o no se hace, no existe
+   * hacer 0,26 de socializar.
+   *
+   * Cuando la ventana ni siquiera llega a pedir una acción, no hay obligación
+   * que incumplir: ahí la meta la fija lo que se hizo. Marcar cumplido da 100%
+   * y parcial da 50%, mientras que un día en blanco no muestra nada —un cero
+   * acusaría de incumplida a una tarea que ese día no debía nada—.
+   */
+  function metaEnAcciones(prorrateada, puntos) {
+    return prorrateada >= 1 ? Math.ceil(prorrateada) : Math.ceil(puntos);
+  }
+
+  /**
+   * Aporte de una tarea a un promedio: nunca más que su propia meta.
+   *
+   * Marcar de más está permitido y los puntos crudos lo reflejan, pero no puede
+   * empujar un promedio hacia arriba. Sin este tope, hacer una tarea de lunes a
+   * viernes también el sábado compensaba el incumplimiento de otra tarea, y el
+   * total del rango subía sin que nada se hubiera cumplido mejor.
+   */
+  function aporte(puntos, meta) {
+    return Math.min(puntos, meta);
   }
 
   /**
@@ -932,22 +972,24 @@
   function rangeTotals(days) {
     return currentTasks().reduce((acc, task) => {
       const t = taskTotals(task, days);
-      acc.points += t.points;
-      acc.elapsedPoints += t.elapsedPoints;
+      acc.points += aporte(t.points, t.max);
       acc.max += t.max;
-      acc.goal += t.goal;
       return acc;
-    }, { points: 0, elapsedPoints: 0, max: 0, goal: 0 });
+    }, { points: 0, max: 0 });
   }
 
   /**
    * Nivel de cumplimiento de unos puntos contra su meta.
    * Devuelve null si no hay meta en el rango (por ejemplo, una tarea de lunes a
    * viernes mirada en la vista diaria de un sábado): ahí no hay nada que medir.
+   *
+   * El porcentaje topea en 100: cumplir es cumplir, y de ahí no se sube. Los
+   * números crudos siguen a la vista en el tooltip, así que hacer de más se ve
+   * igual —«30 sobre una meta de 22»— sin inflar la medida.
    */
   function complianceOf(points, max) {
     if (max <= 0) return null;
-    const ratio = (points / max) * 100;
+    const ratio = Math.min((points / max) * 100, 100);
     const level = COMPLIANCE.find(l => ratio >= l.min);
     return { ratio, status: level.status, glyph: STATUS_GLYPH[level.status] };
   }
@@ -1035,6 +1077,10 @@
     confirmOk: $('#confirm-ok'),
     toast: $('#toast'),
     theme: $('#btn-theme'),
+    zoom: $('#btn-zoom'),
+    zoomText: $('#zoom-text'),
+    collapse: $('#btn-collapse'),
+    addTask: $('#btn-add-task'),
     copyPrev: $('#btn-copy-prev'),
     deleteSel: $('#btn-delete-sel'),
     deleteSelText: $('#delete-sel-text'),
@@ -1057,9 +1103,15 @@
     templates: $('#btn-templates'),
     templatesDialog: $('#templates-dialog'),
     templatesList: $('#templates-list'),
-    templatesIntro: $('#templates-intro'),
+    templatesStart: $('#templates-start'),
+    templatesStartHint: $('#templates-start-hint'),
     panelTiles: $('#panel-tiles'),
     panelCharts: $('#panel-charts'),
+    jumpDialog: $('#jump-dialog'),
+    jumpTitle: $('#jump-title'),
+    jumpLabel: $('#jump-label'),
+    jumpDows: $('#jump-dows'),
+    jumpGrid: $('#jump-grid'),
   };
 
   // ---------------------------------------------------------
@@ -1077,14 +1129,20 @@
     el.controls.hidden = onHelp;
     el.monthLabel.textContent = labelDeMes();
 
-    // El atajo junto al mes alterna entre planilla e indicadores. En la guía no
-    // aparece: ahí se sale por el menú.
+    // El atajo del encabezado alterna entre planilla e indicadores. En la guía
+    // no aparece: ahí se sale por el menú.
     el.pageToggle.hidden = onHelp;
     el.pageToggle.querySelector('.nav-icon').textContent = onHome ? '◔' : '▦';
     el.pageToggle.querySelector('.nav-text').textContent = onHome ? 'Análisis' : 'Diario';
     el.pageToggle.title = onHome
       ? 'Ver el análisis de este mes'
       : 'Volver a la planilla';
+    el.pageToggle.setAttribute('aria-label', el.pageToggle.title);
+
+    // Solo hay algo que plegar en la planilla: en los indicadores esas tres
+    // zonas ya están ocultas y el botón no tendría sobre qué actuar.
+    el.collapse.hidden = !onHome;
+    applyCollapse();
 
     // Vista y navegación del rango solo aplican a la planilla.
     el.controlsCenter.hidden = !onHome;
@@ -1142,6 +1200,11 @@
     const prev = previousMonth();
     const prevTasks = tasksOf(prev.year, prev.month);
     const prevName = labelDeMes(prev.year, prev.month);
+
+    el.addTask.disabled = locked;
+    el.addTask.title = locked
+      ? 'El período está bloqueado'
+      : `Crear una tarea nueva (atajo: N)`;
 
     el.copyPrev.disabled = locked || prevTasks.length === 0;
     el.copyPrev.title = locked
@@ -1211,14 +1274,12 @@
       tbody.appendChild(tr);
     });
 
-    // El relleno de la fila de alta cubre los días más la columna de cumplimiento.
-    if (!isLocked()) tbody.appendChild(addTaskRow(days.length + 1));
     frag.appendChild(tbody);
 
     // --- tfoot ---
     const tfoot = elem('tfoot');
     const frow = elem('tr');
-    frow.appendChild(th('Tareas Diarias Completadas', 'col-task', 'row'));
+    frow.appendChild(th('Tareas completadas', 'col-task', 'row'));
 
     for (const d of days) {
       const { points, max } = dayTotals(d);
@@ -1264,8 +1325,8 @@
       all.indeterminate = count > 0 && count < total;
     }
 
-    // Las acciones sobre la selección viven en la barra del mes; la fila de
-    // abajo se queda siempre como el botón de alta.
+    // Las acciones sobre la selección aparecen en la barra del mes, al lado
+    // del alta, y solo mientras haya algo tildado.
     el.deleteSel.hidden = count === 0;
     el.resetSel.hidden = count === 0;
     el.deleteSelText.textContent = `Eliminar ${count} ${count === 1 ? 'tarea' : 'tareas'}`;
@@ -1276,9 +1337,6 @@
       el.deleteSel.title = `Las saca de ${labelDeMes()}`;
       el.resetSel.title = `Deja en «sin cargar» las celdas de ${rango}`;
     }
-
-    const btn = el.grid.querySelector('[data-add-task]');
-    if (btn) btn.textContent = '+ Agregar tarea';
   }
 
   function th(text, className, scope) {
@@ -1348,24 +1406,6 @@
       label,
       disabled,
     });
-  }
-
-  /** Fila final, siempre visible, para seguir sumando tareas. */
-  function addTaskRow(colSpan) {
-    const tr = elem('tr', 'add-row');
-    const head = th('', 'col-task', 'row');
-
-    // El rótulo lo define syncSelection(): con dos o más tareas tildadas,
-    // este mismo botón pasa a ser el de borrado múltiple.
-    const btn = boton('add-task-btn');
-    btn.dataset.addTask = '';
-    head.appendChild(btn);
-
-    const filler = elem('td');
-    filler.colSpan = colSpan;
-
-    tr.append(head, filler);
-    return tr;
   }
 
   function statusButton(task, date) {
@@ -1452,12 +1492,13 @@
   }
 
   /**
-   * @param totals {{points, elapsedPoints, goal, max}} — `elapsedPoints` contra
-   *   `goal` mide el día de hoy; `points` contra `max`, el período completo.
+   * @param totals {{points, max}} — puntos contra la meta del período completo
+   *   de la vista. Lo transcurrido no entra en la cuenta: el porcentaje dice
+   *   cuánto del período se cumplió, y sube a medida que se carga.
    */
   function applyCompliance(td, totals) {
-    const { points, elapsedPoints, goal, max } = totals;
-    const level = complianceOf(elapsedPoints, goal);
+    const { points, max } = totals;
+    const level = complianceOf(points, max);
 
     td.classList.remove('cp-done', 'cp-partial', 'cp-missed');
     if (level) td.classList.add(`cp-${level.status}`);
@@ -1469,19 +1510,16 @@
     if (level) {
       glyph.textContent = level.glyph;
       ratio.textContent = pct(level.ratio);
-      td.title = `${pct(level.ratio)} de cumplimiento — ${num(elapsedPoints)} `
-        + `sobre una meta de ${num(goal)} al día de hoy`
-        + (goal < max ? `\nAl cierre del período: ${num(points)} de ${num(max)}.` : '');
+      td.title = `${pct(level.ratio)} de cumplimiento — ${num(points)} `
+        + `sobre una meta de ${num(max)} en el período visible`;
       return;
     }
 
-    // Sin nada que medir: o la frecuencia no pide nada en el rango, o el rango
-    // todavía no empezó. Un guion en cualquiera de los tres modos.
+    // Sin meta no hay nada que medir: la frecuencia no pide nada en el rango.
+    // Un guion en cualquiera de los tres modos.
     glyph.textContent = '—';
     ratio.textContent = '—';
-    td.title = max > 0
-      ? `Todavía no transcurrieron días de este período (meta al cierre: ${num(max)})`
-      : 'La frecuencia de la tarea no pide ningún día del rango visible';
+    td.title = 'La frecuencia de la tarea no pide ningún día del rango visible';
   }
 
   /**
@@ -1504,7 +1542,7 @@
   function attentionTile(days) {
     const flagged = currentTasks().filter(task => {
       const t = taskTotals(task, days);
-      return complianceOf(t.elapsedPoints, t.goal)?.status === 'missed';
+      return complianceOf(t.points, t.max)?.status === 'missed';
     });
 
     return tile(
@@ -1572,17 +1610,22 @@
     );
   }
 
-  /** Cumplimiento (0-100) de un mes entero, con las tareas propias de ese mes. */
+  /**
+   * Cumplimiento (0-100) de un mes entero, con las tareas propias de ese mes.
+   * Contra la meta del mes completo, así que el mes en curso arranca bajo y
+   * sube: comparar un mes a medio andar con uno cerrado es comparar avances,
+   * no ritmos.
+   */
   function monthCompliance(year, month) {
     const days = monthDays(year, month);
-    let elapsedPoints = 0;
-    let goal = 0;
+    let points = 0;
+    let max = 0;
     for (const task of tasksOf(year, month)) {
       const t = taskTotals(task, days);
-      elapsedPoints += t.elapsedPoints;
-      goal += t.goal;
+      points += aporte(t.points, t.max);
+      max += t.max;
     }
-    return goal > 0 ? (elapsedPoints / goal) * 100 : null;
+    return max > 0 ? (points / max) * 100 : null;
   }
 
   function comparisonTile() {
@@ -1839,12 +1882,12 @@
   // ---- Barras horizontales: cumplimiento por tarea ---------------------
 
   function taskChart(days) {
-    const card = chartCard('Cumplimiento por tarea', 'Sobre la meta a la fecha');
+    const card = chartCard('Cumplimiento por tarea', 'Sobre la meta del mes completo');
 
     const rows = currentTasks()
       .map(task => {
         const t = taskTotals(task, days);
-        const level = complianceOf(t.elapsedPoints, t.goal);
+        const level = complianceOf(t.points, t.max);
         return level ? { name: task.name, ratio: level.ratio, status: level.status } : null;
       })
       .filter(Boolean)
@@ -1863,13 +1906,11 @@
       const name = elem('span', 'hb-name', row.name);
       name.title = row.name;
 
-      // La escala se topea en la meta. Si una tarea llega al 600%, escalar a
-      // ese máximo aplasta a todas las demás y el rango que importa —45 a
-      // 100%— deja de leerse. El número al costado conserva el valor exacto,
-      // y la barra que se pasa termina en escuadra contra el borde.
+      // El cumplimiento topea en 100%, así que la barra llena es el máximo y la
+      // escala coincide con el dato: no hace falta recortar nada.
       const track = elem('span', 'hb-track');
-      const fill = elem('i', `hb-fill st-${row.status}${row.ratio > 100 ? ' is-over' : ''}`);
-      fill.style.width = `${Math.min(row.ratio, 100)}%`;
+      const fill = elem('i', `hb-fill st-${row.status}`);
+      fill.style.width = `${row.ratio}%`;
       track.appendChild(fill);
 
       li.append(name, track, elem('span', 'hb-value', pct(row.ratio)));
@@ -1956,11 +1997,6 @@
       state.complianceMode = nextComplianceMode();
       save();
       render();
-      return;
-    }
-
-    if (e.target.closest('[data-add-task]')) {
-      openTaskDialog();
       return;
     }
 
@@ -2226,6 +2262,127 @@
   });
 
   // ---------------------------------------------------------
+  // Seleccionar día o mes
+  // ---------------------------------------------------------
+  //  Un solo diálogo con dos modos. Comparten el encabezado con flechas y la
+  //  grilla; lo único que cambia es qué se dibuja y de a cuánto se navega:
+  //  el de días avanza de mes en mes, el de meses de año en año.
+
+  /** @type {'day'|'month'} */
+  let jumpMode = 'day';
+  /** Período que muestra el diálogo, independiente del que está a la vista. */
+  let jumpYear = today.getFullYear();
+  let jumpMonth = today.getMonth();
+
+  // Encabezado de días de la semana: fijo, se arma una sola vez.
+  el.jumpDows.append(...WEEKDAYS.map(w => elem('span', '', w.short)));
+
+  function openJump(mode) {
+    jumpMode = mode;
+    jumpYear = ui.year;
+    jumpMonth = ui.month;
+
+    el.jumpTitle.textContent = mode === 'day' ? 'Seleccionar día' : 'Seleccionar mes';
+    renderJump();
+    el.jumpDialog.showModal();
+    // Al título, no a la grilla: si no, el anillo de foco rodea la grilla entera.
+    el.jumpTitle.focus();
+  }
+
+  function renderJump() {
+    const esDia = jumpMode === 'day';
+
+    el.jumpLabel.textContent = esDia ? labelDeMes(jumpYear, jumpMonth) : String(jumpYear);
+    el.jumpDows.hidden = !esDia;
+    el.jumpGrid.className = esDia ? 'jump-grid' : 'jump-grid is-months';
+    el.jumpGrid.innerHTML = '';
+
+    if (!esDia) {
+      for (let m = 0; m < 12; m++) {
+        const btn = boton('jump-cell', {
+          text: capitalizeFirstLetter(fmtMonthName.format(new Date(jumpYear, m, 1))),
+          title: labelDeMes(jumpYear, m),
+        });
+        btn.dataset.month = String(m);
+        marcarJump(btn, jumpYear === ui.year && m === ui.month,
+          jumpYear === today.getFullYear() && m === today.getMonth());
+        el.jumpGrid.appendChild(btn);
+      }
+      return;
+    }
+
+    // El mes propio del diálogo, alineado al lunes como el resto de la app.
+    const dias = monthDays(jumpYear, jumpMonth);
+    const hueco = (dias[0].getDay() + 6) % 7;
+    for (let i = 0; i < hueco; i++) el.jumpGrid.appendChild(elem('span', 'jump-blank'));
+
+    // Qué días están a la vista ahora, para señalarlos en el calendario.
+    const visibles = new Set(visibleDays().days.map(dateKey));
+
+    for (const d of dias) {
+      const btn = boton('jump-cell', { text: String(d.getDate()), title: fmtFull.format(d) });
+      btn.dataset.date = dateKey(d);
+      if (isWeekend(d)) btn.classList.add('is-weekend');
+      marcarJump(btn, jumpYear === ui.year && jumpMonth === ui.month && visibles.has(dateKey(d)),
+        sameDay(d, today));
+      el.jumpGrid.appendChild(btn);
+    }
+  }
+
+  /** `actual` es lo que ya se está mirando; `hoy`, el día o mes reales. */
+  function marcarJump(btn, actual, hoy) {
+    btn.classList.toggle('is-current', actual);
+    btn.classList.toggle('is-today', hoy);
+  }
+
+  function shiftJump(delta) {
+    if (jumpMode === 'month') {
+      jumpYear += delta;
+    } else {
+      const d = new Date(jumpYear, jumpMonth + delta, 1);
+      jumpYear = d.getFullYear();
+      jumpMonth = d.getMonth();
+    }
+    renderJump();
+  }
+
+  /** Salta a un mes. La selección no cruza de mes: cada uno tiene su lista. */
+  function jumpToMonth(year, month) {
+    if (year !== ui.year || month !== ui.month) ui.selected.clear();
+    ui.year = year;
+    ui.month = month;
+    ui.windowIndex = 0;
+    render();
+  }
+
+  /** Salta a un día y cae en la ventana que lo contiene, según la vista activa. */
+  function jumpToDay(date) {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    if (year !== ui.year || month !== ui.month) ui.selected.clear();
+    ui.year = year;
+    ui.month = month;
+    // Después de fijar el mes: `windowIndexFor` particiona el mes visible.
+    ui.windowIndex = windowIndexFor(date);
+    render();
+  }
+
+  $('#btn-pick-month').addEventListener('click', () => openJump('month'));
+  $('#btn-pick-day').addEventListener('click', () => openJump('day'));
+  $('#jump-prev').addEventListener('click', () => shiftJump(-1));
+  $('#jump-next').addEventListener('click', () => shiftJump(1));
+
+  el.jumpGrid.addEventListener('click', e => {
+    const btn = e.target.closest('.jump-cell');
+    if (!btn) return;
+
+    if (btn.dataset.month !== undefined) jumpToMonth(jumpYear, Number(btn.dataset.month));
+    else jumpToDay(parseDateKey(btn.dataset.date));
+
+    el.jumpDialog.close();
+  });
+
+  // ---------------------------------------------------------
   // Alta / edición de tareas
   // ---------------------------------------------------------
 
@@ -2295,7 +2452,23 @@
     }
 
     el.taskTarget.value = String(task?.target ?? 12);
-    el.taskStart.value = task?.start || '';
+
+    /* La fecha es obligatoria, así que el campo nunca sale vacío.
+
+       ALTA: hoy. Una tarea que se da de alta suele empezar el día en que se la
+       crea. Ojo con crear parado en un mes ANTERIOR al actual: hoy queda
+       después de todo ese mes y la fila nace apagada. Es correcto según el
+       modelo —la tarea todavía no existía— y se corrige moviendo la fecha.
+
+       EDICIÓN: la fecha de la tarea, que es un dato ya elegido. Y si no tiene
+       —una tarea anterior a que el campo fuera obligatorio—, el día 1 del mes
+       visible, NO hoy. Proponer hoy acá recortaría el historial: guardar sin
+       tocar nada apagaría todos los días ya cargados anteriores a la fecha, y
+       dejarían de contar para la meta. El día 1 es justamente lo que significaba
+       no tener fecha, así que completarla no cambia nada. */
+    el.taskStart.value = task
+      ? task.start || dateKey(new Date(ui.year, ui.month, 1))
+      : dateKey(today);
 
     syncFreqFields();
     el.taskDialog.showModal();
@@ -2312,7 +2485,9 @@
     const customMode = currentCustomMode();
     const weekdays = selectedWeekdays();
     const rawTarget = Number(el.taskTarget.value);
-    const start = el.taskStart.value || null;
+    // Se valida el formato además de la presencia: un navegador sin soporte de
+    // `input[type=date]` lo degrada a texto libre y acepta cualquier cosa.
+    const start = RE_DIA.test(el.taskStart.value) ? el.taskStart.value : null;
 
     if (!name) return showFormError('Escribí un nombre para la tarea.');
     if (freq === 'custom' && customMode === 'weekdays' && !weekdays.length) {
@@ -2322,21 +2497,52 @@
         && (!Number.isInteger(rawTarget) || rawTarget < 1 || rawTarget > 99)) {
       return showFormError('La meta mensual tiene que ser un número entero entre 1 y 99.');
     }
+    if (!start) return showFormError('Elegí la fecha de inicio de la tarea.');
 
     const fields = { name, freq, customMode, weekdays, target: clampTarget(rawTarget), start };
 
-    const tasks = materialize();
+    /* EDICIÓN: la tarea ya vive en la lista del mes visible, así que se la
+       modifica ahí. Cambiarle la fecha no la muda de mes: mudarla partiría en
+       dos su historial, y correr un inicio unos días es algo que se hace todo
+       el tiempo. */
     if (ui.editingId) {
-      const task = tasks.find(t => t.id === ui.editingId);
+      const task = materialize().find(t => t.id === ui.editingId);
       if (task) Object.assign(task, fields);
-    } else {
-      tasks.push({ id: newId(), ...fields });
+
+      save();
+      el.taskDialog.close();
+      render();
+      toast('Tarea actualizada');
+      ui.editingId = null;
+      return;
     }
 
+    /* ALTA: manda la fecha, no el mes que se esté mirando. Es lo mismo que
+       hacen las plantillas, y evita que dar de alta algo desde un mes viejo lo
+       cree ahí con la fila entera apagada. */
+    const inicio = parseDateKey(start);
+    const year = inicio.getFullYear();
+    const month = inicio.getMonth();
+    const nombreMes = labelDeMes(year, month);
+
+    // El bloqueo que corresponde es el del mes DESTINO. El del visible ya lo
+    // miró `ensureEditable()` al entrar.
+    if (isLocked(year, month)) {
+      return showFormError(`${capitalizeFirstLetter(nombreMes)} está bloqueado.`);
+    }
+
+    materialize(year, month).push({ id: newId(), ...fields });
     save();
     el.taskDialog.close();
+
+    // Se sigue a la tarea hasta el mes donde quedó, si no es el que se veía.
+    ui.year = year;
+    ui.month = month;
+    ui.selected.clear();
+    ui.windowIndex = windowIndexFor(inicio);
     render();
-    toast(ui.editingId ? 'Tarea actualizada' : 'Tarea creada');
+
+    toast(`Tarea creada en ${nombreMes}`);
     ui.editingId = null;
   });
 
@@ -2492,31 +2698,98 @@
     btn.addEventListener('click', () => btn.closest('dialog').close());
   }
 
-  // El botón del estado vacío. El de la planilla se maneja por delegación en #grid.
-  el.empty.querySelector('[data-add-task]').addEventListener('click', () => openTaskDialog());
+  // Los dos accesos al alta: el de la barra del mes y el del estado vacío.
+  for (const btn of document.querySelectorAll('[data-add-task]')) {
+    btn.addEventListener('click', () => openTaskDialog());
+  }
 
   // ---------------------------------------------------------
   // Plantillas
   // ---------------------------------------------------------
 
-  function openTemplates() {
-    if (!ensureEditable()) return;
+  /*  El diálogo NO exige que el mes visible sea editable. La fecha de inicio
+      decide a qué mes van las tareas, así que estar parado en un mes bloqueado
+      no impide agregar a otro. El bloqueo se comprueba contra el mes destino,
+      que es el único que se va a tocar. */
 
-    const mes = labelDeMes();
-    el.templatesIntro.textContent =
-      `Las tareas se agregan a ${mes}. Las que ya existan con el mismo nombre se omiten.`;
+  function openTemplates() {
+    /* Cada apertura vuelve a hoy. No recuerda la fecha anterior a propósito:
+       esa fecha decide a qué mes van las tareas, y arrastrarla mandaría la
+       próxima plantilla a un mes que nadie volvió a elegir.
+
+       Ojo: la fecha, no el mes que se está mirando, es lo que fija el destino.
+       Con el valor por omisión, abrir el diálogo parado en otro mes propone
+       igual el mes actual — lo dice la ayuda debajo del campo. */
+    el.templatesStart.value = dateKey(today);
 
     el.templatesList.innerHTML = '';
     for (const tpl of TEMPLATES) el.templatesList.appendChild(templateCard(tpl));
+
+    syncTemplatesTarget();
     el.templatesDialog.showModal();
     $('#templates-title').focus();
   }
 
   /**
+   * Mes al que van a parar las tareas, o null si todavía no se eligió fecha.
+   * La fecha manda sobre la navegación: pedir que arranquen el 15 de septiembre
+   * y que aparezcan en el mes que quedó abierto sería otra cosa.
+   */
+  function templatesTarget() {
+    const start = templatesStart();
+    if (!start) return null;
+    const d = parseDateKey(start);
+    return { year: d.getFullYear(), month: d.getMonth() };
+  }
+
+  /** Ayuda y botones, que dependen de la fecha elegida y del mes al que apunta. */
+  function syncTemplatesTarget() {
+    const destino = templatesTarget();
+    const nombre = destino ? labelDeMes(destino.year, destino.month) : '';
+    const bloqueado = Boolean(destino) && isLocked(destino.year, destino.month);
+
+    /* El nombre del mes viene en minúscula del locale, y así va bien en medio
+       de una oración. Donde la abre hay que capitalizarlo a mano: el encabezado
+       se apoya en un `text-transform` del CSS que acá no alcanza. */
+    /* Con una fecha válida y el mes destino editable no se dice nada: el botón
+       ya nombra a dónde van las tareas. La ayuda queda para los dos casos en
+       los que el botón está apagado y hace falta explicar por qué. */
+    el.templatesStartHint.textContent = !destino
+      ? 'Elegí la fecha en la que arrancan las tareas.'
+      : bloqueado
+        ? `${capitalizeFirstLetter(nombre)} está bloqueado. Hay que desbloquearlo para `
+          + 'poder agregarle tareas.'
+        : '';
+
+    // Vacío no alcanza: el `gap` de .field dejaría un escalón bajo el campo.
+    el.templatesStartHint.hidden = !el.templatesStartHint.textContent;
+
+    /* Sin fecha no hay a dónde agregar, y un mes bloqueado no admite cambios.
+       En los dos casos el botón se apaga en vez de dejar que el clic falle: el
+       diálogo dice por qué antes de que nadie lo intente. */
+    for (const btn of el.templatesList.querySelectorAll('.tpl-add')) {
+      btn.disabled = !destino || bloqueado;
+      btn.title = !destino
+        ? 'Elegí primero una fecha de inicio'
+        : bloqueado
+          ? `${capitalizeFirstLetter(nombre)} está bloqueado`
+          : `Agregar a ${nombre}`;
+    }
+  }
+
+  // La fecha redirige la plantilla a otro mes: los rótulos lo dicen al instante.
+  el.templatesStart.addEventListener('input', syncTemplatesTarget);
+  el.templatesStart.addEventListener('change', syncTemplatesTarget);
+
+  /**
    * Convierte una entrada de plantilla en una tarea completa, sin id.
    * `target` la vuelve meta mensual; `weekdays`, días fijos.
+   *
+   * @param start fecha de inicio `YYYY-MM-DD` para toda la plantilla, o null.
+   *   Las plantillas no la traen: la elige quien las aplica. Al dibujar la
+   *   ficha de la plantilla se omite, porque ahí todavía no hay fecha elegida.
    */
-  function templateTask(item) {
+  function templateTask(item, start = null) {
     const porConteo = typeof item.target === 'number';
     return {
       name: capitalizeFirstLetter(item.name.trim()),
@@ -2524,8 +2797,18 @@
       customMode: porConteo ? 'count' : 'weekdays',
       weekdays: item.weekdays ? [...item.weekdays] : [],
       target: porConteo ? item.target : 12,
-      start: null,
+      start,
     };
+  }
+
+  /**
+   * Fecha de inicio elegida en el diálogo, o null si quedó vacía.
+   * Un `input[type=date]` devuelve `YYYY-MM-DD` o cadena vacía, pero se valida
+   * igual: los navegadores sin soporte lo degradan a campo de texto libre.
+   */
+  function templatesStart() {
+    const valor = el.templatesStart.value;
+    return RE_DIA.test(valor) ? valor : null;
   }
 
   function templateCard(tpl) {
@@ -2552,17 +2835,35 @@
   }
 
   function applyTemplate(tpl) {
-    if (!ensureEditable()) return;
+    const start = templatesStart();
+    const destino = templatesTarget();
 
-    const tasks = materialize();
-    // Se comparan contra los nombres que YA estaban: así una plantilla que
-    // repite un nombre a propósito entra completa, pero volver a aplicarla
-    // no duplica nada.
+    // Los botones ya salen apagados sin fecha; esto cubre el resto de los
+    // caminos —un Enter, el teclado— sin depender de que la UI se adelante.
+    if (!destino) {
+      toast('Elegí una fecha de inicio');
+      return;
+    }
+
+    const { year, month } = destino;
+    const nombreMes = labelDeMes(year, month);
+
+    // El bloqueo que importa es el del mes DESTINO, no el del que se está
+    // mirando. `ensureEditable()` no sirve acá: siempre mira el visible.
+    if (isLocked(year, month)) {
+      toast(`${capitalizeFirstLetter(nombreMes)} está bloqueado`);
+      return;
+    }
+
+    const tasks = materialize(year, month);
+    // Se comparan contra los nombres que YA estaban EN ESE MES: así una
+    // plantilla que repite un nombre a propósito entra completa, pero volver a
+    // aplicarla no duplica nada.
     const existentes = new Set(tasks.map(t => t.name.trim().toLowerCase()));
 
     let agregadas = 0;
     for (const item of tpl.tasks) {
-      const task = templateTask(item);
+      const task = templateTask(item, start);
       if (existentes.has(task.name.toLowerCase())) continue;
       tasks.push({ id: newId(), ...task });
       agregadas += 1;
@@ -2571,10 +2872,20 @@
     const omitidas = tpl.tasks.length - agregadas;
     save();
     el.templatesDialog.close();
+
+    /* Se sigue a las tareas hasta donde fueron. Quedarse en el mes anterior
+       dejaría un aviso de «6 tareas agregadas» sobre una pantalla en la que no
+       cambió nada, que es indistinguible de un error. */
+    ui.year = year;
+    ui.month = month;
+    ui.selected.clear();
+    // La fecha es obligatoria, así que siempre hay una ventana a la que ir.
+    ui.windowIndex = windowIndexFor(parseDateKey(start));
     irA('home');
 
-    if (!agregadas) toast('Esas tareas ya estaban en el mes');
-    else toast(`${agregadas} tarea(s) agregadas`
+    if (!agregadas) toast(`Esas tareas ya estaban en ${nombreMes}`);
+    else toast(`${agregadas} tarea(s) agregadas a ${nombreMes}`
+      + ` desde el ${fmtShort.format(parseDateKey(start))}`
       + (omitidas ? ` · ${omitidas} ya estaban` : ''));
   }
 
@@ -2729,6 +3040,7 @@
           state = parsed;
           save();
           applyTheme();
+          applyZoom();
           render();
           toast('Datos importados');
         },
@@ -2795,6 +3107,59 @@
   });
 
   // ---------------------------------------------------------
+  // Zoom de la planilla (solo móvil)
+  // ---------------------------------------------------------
+  //  El nivel se publica como atributo en <html> y el CSS hace el resto, dentro
+  //  del breakpoint angosto. En escritorio el botón no se ve y el atributo no
+  //  cambia nada: no hay medidas atadas a él fuera de ese bloque.
+
+  const zoomLabel = id => ZOOM_LEVELS.find(z => z.id === id)?.label ?? 'Normal';
+
+  function nextZoom() {
+    const i = ZOOM_LEVELS.findIndex(z => z.id === state.zoom);
+    return ZOOM_LEVELS[(i + 1) % ZOOM_LEVELS.length].id;
+  }
+
+  function applyZoom() {
+    document.documentElement.dataset.zoom = state.zoom;
+    el.zoomText.textContent = zoomLabel(state.zoom);
+    el.zoom.title = `Tamaño de la planilla: ${zoomLabel(state.zoom).toLowerCase()}`
+      + ` · clic para pasar a ${zoomLabel(nextZoom()).toLowerCase()}`;
+    el.zoom.setAttribute('aria-label', el.zoom.title);
+  }
+
+  el.zoom.addEventListener('click', () => {
+    state.zoom = nextZoom();
+    save();
+    applyZoom();
+  });
+
+  // ---------------------------------------------------------
+  // Plegar los controles del período (solo móvil)
+  // ---------------------------------------------------------
+  //  Oculta todo lo que hay entre la línea del mes y la planilla: el selector
+  //  de vista, la navegación del rango y las acciones del mes. En un teléfono
+  //  eso son tres filas que empujan la planilla fuera de la pantalla.
+
+  function applyCollapse() {
+    const plegado = state.controlsCollapsed;
+    document.body.classList.toggle('controls-collapsed', plegado);
+
+    el.collapse.textContent = plegado ? '+' : '–';
+    el.collapse.setAttribute('aria-expanded', String(!plegado));
+    el.collapse.title = plegado
+      ? 'Mostrar las vistas y las acciones del mes'
+      : 'Ocultar las vistas y las acciones del mes';
+    el.collapse.setAttribute('aria-label', el.collapse.title);
+  }
+
+  el.collapse.addEventListener('click', () => {
+    state.controlsCollapsed = !state.controlsCollapsed;
+    save();
+    applyCollapse();
+  });
+
+  // ---------------------------------------------------------
   // Atajos de teclado
   // ---------------------------------------------------------
 
@@ -2836,6 +3201,7 @@
   //  aparezca en claro y salte a oscuro un instante después.
 
   applyTheme();
+  applyZoom();
 
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (!state.theme) applyTheme();
@@ -2859,6 +3225,8 @@
     return {
       months: {}, status: {}, locked: {},
       complianceMode: 'glyph',
+      zoom: 'normal',
+      controlsCollapsed: false,
       panels: { tiles: true, charts: true },
       theme: state.theme,   // el tema es de la pantalla, no del usuario
     };
@@ -2870,6 +3238,7 @@
       adoptarDatosPrevios();
       await hydrateStateForUser(user);
       applyTheme();
+      applyZoom();
 
       ui.year = today.getFullYear();
       ui.month = today.getMonth();

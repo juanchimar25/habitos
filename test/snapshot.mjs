@@ -30,12 +30,16 @@ function capturar(doc) {
   // Qué secciones quedan ocultas. Va aparte del innerHTML porque ocultar un
   // bloque no cambia su contenido: sin esto, el test no vería la diferencia.
   const visibilidad = ['.controls', '.month-nav', '#controls-center', '#range-nav',
-    '#month-bar', '#board', '#legend', '#analysis', '#help', '#btn-page-toggle']
+    '#month-bar', '#board', '#legend', '#analysis', '#help', '#btn-page-toggle',
+    '#btn-collapse']
     .map(sel => `${sel}:${doc.querySelector(sel)?.hidden ? 'oculto' : 'visible'}`)
     .join(' ');
 
   return {
     visibilidad,
+    // «Análisis» vive acá y no en `.controls`: sin esto su marcado no lo
+    // miraría ningún escenario.
+    acciones: html('.header-actions'),
     grid: html('#grid'),
     gridClase: doc.querySelector('#grid')?.className ?? '',
     resumen: html('#summary'),
@@ -120,7 +124,12 @@ async function recolectar() {
     doc.querySelector('#btn-templates').click();
     out['plantillas'] = {
       lista: normalizarHtml(doc.querySelector('#templates-list')?.innerHTML ?? ''),
-      intro: doc.querySelector('#templates-intro')?.textContent ?? '',
+      // El campo de fecha va aparte de `lista`: vive fuera de #templates-list,
+      // así que sin esto ninguno de los 18 escenarios lo miraría.
+      inicio: normalizarHtml(doc.querySelector('.tpl-start')?.outerHTML ?? '(ausente)'),
+      // El `value` no aparece en el HTML serializado y es el que decide el mes
+      // destino, así que va como campo propio.
+      inicioValor: doc.querySelector('#templates-start')?.value ?? '(ausente)',
     };
   }
 
@@ -132,6 +141,9 @@ async function recolectar() {
       titulo: doc.querySelector('#task-dialog-title')?.textContent ?? '',
       dias: normalizarHtml(doc.querySelector('#weekday-row')?.innerHTML ?? ''),
       submit: doc.querySelector('#task-submit')?.textContent ?? '',
+      // El `value` no viaja en el HTML serializado, así que se captura aparte:
+      // es el que decide si la fecha obligatoria sale con un valor por omisión.
+      inicio: doc.querySelector('#task-start')?.value ?? '(ausente)',
     };
   }
 
@@ -143,6 +155,9 @@ async function recolectar() {
       titulo: doc.querySelector('#task-dialog-title')?.textContent ?? '',
       nombre: doc.querySelector('#task-name')?.value ?? '',
       submit: doc.querySelector('#task-submit')?.textContent ?? '',
+      // Al editar, el valor por omisión NO es hoy: proponerlo recortaría los
+      // días ya cargados de una tarea anterior al campo obligatorio.
+      inicio: doc.querySelector('#task-start')?.value ?? '(ausente)',
     };
   }
 
@@ -168,12 +183,44 @@ if (modo === 'guardar') {
   const actual = await recolectar();
 
   let fallos = 0;
-  for (const escenario of Object.keys(esperado)) {
-    for (const campo of Object.keys(esperado[escenario])) {
-      const a = esperado[escenario][campo];
-      const b = actual[escenario]?.[campo];
+
+  /* Se recorre la UNIÓN de ambos lados, no solo la referencia. Mirando solo la
+     referencia, agregar una superficie nueva a capturar() no falla: como la
+     clave no existe del lado esperado, nadie la compara y el test pasa en
+     verde sin haber mirado nada. El campo queda sin cobertura hasta que a
+     alguien se le ocurre regrabar. */
+  const escenarios = new Set([...Object.keys(esperado), ...Object.keys(actual)]);
+
+  for (const escenario of escenarios) {
+    const esp = esperado[escenario];
+    const act = actual[escenario];
+
+    if (!esp) {
+      fallos++;
+      console.log(`\nNUEVO    ${escenario} — no está en la referencia`);
+      continue;
+    }
+    if (!act) {
+      fallos++;
+      console.log(`\nFALTA    ${escenario} — está en la referencia y ya no se genera`);
+      continue;
+    }
+
+    for (const campo of new Set([...Object.keys(esp), ...Object.keys(act)])) {
+      const a = esp[campo];
+      const b = act[campo];
       if (a === b) continue;
       fallos++;
+
+      if (a === undefined) {
+        console.log(`\nNUEVO    ${escenario} → ${campo} — se captura pero no hay referencia`);
+        continue;
+      }
+      if (b === undefined) {
+        console.log(`\nFALTA    ${escenario} → ${campo} — hay referencia pero ya no se captura`);
+        continue;
+      }
+
       console.log(`\nDIFIERE  ${escenario} → ${campo}`);
       // Primer punto de divergencia, con algo de contexto alrededor.
       let i = 0;
@@ -183,7 +230,7 @@ if (modo === 'guardar') {
     }
   }
 
-  const total = Object.keys(esperado).length;
+  const total = escenarios.size;
   if (fallos) {
     console.log(`\n${fallos} diferencia(s) en ${total} escenarios`);
     process.exit(1);

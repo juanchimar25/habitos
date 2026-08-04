@@ -12,8 +12,13 @@ test/
 
 # Configuración de los otros hostings. Se mantienen versionadas para no
 # perder la portabilidad a Netlify y GitHub Pages, pero en Vercel no se usan.
+# Las cabeceras de `_headers` acá las declara `vercel.json`.
 _redirects
+_headers
 404.html
 
 node_modules/
 .claude/
+
+# OJO: `vendor/` NO va acá. El cliente de Supabase se sirve desde nuestro
+# dominio a propósito, y sin él la app no puede iniciar sesión.

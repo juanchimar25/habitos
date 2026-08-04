@@ -4,9 +4,10 @@
   "private": true,
   "description": "Planilla mensual de hábitos. La app no usa nada de esto: se sirve como archivos estáticos y no tiene build. Este package.json existe solo para las pruebas.",
   "scripts": {
-    "test": "node test/snapshot.mjs comparar",
+    "test": "node test/snapshot.mjs comparar && node test/casos.mjs",
+    "casos": "node test/casos.mjs",
     "snapshot": "node test/snapshot.mjs guardar",
-    "check": "node --check app.js && node --check auth.js && node --check config.js"
+    "check": "node --check app.js && node --check auth.js && node --check config.js && node test/codificacion.mjs && node test/csp.mjs"
   },
   "devDependencies": {
     "jsdom": "^25.0.1"

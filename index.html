@@ -141,6 +141,16 @@
     </div>
 
     <div class="header-actions">
+      <!-- Vive acá y no junto al mes: en móvil ese lugar lo ocupa el plegado de
+           los controles. En el encabezado convive con el cambio de tema, que es
+           el otro conmutador global. -->
+      <!-- `btn` a secas y no `btn-ghost`: comparte el recuadro del cambio de
+           tema, que es su vecino en el encabezado. -->
+      <button type="button" id="btn-page-toggle" class="btn">
+        <span class="nav-icon" aria-hidden="true">◔</span>
+        <span class="nav-text">Análisis</span>
+      </button>
+
       <button type="button" id="btn-theme" class="btn icon-btn" title="Cambiar tema" aria-label="Cambiar tema">☾</button>
     </div>
   </header>
@@ -193,7 +203,7 @@
         <span class="session-user" id="session-user"></span>
       </div>
       <button type="button" id="btn-sign-out" class="drawer-item session-out">
-        <span class="drawer-icon" aria-hidden="true">⏻</span> Cerrar sesión
+        <span class="drawer-icon" aria-hidden="true">✕</span> Cerrar sesión
       </button>
     </div>
   </nav>
@@ -202,13 +212,30 @@
 
     <section class="controls" aria-label="Controles de período">
       <div class="control-group month-nav">
+        <!-- Abre el salto a un mes, y va antes de las flechas: primero el salto
+             largo, después el paso a paso.
+
+             SVG y no un glifo: no hay carácter de calendario con cobertura real
+             en las fuentes de sistema, y el que más se acerca sale como caja
+             vacía en Android. -->
+        <button type="button" id="btn-pick-month" class="btn icon-btn"
+                title="Seleccionar mes" aria-label="Seleccionar mes">
+          <svg class="cal-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <rect x="1.6" y="3.1" width="12.8" height="11.3" rx="2"
+                  fill="none" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M1.6 6.7h12.8M4.9 1.6v3M11.1 1.6v3"
+                  stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </button>
+
         <button type="button" id="prev-month" class="btn icon-btn" aria-label="Mes anterior">‹</button>
         <span id="month-label" class="month-label">—</span>
         <button type="button" id="next-month" class="btn icon-btn" aria-label="Mes siguiente">›</button>
-        <button type="button" id="btn-page-toggle" class="btn btn-ghost">
-          <span class="nav-icon" aria-hidden="true">◔</span>
-          <span class="nav-text">Análisis</span>
-        </button>
+
+        <!-- Solo en móvil: pliega todo lo que hay entre la línea del mes y la
+             planilla —vistas, navegación del rango y acciones del mes—. -->
+        <button type="button" id="btn-collapse" class="btn icon-btn collapse-btn"
+                aria-expanded="true" aria-controls="controls-center range-nav month-bar">–</button>
       </div>
 
       <div class="control-group controls-center" id="controls-center">
@@ -224,10 +251,24 @@
         <button type="button" id="prev-range" class="btn icon-btn" aria-label="Período anterior">‹</button>
         <span id="range-label" class="range-label">—</span>
         <button type="button" id="next-range" class="btn icon-btn" aria-label="Período siguiente">›</button>
+
+        <button type="button" id="btn-pick-day" class="btn icon-btn"
+                title="Seleccionar día" aria-label="Seleccionar día">
+          <svg class="cal-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <rect x="1.6" y="3.1" width="12.8" height="11.3" rx="2"
+                  fill="none" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M1.6 6.7h12.8M4.9 1.6v3M11.1 1.6v3"
+                  stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </button>
       </div>
     </section>
 
     <section class="month-bar" id="month-bar" aria-label="Acciones del mes">
+      <button type="button" id="btn-add-task" class="btn btn-today" data-add-task>
+        + Agregar tarea
+      </button>
+
       <button type="button" id="btn-copy-prev" class="btn btn-ghost">
         <span aria-hidden="true">⧉</span> Copiar tareas del mes anterior
       </button>
@@ -239,6 +280,16 @@
       <button type="button" id="btn-reset-sel" class="btn btn-ghost" hidden>
         <span aria-hidden="true">↺</span> Resetear estados
       </button>
+      <!-- Solo aparece en pantallas angostas: en escritorio la planilla entra. -->
+      <button type="button" id="btn-zoom" class="btn btn-ghost zoom-btn">
+        <svg class="zoom-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M10.4 10.4L14.2 14.2M5 7h4"
+                stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="zoom-text" id="zoom-text">Normal</span>
+      </button>
+
       <button type="button" id="btn-lock" class="btn btn-ghost">
         <span aria-hidden="true">🔒</span> <span id="lock-text">Bloquear período</span>
       </button>
@@ -273,12 +324,12 @@
         </div>
 
         <div class="help-step">
-          <span class="help-icon" aria-hidden="true">�️</span>
+          <span class="help-icon" aria-hidden="true">🛠️</span>
           <div>
             <h3>Administrar tareas</h3>
             <ul>
-              <li>Usá el botón <strong>+ Agregar tarea</strong> para crear nuevas tareas.</li>
-              <li>La opción <strong>Plantillas</strong> dentro del menú permite agregar listas de tareas prediseñadas al mes en el que te encuentres posicionado.</li>
+              <li>Usá el botón <strong>+ Agregar tarea</strong> para crear nuevas tareas. La <strong>fecha de inicio</strong> viene con el día de hoy y define a qué mes va la tarea, sin importar en qué mes estés parado.</li>
+              <li>La opción <strong>Plantillas</strong> dentro del menú permite agregar listas de tareas prediseñadas. Hay que indicar una <strong>fecha de inicio</strong>: las tareas arrancan ese día y se agregan al mes de esa fecha, sin importar en qué mes estés parado.</li>
               <li>Podés seleccionar varias tareas y luego <strong>Eliminar</strong> o <strong>Resetear estados</strong> en bloque.</li>
             </ul>
           </div>
@@ -309,6 +360,7 @@
               <li><strong>Semanal</strong>: muestra una semana del mes.</li>
               <li><strong>Mensual</strong>: muestra todo el mes.</li>
             </ul>
+            <p>Los <strong>iconos de calendario</strong> que están junto al selector de mes y al de día permiten saltar a una fecha concreta sin recorrer mes por mes.</p>
           </div>
         </div>
 
@@ -416,8 +468,8 @@
       </fieldset>
 
       <label class="field">
-        <span class="field-label">Fecha de inicio <span class="field-optional">(opcional)</span></span>
-        <input type="date" id="task-start">
+        <span class="field-label">Fecha de inicio</span>
+        <input type="date" id="task-start" required>
       </label>
 
       <p class="form-error" id="task-error" role="alert" hidden></p>
@@ -435,12 +487,38 @@
       <!-- Recibe el foco al abrir: si no, lo toma el contenedor scrolleable
            de abajo y el anillo aparece rodeando toda la lista. -->
       <h2 id="templates-title" tabindex="-1">Plantillas</h2>
-      <p class="confirm-text" id="templates-intro">
-        Agregan sus tareas al mes visible. Las que ya existan con el mismo nombre se omiten.
-      </p>
+      <label class="field tpl-start">
+        <span class="field-label">Fecha de inicio</span>
+        <input type="date" id="templates-start" required>
+        <span class="field-hint" id="templates-start-hint">
+          Elegí la fecha en la que arrancan las tareas.
+        </span>
+      </label>
+
       <div class="tpl-list" id="templates-list"></div>
       <div class="dialog-actions">
         <button type="button" class="btn" data-close-dialog>Cerrar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Seleccionar día o mes. Un solo diálogo con dos modos: comparten
+       encabezado, grilla y navegación; solo cambia qué celdas se dibujan. -->
+  <dialog id="jump-dialog" class="dialog">
+    <div class="dialog-form">
+      <h2 id="jump-title" tabindex="-1">Seleccionar día</h2>
+
+      <div class="jump-head">
+        <button type="button" id="jump-prev" class="btn icon-btn" aria-label="Anterior">‹</button>
+        <span class="jump-label" id="jump-label">—</span>
+        <button type="button" id="jump-next" class="btn icon-btn" aria-label="Siguiente">›</button>
+      </div>
+
+      <div class="jump-dows" id="jump-dows" aria-hidden="true"></div>
+      <div class="jump-grid" id="jump-grid"></div>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close-dialog>Cancelar</button>
       </div>
     </div>
   </dialog>
@@ -460,6 +538,13 @@
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <!-- Cliente de Supabase, servido desde acá y no desde un CDN: la versión queda
+       fija, el `integrity` se verifica y la CSP puede cerrar `script-src` a 'self'.
+       Procedencia y cómo actualizarlo, en vendor/README.md. Es un script clásico,
+       así que corre antes que el módulo de abajo y le deja el global `supabase`. -->
+  <script src="vendor/supabase-js-2.111.0.js"
+          integrity="sha384-faMlYZUtkJj+Sh6Bmu/L0GzPcraRWN6CW+9RH3GUrK/Z0WS9tgaNNt0tHiLxsbdb"></script>
 
   <script src="config.js"></script>
   <script src="app.js"></script>

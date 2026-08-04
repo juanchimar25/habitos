@@ -1,0 +1,10 @@
+# El bundle de `vendor/` está protegido por un `integrity` en index.html, que es
+# un hash BYTE A BYTE del archivo. Con la conversión automática de finales de
+# línea de Git, un checkout en Windows lo dejaría con CRLF: distinta cantidad de
+# bytes, distinto hash, y el navegador bloquearía el script. La app quedaría sin
+# cliente de Supabase, sin poder iniciar sesión.
+#
+# `-text` desactiva cualquier conversión: el archivo viaja igual en todos lados.
+# Vale para todo `vendor/`, no solo para el archivo actual, así el próximo que
+# se agregue queda cubierto sin que nadie tenga que acordarse.
+vendor/** -text

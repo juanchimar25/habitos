@@ -48,6 +48,10 @@ window.SUPABASE_ANON_KEY = 'eyJhbGciOi...';
 La *anon key* es pública por diseño y puede vivir en el navegador: lo que protege los datos es
 Row Level Security. La **service role key nunca va acá**.
 
+Al cambiar de proyecto hay que actualizar también el `connect-src` de la CSP, en
+[`vercel.json`](vercel.json) y [`_headers`](_headers): si no, el navegador bloquea las llamadas a
+la base nueva. `npm run check` lo verifica contra `config.js` y avisa si quedaron desalineados.
+
 **4. Servirla.** En local, `npx serve . --single` y abrir la URL que imprime. Para usarla de
 verdad, publicarla en Netlify, Vercel o GitHub Pages —los tres gratis— y registrar esa URL en
 *Authentication → URL Configuration* de Supabase.
@@ -93,11 +97,28 @@ La app sigue sin build ni dependencias en tiempo de ejecución: `package.json` e
 para las pruebas, y nada de `node_modules` llega al navegador.
 
 ```sh
-npm install
-npm run check     # sintaxis de los tres .js
-npm test          # compara el DOM contra la referencia
+npm ci            # instala exactamente lo del package-lock.json
+npm run check     # sintaxis, codificación de los fuentes y CSP al día
+npm test          # snapshots del DOM + casos de comportamiento
+npm run casos     # solo los casos; acepta filtros: npm run casos -- zoom plegado
 npm run snapshot  # regraba la referencia (solo si el cambio es intencional)
 ```
+
+`npm ci` y no `npm install`: instala exactamente lo que fija el `package-lock.json`, sin volver a
+resolver rangos ni traer una versión que nadie eligió. Y el [`.npmrc`](.npmrc) del repositorio
+bloquea los scripts de instalación de todos los paquetes, que es la vía por la que funcionan casi
+todos los ataques de cadena de suministro de npm. Hoy ningún paquete del árbol los necesita, así
+que la protección sale gratis.
+
+Conviene tener presente el alcance real: **nada de `node_modules` llega al navegador**. La única
+dependencia es `jsdom`, y es de desarrollo. Un paquete comprometido acá compromete la máquina que
+instala, no a quien usa la app.
+
+`check` termina buscando el carácter de reemplazo `U+FFFD` en todos los fuentes. Aparece cuando
+un archivo se guardó con la codificación equivocada: el carácter original se perdió y queda esa
+lápida en su lugar. Nunca es intencional, así que encontrarlo es siempre un error — y es un error
+que el snapshot **no puede** ver, porque compara contra una referencia que grabó ya rota. Pasó
+exactamente eso con un ícono de la guía, que nació mal y sobrevivió a los 18 escenarios.
 
 `npm test` monta la app entera dentro de jsdom —el `index.html` real, el `app.js` real— con el
 reloj congelado y datos sembrados, y compara el HTML que produce contra una referencia guardada.
@@ -107,6 +128,66 @@ guardas de `normalize()`.
 
 Sirve para refactorizar: si el HTML sale igual, el comportamiento no cambió. No reemplaza probar
 en el navegador —no cubre CSS, gestos ni la sesión—, pero atrapa las regresiones de render.
+
+La referencia vive versionada en `test/__snapshots__/dom.json`, así que `npm test` corre recién
+clonado el repositorio. Cuando un cambio de markup es intencional, `npm run snapshot` la regraba y
+**el diff resultante entra en el commit**: ahí se lee exactamente qué se movió en el HTML.
+
+### Casos de comportamiento
+
+Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue funcionando*. Son
+**239 comprobaciones** repartidas en once archivos, cada uno sobre una funcionalidad:
+
+| Caso | Qué cubre |
+|---|---|
+| `plantillas` | Fecha obligatoria, mes destino, bloqueo, duplicados |
+| `tarea-fecha` | Alta y edición: valor por omisión, validación, no mudar de mes al editar |
+| `tope-100` | Ninguna tarea aporta más que su meta a los promedios |
+| `ir-a` | Los dos calendarios: días y meses |
+| `zoom` | Los tres niveles, alto de fila uniforme, ancho para el nombre |
+| `plegado` | «Análisis» en el encabezado y el plegado de controles |
+| `boton-alta` | Ubicación del alta y estado bloqueado |
+| `color-marca` | El color de hoy sigue al de la marca, con contraste AA en ambos temas |
+| `vendor` | La app arranca con el cliente local y su `integrity` |
+| `red` | Qué primitivas de red toca el cliente real: ningún WebSocket |
+| `migracion` | Un estado guardado por la versión anterior abre sin perder nada |
+
+Corren en **procesos separados** a propósito: cada uno instala su propio jsdom con reloj,
+almacenamiento y globals sustituidos, y compartir proceso haría que un caso viera el entorno del
+anterior. El costo es arrancar Node once veces; a cambio cada archivo se ejecuta a mano —
+`node test/casos/verificar-zoom.mjs`—, que es como se depuran.
+
+Cuando un caso falla, el runner imprime su salida completa al final, después del resumen: no hay
+que buscarla entre la de los que pasaron.
+
+## Código de terceros y CSP
+
+El cliente de Supabase se sirve **desde este mismo dominio**, en
+[`vendor/`](vendor/README.md), y no desde un CDN. La diferencia importa porque ese código sí
+corre en el navegador de cada visitante, con acceso completo a su sesión: importarlo de un CDN
+significaba versión no fijada (`@2` es «cualquier 2.x»), sin verificación de integridad —los
+`import` de módulos ES no admiten `integrity`— y a merced de que el CDN sirviera lo que
+corresponde.
+
+Ahora la versión es exacta, el `<script>` lleva su hash y la
+**Content-Security-Policy no necesita permitir ningún origen externo**:
+
+| Directiva | |
+|---|---|
+| `default-src 'none'` | nada está permitido salvo lo que se habilita abajo |
+| `script-src 'self' <3 hashes>` | solo scripts propios; los inline, por hash y **sin** `'unsafe-inline'` |
+| `connect-src 'self' <proyecto>.supabase.co` | la app solo puede hablar con su propia base |
+| `frame-ancestors 'none'` | no se puede embeber en un iframe ajeno |
+
+Autorizar los inline por hash es lo estricto —un script inyectado no se ejecuta— pero acopla el
+hash al código: editar una línea del script anti-parpadeo lo invalida, y el navegador lo bloquea
+en producción, en silencio. Por eso `npm run check` recalcula los hashes desde `index.html`,
+verifica el `integrity` de `vendor/` contra el archivo, controla que `connect-src` corresponda a
+`config.js` y que [`_headers`](_headers) (Netlify) declare la política idéntica a
+[`vercel.json`](vercel.json). Es lo que vuelve mantenible al hash.
+
+> **GitHub Pages no admite cabeceras propias.** Publicado ahí, el sitio queda sin CSP. Es una
+> limitación del hosting; Vercel y Netlify sí la sirven.
 
 ## Sesión
 
@@ -141,10 +222,15 @@ podido leer el remoto reemplazaría datos del servidor a ciegas.
 La causa más probable de que la base rechace todo es que **falte la política de RLS** — ver la
 consulta de comprobación al final de [`db/supabase-app-state.sql`](db/supabase-app-state.sql).
 
-> **Todavía falta el paso grande.** Hoy la sesión es real pero los datos son locales: entrar
-> desde otro dispositivo muestra un diario vacío. Llevar los datos a Postgres es la
-> **Etapa 3** de [`db/MIGRACION.md`](db/MIGRACION.md), y es la más costosa: obliga a convertir el
-> guardado de «volcar todo el estado» a operaciones puntuales.
+> **Sobre el esquema de la base.** El repositorio trae dos archivos SQL y solo uno está en uso:
+> [`db/supabase-app-state.sql`](db/supabase-app-state.sql), el de la tabla `app_state` que
+> describe esta sección. [`db/schema.sql`](db/schema.sql) es un diseño relacional —tareas, meses
+> y estados en tablas propias— al que la app **todavía no habla**: es el destino de la **Etapa 3**
+> de [`db/MIGRACION.md`](db/MIGRACION.md). Correrlo crea tablas vacías que nadie consulta.
+>
+> Lo que falta de esa etapa es cambiar el guardado de «volcar todo el estado» a operaciones
+> puntuales. Hoy cada clic sube el estado entero, y entre dos dispositivos gana el último que
+> escribe, pisando el mes completo en vez de la celda.
 
 ## Funcionalidad
 
@@ -170,25 +256,41 @@ El nombre se guarda con la **primera letra en mayúscula**, sin importar qué ve
 - **Días fijos de la semana** — elegís los días (L M X J V S D) y la meta es un punto por cada uno que caiga en el mes.
 - **Meta mensual, sin días fijos** — cargás un número (*12 veces al mes*) y no indicás días. Ningún día queda como requerido: hacés la tarea cuando puedas y la marcás ahí.
 
-  En vistas más chicas la meta se reparte proporcionalmente entre los días elegibles: 12 al mes son `12 × 7/31 ≈ 2,7` en una semana. En la vista mensual siempre muestra el número exacto que cargaste.
+  En vistas más chicas la meta se reparte proporcionalmente sobre los días del mes y se **redondea hacia arriba a acciones enteras**: 12 al mes son `12 × 7/31 ≈ 2,7` en una semana, o sea **3**. En la vista mensual siempre muestra el número exacto que cargaste.
+
+  > **Por qué se redondea.** Estas metas se cumplen con actos indivisibles: «socializar» se hace o no se hace, no existe hacer 0,26 de socializar. Sin redondear, la meta de un solo día quedaba en fracciones —`8/31 = 0,26`— y una única marca contra esa meta daba **388%**: aritmética correcta sobre una unidad que no existe.
+
+  Cuando la ventana es tan chica que ni siquiera llega a pedir una acción —el caso de la vista diaria—, **no hay obligación que incumplir**: ahí el cumplimiento lo fija lo que hiciste. Cumplido da 100%, parcial 50% y un día en blanco muestra `—`, no 0%. Un cero acusaría de incumplida a una tarea que ese día no debía nada.
+
+  El reparto se hace sobre los **días del mes**, no sobre los que la tarea tiene disponibles. Es lo que hace que empezar tarde reduzca lo que se espera en vez de amontonarlo: una tarea de 8 al mes que arranca el día 31 no pide las 8 acciones ese día — pide una, y hacerla da 100%.
 
 ### Fecha de inicio
 
-Cada tarea puede tener una **fecha de inicio** opcional. Antes de esa fecha la tarea no existe:
+Cada tarea tiene una **fecha de inicio obligatoria**. Antes de esa fecha la tarea no existe:
 
 - Los días anteriores **no se pueden marcar** y aparecen como no requeridos.
 - No cuentan para la meta: una tarea diaria que arranca el 15 de julio tiene meta 17, no 31.
 - Si el inicio cae en un mes posterior al que estás mirando, la tarea no tiene meta ahí y su cumplimiento muestra `sin meta`.
 
-Si ya habías marcado días que después quedan antes del inicio, dejan de mostrarse y de sumar, pero **el dato no se borra**: si corrés la fecha hacia atrás o la quitás, vuelven a aparecer.
+Si ya habías marcado días que después quedan antes del inicio, dejan de mostrarse y de sumar, pero **el dato no se borra**: si corrés la fecha hacia atrás, vuelven a aparecer.
+
+Al **crear** una tarea el campo llega precargado con **hoy**, que es cuando suele empezar un hábito que estás dando de alta. Y esa fecha **decide a qué mes va la tarea**, sin importar en qué mes estés parado: darla de alta desde un mes viejo la crea igual en el mes de su fecha, y la app te lleva ahí. Es la misma regla que en las plantillas.
+
+Como el destino puede no ser el mes visible, el **bloqueo que se comprueba es el del mes destino**: con septiembre bloqueado, crear una tarea que arranca ahí se rechaza con un error en el formulario aunque estés parado en un julio editable.
+
+Al **editar** gana la fecha que ya tenga la tarea, y cambiarla **no la muda de mes**: la tarea vive en la lista del mes donde está, y mudarla partiría su historial en dos. Correr un inicio unos días es algo que se hace seguido y no debería tener ese efecto.
+
+Si una tarea no tiene fecha —por ser anterior a que el campo fuera obligatorio—, al editarla se propone el **día 1 del mes visible** y no hoy: proponer hoy recortaría el historial, porque guardar sin tocar nada apagaría los días ya cargados anteriores a la fecha y dejarían de contar para la meta. El día 1 es justamente lo que significaba no tener fecha, así que completarla no cambia nada.
 
 La fecha de inicio no se escribe en la fila de la tarea para no alargarla; se ve al pasar el mouse sobre la frecuencia y al editar la tarea.
 
-Como marcar de más está permitido, **los puntos pueden superar la meta**: una tarea semanal marcada tres veces en una semana suma 3, y su cumplimiento da 300%.
+Como marcar de más está permitido, **los puntos pueden superar la meta**: una tarea semanal marcada tres veces en una semana suma 3 contra una meta de 1. Pero **el cumplimiento topea en 100%** — cumplir es cumplir, y de ahí no se sube. Los números crudos siguen a la vista en el tooltip de la celda (*«3 sobre una meta de 1»*), así que hacer de más se ve igual sin inflar la medida.
+
+El tope no es solo de presentación: **cada tarea aporta como mucho su propia meta** a los promedios. Sin eso, hacer una tarea de lunes a viernes también el sábado compensaba el incumplimiento de otra tarea, y el total del rango subía sin que nada se hubiera cumplido mejor. Vale para el total del rango, para el gráfico de cumplimiento por tarea y para la comparación mensual.
 
 Cada fila tiene, en la columna de tareas: un **casillero** para seleccionarla, los chevrones **▲ ▼** para subir o bajar la tarea de posición y **✎** para editarla. El orden se guarda junto con los datos.
 
-También se puede **arrastrar una tarea tomándola del nombre** para reordenarla. Una línea de acento marca dónde va a caer según de qué lado del medio de la fila esté el puntero. La fila solo se vuelve arrastrable mientras el puntero apoya sobre el nombre: si no, arrastrar desde una celda de estado movería la tarea sin querer. Los chevrones siguen ahí porque el arrastre no funciona en pantallas táctiles. Al pie de la planilla hay siempre una fila **+ Agregar tarea**, además del botón del encabezado. Para borrar se usa el casillero (ver abajo).
+También se puede **arrastrar una tarea tomándola del nombre** para reordenarla. Una línea de acento marca dónde va a caer según de qué lado del medio de la fila esté el puntero. La fila solo se vuelve arrastrable mientras el puntero apoya sobre el nombre: si no, arrastrar desde una celda de estado movería la tarea sin querer. Los chevrones siguen ahí porque el arrastre no funciona en pantallas táctiles. El alta vive en **+ Agregar tarea**, primero en la barra de acciones del mes y con el mismo color con que el encabezado marca el día de hoy. Para borrar se usa el casillero (ver abajo).
 
 ### Acciones sobre varias tareas
 
@@ -229,7 +331,7 @@ Se ve con el mismo gris que los días que la frecuencia no pide, más un **guion
 
 Todas las celdas son clickeables, sin importar la frecuencia de la tarea. Los días que la frecuencia **no** pide llevan un tinte gris suave para distinguirlos de un vistazo: en una tarea *Lunes a viernes* son los fines de semana, en una *Personalizado* los días que no elegiste, y en las tareas *Semanal*, *Quincenal* y *Mensual* la fila entera —porque ningún día puntual es obligatorio, sirve cualquiera del período.
 
-El tinte de fin de semana se mantiene en el encabezado de días y en la fila `Tareas Diarias Completadas`, como referencia de calendario.
+El tinte de fin de semana se mantiene en el encabezado de días y en la fila `Tareas completadas`, como referencia de calendario.
 
 **Shift + clic** retrocede en el ciclo (útil si te pasaste de estado).
 
@@ -247,10 +349,12 @@ Además del color, cada estado tiene un símbolo, así la planilla sigue siendo 
 
   La meta se cuenta **por período**, así que se ajusta a lo que estés mirando: una tarea semanal se mide contra 5 puntos en un mes de cinco semanas y contra 1 en la vista semanal.
 
-  Además se mide **solo contra lo transcurrido**, de los dos lados de la cuenta: si vas por el 14 de julio, una tarea diaria compara los puntos cargados hasta el 14 contra una meta de 14, y no contra 31. Los días futuros que hayas marcado no entran en el porcentaje —si no, marcar mañana daría más de 100%— pero sí suman a los puntos del período. El cumplimiento así no arranca el mes en rojo y va subiendo solo. Las tareas por período cuentan un período apenas empieza, igual que un día cuenta desde que amanece: el 13 de julio ya hay tres semanas en la cuenta. Al cerrar el mes, meta a hoy y meta al cierre coinciden. El tooltip muestra las dos.
+  La meta es la del **período completo de la vista**, no la de la parte transcurrida. Una tarea de lunes, miércoles y viernes vista en la semana apunta a 3, esté la semana empezada o terminada, y hacerla dos veces da 67%. En la vista mensual, esas mismas dos veces se miden contra los 13 días L·X·V del mes: 15%.
 
-  Casos sin nada que medir: si la frecuencia no pide ningún día del rango —una *Lunes a viernes* en la vista diaria de un sábado— muestra `—` y `sin meta`; si el rango todavía no empezó (un mes futuro), `—` y `a futuro`.
-- **Por columna** (fila `Tareas Diarias Completadas` al pie): suma de puntos de todas las tareas ese día.
+  > **El porcentaje es un avance, no un ritmo.** Un período recién empezado muestra números bajos aunque no falte nada: el 4 de agosto, una tarea diaria marcada los cuatro días va 4 de 31 en la vista mensual, o sea 13%, y con los umbrales de arriba eso se pinta en rojo. Para leer «cómo voy hoy» sirve la vista diaria o la semanal, donde el período es corto; la mensual dice cuánto del mes llevás hecho.
+
+  Si la frecuencia no pide ningún día del rango —una *Lunes a viernes* en la vista diaria de un sábado— no hay nada que medir y muestra `—`.
+- **Por columna** (fila `Tareas completadas` al pie): suma de puntos de todas las tareas ese día.
 - **Esquina inferior derecha**: cumplimiento global del rango visible, con el mismo criterio.
 
 **Clic en el encabezado `Estatus`** para ciclar entre cuatro formas de mostrarlo. El modo activo se lee debajo del rótulo de la columna:
@@ -288,11 +392,24 @@ Cada entrada declara nombre y frecuencia, y para *Personalizado* agrega `weekday
 
 Se **agregan**, no reemplazan: lo que ya tenías en el mes queda. Las tareas cuyo nombre ya exista se omiten (sin distinguir mayúsculas), así aplicar dos veces la misma plantilla no duplica nada. El aviso final dice cuántas entraron y cuántas se saltearon.
 
+#### Fecha de inicio
+
+Arriba de la lista hay un campo de **fecha de inicio, obligatorio**, que hace dos cosas:
+
+1. **Fija el `start` de todas las tareas** que agregue la plantilla, como si lo hubieras cargado a mano en cada una. Antes de esa fecha las celdas quedan apagadas y no cuentan para la meta, así arrancar a mitad de mes no deja los días previos como incumplidos.
+2. **Decide a qué mes van.** Las tareas se agregan al mes de esa fecha, **sin importar en qué mes estés parado**: elegir el 15 de septiembre desde julio las crea en septiembre. Al aplicar, la app te lleva ahí — quedarse en julio mostraría un aviso de «6 tareas agregadas» sobre una pantalla en la que no cambió nada.
+
+El campo abre en **hoy**, así que la plantilla apunta por omisión al mes actual — **aunque estés mirando otro mes**. El botón *Agregar* nombra el mes destino al pasarle el mouse. Si borrás la fecha, los botones se apagan: sin ella no hay mes al que agregar.
+
+El campo **no recuerda el valor anterior**: vuelve a hoy en cada apertura, así ninguna plantilla sale disparada a un mes que ya nadie eligió.
+
+Como el destino puede no ser el mes visible, el **bloqueo que se comprueba es el del mes destino**: con septiembre bloqueado los botones aparecen apagados y el diálogo dice por qué, aunque estés parado en un julio perfectamente editable. Y al revés — un julio bloqueado ya no impide agregar tareas a septiembre. Los nombres duplicados también se comparan contra el mes destino.
+
 Las tareas de una plantilla se crean con ids nuevos, así que no arrastran estados de ningún lado, y respetan el bloqueo del período igual que cualquier otra alta.
 
 Se cierra con el botón **✕**, con `Esc` o haciendo clic fuera. El selector de mes sigue visible en la sección de Análisis, porque las tarjetas son mensuales; el selector de vista y la navegación por semana/día solo aparecen en el Diario.
 
-Al lado del selector de mes hay además un botón que alterna entre las dos secciones sin abrir el menú: dice **◔ Análisis** en la planilla y **▦ Diario** en la sección de análisis.
+En el **encabezado**, junto al cambio de tema, hay un botón que alterna entre las dos secciones sin abrir el menú: dice **◔ Análisis** en la planilla y **▦ Diario** en la sección de análisis. En móvil se queda solo con el icono, porque el ancho no da para el rótulo.
 
 ### Análisis
 
@@ -335,6 +452,58 @@ Los totales siempre se calculan sobre el **rango visible**, así que cambian al 
 
 Las semanas se alinean al lunes y todas las vistas se recortan a los límites del mes, para que ningún total mezcle datos de dos meses distintos. Las flechas `‹ ›` del bloque de la derecha mueven la ventana; al llegar al borde saltan al mes contiguo.
 
+### Ir a una fecha
+
+Junto a cada selector hay un **icono de calendario** para saltar sin recorrer mes por mes:
+
+| Icono | Abre | Qué muestra |
+|---|---|---|
+| A la derecha del selector de **mes** | *Seleccionar mes* | Los doce meses de un año, sin días. Las flechas cambian de año |
+| A la derecha del selector de **día** | *Seleccionar día* | El calendario del mes, alineado al lunes. Las flechas cambian de mes |
+
+Elegir un día lleva a la **ventana que lo contiene** según la vista activa: en semanal cae en su semana, en diaria en ese día. En los dos calendarios, el día o mes **de hoy** va relleno con el color de la marca y el que ya estás mirando queda contorneado. Navegar dentro del diálogo no mueve la planilla: recién cambia al elegir, y *Cancelar* la deja como estaba.
+
+El selector de día se oculta en la vista mensual, igual que sus flechas: ahí el mes entero es una sola ventana.
+
+### Plegar los controles (solo móvil)
+
+Junto al selector de mes —en el lugar que en escritorio ocupa *Análisis*— hay un botón que **pliega todo lo que hay entre la línea del mes y la planilla**: el selector de vista, la navegación del rango y las acciones del mes. En un teléfono son tres filas que empujan la planilla fuera de la pantalla.
+
+Dice `–` cuando está desplegado y `+` cuando no, y **recuerda cómo lo dejaste**. Solo aparece en la planilla: en la sección de análisis esas tres zonas ya están ocultas y no habría sobre qué actuar.
+
+> El plegado va por una clase en el `body` y no por el atributo `hidden`, que ya lo usa el router para ocultar esas mismas zonas según la sección. Así las dos condiciones conviven sin pisarse.
+
+### Zoom de la planilla (solo móvil)
+
+En pantallas angostas aparece un botón en la barra de acciones del mes, **junto a *Bloquear período***, que cambia la densidad de la planilla. Cicla tres niveles y recuerda el elegido.
+
+No toca solo el ancho de las columnas: baja también el **alto de las filas** y el **cuerpo del nombre de la tarea**.
+
+| Nivel | Días visibles | Alto de fila | Nombre | Caracteres del nombre |
+|---|---|---|---|---|
+| **Cómodo** | ~3 | 66,3px | 15,3px | ~24 |
+| **Normal** | ~5 | 55,3px | 12,3px | ~24 |
+| **Compacto** | ~7 | 47,4px | 10px | ~26 |
+
+*(vista mensual sobre un viewport de 390px, con la raíz en 14px; los caracteres son estimados)*
+
+**Todas las filas miden lo mismo**, entre el nombre en una línea o en dos. La celda de tareas usa `height` y no `min-height`: con un mínimo, un nombre largo empujaba su fila y la planilla quedaba escalonada. El alto se arma con las mismas piezas que ocupa la celda —dos líneas de nombre, una de frecuencia y el padding—, así que sigue al zoom sin números sueltos que se desincronicen. En pantallas de menos de 380px la frecuencia se oculta y el alto deja de reservarle lugar.
+
+**Zoom out gana días sin comerse el nombre**, y eso descansa en dos decisiones:
+
+- **El nombre se parte en dos líneas** en vez de cortarse con puntos suspensivos. En un teléfono sobra alto y falta ancho: con una sola línea, el ellipsis se comía la mitad del nombre por más que la columna creciera.
+- **Hay dos multiplicadores, no uno.** La columna de tareas se mueve mucho menos que las celdas de día (±6% contra ±18%). Si se movieran al mismo ritmo, zoom out volvería a recortar los nombres — que es justo lo que hay que evitar. Como la columna casi no se achica, una tipografía más chica entra **más** texto, no menos.
+
+En *Compacto* la fila queda en 37,7px: por encima del mínimo de 24px que pide WCAG 2.5.8, pero por debajo de los 44px que recomienda el criterio AAA para objetivos táctiles.
+
+> El nombre completo sigue en el `title` de la celda, pero al tacto no hay hover que lo muestre: por eso el objetivo es que entre en la fila.
+
+El punto de partida en móvil es un escalón más chico que antes, porque en un teléfono entraban tres días y poco más. *Cómodo* recupera el tamaño anterior, por si el texto de las tareas queda demasiado recortado.
+
+En escritorio el botón **no existe**: ahí la planilla entra y no hay nada que resolver. Por eso el nivel se aplica dentro del breakpoint angosto y fuera de él el atributo no cambia nada.
+
+> Los niveles multiplican las medidas del breakpoint en vez de fijar las suyas. Si fijaran medidas propias le ganarían por especificidad al bloque de 380px, y el ajuste para pantallas muy angostas quedaría sin efecto en dos de los tres niveles.
+
 ## Atajos de teclado
 
 | Tecla | Acción |
@@ -367,7 +536,7 @@ Las tareas que sobreviven a la copia conservan sus estados de este mes, así que
 **🔒 Bloquear período** deja el mes en solo lectura, para que no se modifique por accidente una vez terminado:
 
 - Las celdas conservan sus colores y puntajes, pero dejan de responder al clic.
-- No se pueden agregar, editar, eliminar ni reordenar tareas, y desaparece la fila *+ Agregar tarea*.
+- No se pueden agregar, editar, eliminar ni reordenar tareas, y *+ Agregar tarea* queda deshabilitado.
 - Un aviso ámbar sobre la planilla indica que el período está bloqueado.
 
 Es reversible: el mismo botón pasa a decir **Desbloquear período**. El bloqueo es por mes, así que podés tener bloqueado julio y seguir cargando agosto.
@@ -388,7 +557,7 @@ Usá exportar/importar para hacer backup o para pasar los datos a otro dispositi
 ## Responsive
 
 - **Escritorio**: planilla completa; la columna de tareas y la de totales quedan fijas al hacer scroll horizontal.
-- **Mobile**: la tabla scrollea en horizontal con la columna de tareas siempre visible; celdas de 46 px de alto para que sean cómodas al tacto.
+- **Mobile**: la tabla scrollea en horizontal con la columna de tareas siempre visible; celdas de 46 px de alto para que sean cómodas al tacto, y un **botón de zoom** para elegir cuántos días entran (ver arriba).
 - Tema **claro/oscuro** automático según el sistema, con toggle manual que se recuerda.
 - Hoja de estilos de impresión: oculta controles y deja solo la planilla.
 

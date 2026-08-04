@@ -1,6 +1,20 @@
 -- =============================================================
 --  Diario de Hábitos — esquema Postgres (Supabase)
 --
+--  ⚠️  ESTE ESQUEMA NO ESTÁ EN USO. Es el diseño al que apunta la
+--      Etapa 3 de `MIGRACION.md`, todavía sin implementar.
+--
+--      Lo que la aplicación usa hoy es `supabase-app-state.sql`:
+--      una sola tabla, `app_state`, con una fila por usuario y el
+--      estado entero como `jsonb`. `app.js` lee y escribe ahí y no
+--      conoce ninguna de las tablas de este archivo.
+--
+--      Correr este script no rompe nada —crea tablas vacías que
+--      nadie consulta—, pero tampoco cambia cómo funciona la app.
+--      Migrar de verdad implica reescribir la persistencia para
+--      hablar en operaciones puntuales en vez de volcar el estado
+--      completo; ese es el trabajo que describe `MIGRACION.md`.
+--
 --  Ejecutar completo en el SQL Editor de Supabase, en este orden.
 --  Es idempotente: se puede volver a correr sin romper nada.
 --
@@ -145,12 +159,17 @@ create index if not exists tasks_por_mes
 --  No hay FK contra `tasks` a propósito: la tarea aparece una vez
 --  por mes materializado, así que no hay una única fila a la cual
 --  apuntar. La integridad la da la FK contra `task_identities`.
+--
+--  `skip` («no requerido») es un estado como los otros tres: el
+--  cliente lo guarda en `status` igual que a `done` o `missed`.
+--  Se diferencia solo en el cálculo —saca el día de la meta en vez
+--  de puntuarlo—, y eso vive en `app.js`, no acá.
 
 create table if not exists public.entries (
   user_id    uuid not null,
   task_id    uuid not null,
   day        date not null,
-  status     text not null check (status in ('done', 'partial', 'missed')),
+  status     text not null check (status in ('done', 'partial', 'missed', 'skip')),
   updated_at timestamptz not null default now(),
 
   primary key (user_id, task_id, day),

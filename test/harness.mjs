@@ -16,12 +16,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
 
-const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+/** Raíz del proyecto. La exportan los casos para leer fuentes sin rutas absolutas. */
+export const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Instante fijo: jueves 30 de julio de 2026, 10:00 local. */
 export const AHORA = new Date(2026, 6, 30, 10, 0, 0);
 
-const leer = f => fs.readFileSync(path.join(RAIZ, f), 'utf8');
+export const leer = f => fs.readFileSync(path.join(RAIZ, f), 'utf8');
 
 /**
  * Levanta la app con un estado ya cargado.

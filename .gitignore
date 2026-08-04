@@ -1,7 +1,4 @@
 node_modules/
 
-# Instantáneas del DOM: se regeneran con `npm run snapshot`.
-test/__snapshots__/
-
 # Configuración local de Claude Code
 .claude/settings.local.json

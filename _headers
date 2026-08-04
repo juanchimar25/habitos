@@ -1,0 +1,14 @@
+# Netlify — mismas cabeceras que sirve Vercel por `vercel.json`.
+#
+# Las dos copias tienen que declarar la MISMA Content-Security-Policy:
+# `test/csp.mjs` lo verifica y falla si se separan. Los hashes autorizan los
+# bloques inline de index.html; si cambia ese código, cambian ellos.
+#
+# GitHub Pages no admite cabeceras propias: publicado ahí, el sitio queda sin
+# CSP. Es una limitación del hosting, no algo que se pueda arreglar acá.
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'sha256-Kij5n+tTAX/incXA40KqtNNt+zGfPTs95ePrW1MQF7Y=' 'sha256-RuP1Gp25pSrG6XDWkQAJTmk6nElFGfBRToDmmkIjLG0='; style-src 'self' 'sha256-xU2Fxy9uxOdU8pLNfsEKMYB5APxoAmkvSXXroTC0XDc='; img-src 'self' data:; connect-src 'self' https://kbeqyhsblsczhhtqwfrj.supabase.co; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'
