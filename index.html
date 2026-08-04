@@ -90,6 +90,56 @@
 
   <!-- Puerta de sesión: se muestra hasta que haya usuario -->
   <div class="auth-gate" id="auth-gate" hidden>
+   <div class="auth-split">
+
+    <!-- Presentación. En móvil pasa DEBAJO del formulario: quien vuelve entra
+         sin scrollear, y quien llega por primera vez sigue leyendo. -->
+    <section class="auth-pitch">
+      <h1 class="pitch-title">Definí tus hábitos.<br>Mirá cómo se sostienen.</h1>
+
+      <p class="pitch-lead">
+        Una planilla mensual donde cada tarea es una fila y cada día una columna.
+        Vos marcás; el resto se calcula solo.
+      </p>
+
+      <ul class="pitch-list">
+        <li>
+          <span class="pitch-check" aria-hidden="true">✓</span>
+          <span>
+            <strong>Ves lo que pasó, no lo que recordás.</strong>
+            La memoria redondea para arriba. El mes entero a la vista deja poco
+            margen para engañarse.
+          </span>
+        </li>
+        <li>
+          <span class="pitch-check" aria-hidden="true">✓</span>
+          <span>
+            <strong>Metas que se adaptan a tu vida.</strong>
+            Diaria, semanal, días fijos o «ocho veces al mes»: la frecuencia se
+            ajusta al hábito, y no al revés.
+          </span>
+        </li>
+        <li>
+          <span class="pitch-check" aria-hidden="true">✓</span>
+          <span>
+            <strong>Te avisa antes de que abandones.</strong>
+            El análisis señala las tareas que se están cayendo mientras todavía
+            queda mes por delante.
+          </span>
+        </li>
+        <li>
+          <span class="pitch-check" aria-hidden="true">✓</span>
+          <span>
+            <strong>Descubrís tus mejores días.</strong>
+            El promedio por día de la semana muestra cuándo rendís más, para
+            poner ahí lo que más cuesta.
+          </span>
+        </li>
+      </ul>
+
+      <p class="pitch-foot">Tus datos son tuyos: exportables cuando quieras.</p>
+    </section>
+
     <div class="auth-card">
       <svg class="brand-mark auth-mark" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
         <polygon points="50,2 98,50 2,50" fill="var(--brand-top)"/>
@@ -98,7 +148,9 @@
               stroke-linecap="butt" stroke-linejoin="miter"/>
       </svg>
 
-      <h1 class="auth-brand">Hábitos</h1>
+      <!-- No es `h1`: ese lugar lo ocupa el titular de la presentación. Acá la
+           marca es una firma sobre el formulario, no el encabezado de la página. -->
+      <p class="auth-brand">Hábitos</p>
       <h2 class="auth-title" id="auth-title">Iniciar sesión</h2>
 
       <p class="auth-notice" id="auth-notice" hidden></p>
@@ -120,6 +172,8 @@
         <button type="button" class="btn btn-ghost auth-toggle" id="auth-toggle">Crear una cuenta</button>
       </form>
     </div>
+
+   </div><!-- /.auth-split -->
   </div>
 
   <div id="app-root" hidden>

@@ -136,7 +136,7 @@ clonado el repositorio. Cuando un cambio de markup es intencional, `npm run snap
 ### Casos de comportamiento
 
 Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue funcionando*. Son
-**239 comprobaciones** repartidas en once archivos, cada uno sobre una funcionalidad:
+**267 comprobaciones** repartidas en doce archivos, cada uno sobre una funcionalidad:
 
 | Caso | Qué cubre |
 |---|---|
@@ -150,6 +150,7 @@ Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue f
 | `color-marca` | El color de hoy sigue al de la marca, con contraste AA en ambos temas |
 | `vendor` | La app arranca con el cliente local y su `integrity` |
 | `red` | Qué primitivas de red toca el cliente real: ningún WebSocket |
+| `landing` | Pantalla partida de la puerta de sesión, orden en móvil y contraste sobre el degradado |
 | `migracion` | Un estado guardado por la versión anterior abre sin perder nada |
 
 Corren en **procesos separados** a propósito: cada uno instala su propio jsdom con reloj,
@@ -194,6 +195,16 @@ verifica el `integrity` de `vendor/` contra el archivo, controla que `connect-sr
 La app pide iniciar sesión antes de mostrar nada. Se puede **crear cuenta** desde la misma
 pantalla; si el proyecto tiene la confirmación por mail activada, avisa que hay que revisar el
 correo. Los mensajes de error de Supabase se muestran traducidos.
+
+Esa puerta es una **pantalla partida**: a la izquierda, un panel violeta con los degradados de la
+marca que cuenta qué hace la app y por qué llevar el registro sirve; a la derecha, el formulario.
+En pantallas de menos de 860px pasa a una columna con el **formulario arriba**, para que quien ya
+tiene cuenta entre sin scrollear y quien llega por primera vez siga leyendo abajo.
+
+> El texto del panel va sobre un degradado, así que su contraste se mide contra **cada parada**:
+> la más clara es la que manda. Blanco puro da 5,43:1 ahí y el texto de apoyo 4,63:1 — los dos
+> pasan AA. Por debajo del 86% de blanco se cae, y por eso el pie no usa un velo más tenue: su
+> jerarquía la dan el cuerpo más chico y una línea de separación.
 
 Al pie del menú lateral aparecen el **email de la sesión** y **Cerrar sesión**.
 

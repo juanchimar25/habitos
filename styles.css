@@ -210,17 +210,114 @@ body {
   overflow-y: auto;
 }
 
-.auth-card {
-  width: min(380px, 100%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: .25rem;
-  padding: 2rem 1.75rem;
+/* Pantalla partida: a la izquierda qué es la app, a la derecha entrar.
+   Las dos mitades van dentro de una sola caja con el recorte compartido, así
+   el violeta llega hasta el borde redondeado sin sobresalir. */
+.auth-split {
+  width: min(960px, 100%);
+  display: grid;
+  grid-template-columns: 1.08fr .92fr;
+  align-items: stretch;
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* --- panel de presentación --- */
+
+/* Violetas de la marca. El más claro del degradado da 5,43:1 con blanco y el
+   más oscuro 11,56:1, así que el texto pasa AA en todo el recorrido. */
+.auth-pitch {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  padding: 2.5rem 2.25rem;
+  background: linear-gradient(155deg, #8158a4 0%, #6b3f8e 55%, #4a2b63 100%);
+  color: #fff;
+}
+
+.pitch-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -.015em;
+}
+
+.pitch-lead {
+  margin: 0;
+  font-size: .95rem;
+  line-height: 1.5;
+  /* Blanco velado para el texto de apoyo: baja la jerarquía sin salirse de AA. */
+  color: rgba(255, 255, 255, .88);
+}
+
+.pitch-list {
+  margin: .25rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: .9rem;
+}
+
+.pitch-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: .65rem;
+  font-size: .875rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, .88);
+}
+
+.pitch-list strong {
+  display: block;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* El tilde repite el gesto del logo. Va en una pastilla translúcida para que
+   se lea sobre cualquier punto del degradado. */
+.pitch-check {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: .1rem;
+  display: grid;
+  place-items: center;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, .18);
+  color: #fff;
+  font-size: .72rem;
+  line-height: 1;
+}
+
+/* Mismo velo que el resto del panel, no uno más tenue: sobre la parada más
+   clara del degradado, por debajo del 86% de blanco se cae de AA. La jerarquía
+   la dan el cuerpo más chico y la línea de separación. */
+.pitch-foot {
+  margin: auto 0 0;
+  padding-top: .85rem;
+  border-top: 1px solid rgba(255, 255, 255, .18);
+  font-size: .8rem;
+  color: rgba(255, 255, 255, .88);
+}
+
+/* --- tarjeta de sesión --- */
+
+/* Dentro de la pantalla partida es una mitad, no una tarjeta suelta: el marco
+   y la sombra los pone `.auth-split`. */
+.auth-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .25rem;
+  padding: 2.5rem 2rem;
+  background: var(--bg-elev);
 }
 
 .auth-mark { width: 56px; height: 56px; }
@@ -1621,6 +1718,20 @@ tbody tr:hover .move-stack,
   :root { --task-w: 212px; --total-w: 70px; --cell-w: 42px; }
   .grid.view-month { --cell-w: 38px; }
   .legend-hint { margin-left: 0; flex-basis: 100%; }
+}
+
+@media (max-width: 860px) {
+  /* Una sola columna, y el formulario ARRIBA: quien ya tiene cuenta entra sin
+     scrollear, y quien llega por primera vez sigue leyendo abajo. El orden del
+     DOM deja la presentación primero porque es lo correcto en pantalla ancha. */
+  .auth-split { grid-template-columns: 1fr; }
+  .auth-card { order: -1; padding: 2rem 1.5rem; }
+
+  .auth-pitch { padding: 2rem 1.5rem 2.25rem; gap: 1rem; }
+  .pitch-title { font-size: 1.4rem; }
+  /* En una columna el pie pega contra la última viñeta: no hay alto sobrante
+     que repartir, así que se le da el aire a mano. */
+  .pitch-foot { margin-top: .35rem; }
 }
 
 @media (max-width: 640px) {
