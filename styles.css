@@ -203,40 +203,37 @@ body {
   position: fixed;
   inset: 0;
   z-index: 60;
-  display: grid;
-  place-items: center;
-  padding: 1.5rem;
   background: var(--bg);
   overflow-y: auto;
 }
 
-/* Pantalla partida: a la izquierda qué es la app, a la derecha entrar.
-   Las dos mitades van dentro de una sola caja con el recorte compartido, así
-   el violeta llega hasta el borde redondeado sin sobresalir. */
+/* La pantalla partida al medio, de borde a borde. `min-height` y no `height`:
+   si la presentación no entra, la puerta scrollea en vez de recortarla. */
 .auth-split {
-  width: min(960px, 100%);
+  min-height: 100%;
   display: grid;
-  grid-template-columns: 1.08fr .92fr;
+  grid-template-columns: 1fr 1fr;
   align-items: stretch;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  overflow: hidden;
 }
 
-/* --- panel de presentación --- */
+/* --- panel de presentación, mitad derecha --- */
 
 /* Violetas de la marca. El más claro del degradado da 5,43:1 con blanco y el
    más oscuro 11,56:1, así que el texto pasa AA en todo el recorrido. */
 .auth-pitch {
+  grid-column: 2;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 1.15rem;
-  padding: 2.5rem 2.25rem;
+  padding: 3rem clamp(2rem, 5vw, 4rem);
   background: linear-gradient(155deg, #8158a4 0%, #6b3f8e 55%, #4a2b63 100%);
   color: #fff;
 }
+
+/* En pantallas anchas la mitad puede superar los 900px, y una línea de texto de
+   ese largo se lee mal. El contenido se topa; el degradado sigue hasta el borde. */
+.auth-pitch > * { max-width: 34rem; width: 100%; }
 
 .pitch-title {
   margin: 0;
@@ -297,27 +294,34 @@ body {
 /* Mismo velo que el resto del panel, no uno más tenue: sobre la parada más
    clara del degradado, por debajo del 86% de blanco se cae de AA. La jerarquía
    la dan el cuerpo más chico y la línea de separación. */
+/* El bloque va centrado en su mitad, así que el pie no se empuja al fondo:
+   se separa con la línea, no con el espacio sobrante. */
 .pitch-foot {
-  margin: auto 0 0;
+  margin: .25rem 0 0;
   padding-top: .85rem;
   border-top: 1px solid rgba(255, 255, 255, .18);
   font-size: .8rem;
   color: rgba(255, 255, 255, .88);
 }
 
-/* --- tarjeta de sesión --- */
+/* --- tarjeta de sesión, flotando en la mitad izquierda --- */
 
-/* Dentro de la pantalla partida es una mitad, no una tarjeta suelta: el marco
-   y la sombra los pone `.auth-split`. */
+/* `place-self: center` la centra en su mitad en los dos ejes. El ancho descuenta
+   los márgenes laterales para que en una mitad angosta no toque los bordes. */
 .auth-card {
-  width: 100%;
+  grid-column: 1;
+  place-self: center;
+  width: min(380px, calc(100% - 3rem));
+  margin: 2.5rem 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: .25rem;
-  padding: 2.5rem 2rem;
+  padding: 2.25rem 1.75rem;
   background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 
 .auth-mark { width: 56px; height: 56px; }
@@ -1721,17 +1725,12 @@ tbody tr:hover .move-stack,
 }
 
 @media (max-width: 860px) {
-  /* Una sola columna, y el formulario ARRIBA: quien ya tiene cuenta entra sin
-     scrollear, y quien llega por primera vez sigue leyendo abajo. El orden del
-     DOM deja la presentación primero porque es lo correcto en pantalla ancha. */
+  /* Las mitades se apilan. No hace falta invertir nada: el formulario ya va
+     primero en el orden del documento, así que queda arriba solo. */
   .auth-split { grid-template-columns: 1fr; }
-  .auth-card { order: -1; padding: 2rem 1.5rem; }
-
-  .auth-pitch { padding: 2rem 1.5rem 2.25rem; gap: 1rem; }
+  .auth-card { grid-column: 1; margin: 2rem 0; }
+  .auth-pitch { grid-column: 1; padding: 2.25rem 1.5rem 2.5rem; gap: 1rem; }
   .pitch-title { font-size: 1.4rem; }
-  /* En una columna el pie pega contra la última viñeta: no hay alto sobrante
-     que repartir, así que se le da el aire a mano. */
-  .pitch-foot { margin-top: .35rem; }
 }
 
 @media (max-width: 640px) {

@@ -92,8 +92,45 @@
   <div class="auth-gate" id="auth-gate" hidden>
    <div class="auth-split">
 
-    <!-- Presentación. En móvil pasa DEBAJO del formulario: quien vuelve entra
-         sin scrollear, y quien llega por primera vez sigue leyendo. -->
+    <!-- El formulario va PRIMERO en el orden del documento aunque en pantalla
+         ancha ocupe la mitad izquierda: es la acción principal, y así en móvil
+         —donde las mitades se apilan— queda arriba sin invertir nada. Quien ya
+         tiene cuenta entra sin scrollear; quien llega por primera vez sigue
+         leyendo abajo. -->
+    <div class="auth-card">
+      <svg class="brand-mark auth-mark" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <polygon points="50,2 98,50 2,50" fill="var(--brand-top)"/>
+        <polygon points="2,50 98,50 50,98" fill="var(--brand-bottom)"/>
+        <path d="M27 46 L45 64 L74 30" fill="none" stroke="#fff" stroke-width="13"
+              stroke-linecap="butt" stroke-linejoin="miter"/>
+      </svg>
+
+      <!-- No es `h1`: ese lugar lo ocupa el titular de la presentación. Acá la
+           marca es una firma sobre el formulario, no el encabezado de la página. -->
+      <p class="auth-brand">Hábitos</p>
+      <h2 class="auth-title" id="auth-title">Iniciar sesión</h2>
+
+      <p class="auth-notice" id="auth-notice" hidden></p>
+
+      <form class="auth-form" id="auth-form" novalidate>
+        <label class="field">
+          <span class="field-label">Email</span>
+          <input type="email" id="auth-email" autocomplete="email" required>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Contraseña</span>
+          <input type="password" id="auth-password" autocomplete="current-password" required>
+        </label>
+
+        <p class="form-error" id="auth-error" role="alert" hidden></p>
+
+        <button type="submit" class="btn btn-primary auth-submit" id="auth-submit">Entrar</button>
+        <button type="button" class="btn btn-ghost auth-toggle" id="auth-toggle">Crear una cuenta</button>
+      </form>
+    </div>
+
+    <!-- Presentación: ocupa entera la mitad derecha. -->
     <section class="auth-pitch">
       <h1 class="pitch-title">Definí tus hábitos.<br>Mirá cómo se sostienen.</h1>
 
@@ -139,39 +176,6 @@
 
       <p class="pitch-foot">Tus datos son tuyos: exportables cuando quieras.</p>
     </section>
-
-    <div class="auth-card">
-      <svg class="brand-mark auth-mark" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-        <polygon points="50,2 98,50 2,50" fill="var(--brand-top)"/>
-        <polygon points="2,50 98,50 50,98" fill="var(--brand-bottom)"/>
-        <path d="M27 46 L45 64 L74 30" fill="none" stroke="#fff" stroke-width="13"
-              stroke-linecap="butt" stroke-linejoin="miter"/>
-      </svg>
-
-      <!-- No es `h1`: ese lugar lo ocupa el titular de la presentación. Acá la
-           marca es una firma sobre el formulario, no el encabezado de la página. -->
-      <p class="auth-brand">Hábitos</p>
-      <h2 class="auth-title" id="auth-title">Iniciar sesión</h2>
-
-      <p class="auth-notice" id="auth-notice" hidden></p>
-
-      <form class="auth-form" id="auth-form" novalidate>
-        <label class="field">
-          <span class="field-label">Email</span>
-          <input type="email" id="auth-email" autocomplete="email" required>
-        </label>
-
-        <label class="field">
-          <span class="field-label">Contraseña</span>
-          <input type="password" id="auth-password" autocomplete="current-password" required>
-        </label>
-
-        <p class="form-error" id="auth-error" role="alert" hidden></p>
-
-        <button type="submit" class="btn btn-primary auth-submit" id="auth-submit">Entrar</button>
-        <button type="button" class="btn btn-ghost auth-toggle" id="auth-toggle">Crear una cuenta</button>
-      </form>
-    </div>
 
    </div><!-- /.auth-split -->
   </div>

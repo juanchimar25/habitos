@@ -21,8 +21,29 @@ const css = leer('styles.css');
   const mitades = [...(split?.children ?? [])].map(n => n.className);
   console.log('  mitades:', mitades.join(' · '));
   ok('son dos', mitades.length === 2, String(mitades.length));
-  ok('la presentación va primera en el DOM', mitades[0] === 'auth-pitch');
-  ok('y el formulario después', mitades[1] === 'auth-card');
+
+  /* El formulario va primero en el DOM aunque en pantalla ancha ocupe la mitad
+     izquierda: es la acción principal, y así al apilarse queda arriba sin que
+     haya que invertir el orden visual. */
+  ok('el formulario va primero en el DOM', mitades[0] === 'auth-card');
+  ok('y la presentación después', mitades[1] === 'auth-pitch');
+}
+
+// --- 1b. la partición ocupa la pantalla y cada mitad su columna -----------
+{
+  const split = css.match(/\.auth-split \{([\s\S]*?)\n\}/)?.[1] ?? '';
+  ok('la partición es mitad y mitad',
+    /grid-template-columns: 1fr 1fr;/.test(split), split.match(/grid-template-columns[^;]*/)?.[0]);
+  ok('y ocupa el alto de la pantalla', /min-height: 100%;/.test(split));
+  ok('la puerta ya no centra una tarjeta suelta',
+    !/place-items: center/.test(css.match(/\.auth-gate \{([\s\S]*?)\n\}/)?.[1] ?? ''));
+
+  const card = css.match(/\n\.auth-card \{([\s\S]*?)\n\}/)?.[1] ?? '';
+  const pitch = css.match(/\.auth-pitch \{([\s\S]*?)\n\}/)?.[1] ?? '';
+  ok('el formulario cae en la columna izquierda', /grid-column: 1;/.test(card));
+  ok('y flota centrado en su mitad', /place-self: center;/.test(card));
+  ok('la presentación cae en la columna derecha', /grid-column: 2;/.test(pitch));
+  ok('y su contenido se centra en vertical', /justify-content: center;/.test(pitch));
 }
 
 // --- 2. contenido de la presentación --------------------------------------
@@ -66,7 +87,13 @@ const css = leer('styles.css');
     .map(m => m[1]).find(b => b.includes('.auth-split')) ?? '';
   ok('hay un breakpoint para la pantalla partida', bloque !== '');
   ok('pasa a una columna', /\.auth-split \{ grid-template-columns: 1fr; \}/.test(bloque));
-  ok('y sube el formulario', /\.auth-card \{ order: -1;/.test(bloque));
+  /* Al apilarse, el formulario queda arriba por el orden del DOM. Invertirlo con
+     `order` volvería a separar el orden visual del de lectura, que es lo que
+     esta estructura vino a evitar. */
+  ok('sin invertir el orden con `order`', !/order:\s*-?\d/.test(bloque),
+    bloque.match(/order:\s*-?\d+/)?.[0] ?? '(no lo usa)');
+  ok('las dos mitades quedan en la misma columna',
+    /\.auth-card \{ grid-column: 1;/.test(bloque) && /\.auth-pitch \{ grid-column: 1;/.test(bloque));
 }
 
 // --- 5. contraste del texto sobre el violeta ------------------------------

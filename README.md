@@ -136,7 +136,7 @@ clonado el repositorio. Cuando un cambio de markup es intencional, `npm run snap
 ### Casos de comportamiento
 
 Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue funcionando*. Son
-**267 comprobaciones** repartidas en doce archivos, cada uno sobre una funcionalidad:
+**275 comprobaciones** repartidas en doce archivos, cada uno sobre una funcionalidad:
 
 | Caso | Qué cubre |
 |---|---|
@@ -150,7 +150,7 @@ Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue f
 | `color-marca` | El color de hoy sigue al de la marca, con contraste AA en ambos temas |
 | `vendor` | La app arranca con el cliente local y su `integrity` |
 | `red` | Qué primitivas de red toca el cliente real: ningún WebSocket |
-| `landing` | Pantalla partida de la puerta de sesión, orden en móvil y contraste sobre el degradado |
+| `landing` | Pantalla partida de la puerta de sesión, apilado en móvil y contraste sobre el degradado |
 | `migracion` | Un estado guardado por la versión anterior abre sin perder nada |
 
 Corren en **procesos separados** a propósito: cada uno instala su propio jsdom con reloj,
@@ -196,10 +196,14 @@ La app pide iniciar sesión antes de mostrar nada. Se puede **crear cuenta** des
 pantalla; si el proyecto tiene la confirmación por mail activada, avisa que hay que revisar el
 correo. Los mensajes de error de Supabase se muestran traducidos.
 
-Esa puerta es una **pantalla partida**: a la izquierda, un panel violeta con los degradados de la
-marca que cuenta qué hace la app y por qué llevar el registro sirve; a la derecha, el formulario.
-En pantallas de menos de 860px pasa a una columna con el **formulario arriba**, para que quien ya
-tiene cuenta entre sin scrollear y quien llega por primera vez siga leyendo abajo.
+Esa puerta ocupa la pantalla completa **partida al medio**: en la mitad derecha, un panel con los
+degradados violeta de la marca que cuenta qué hace la app y por qué llevar el registro sirve; en
+la izquierda, el formulario flotando centrado. En menos de 860px las mitades se apilan y el
+formulario queda arriba.
+
+> El formulario va **primero en el orden del documento** aunque en pantalla ancha ocupe la mitad
+> izquierda. Es la acción principal, y así al apilarse queda arriba sin invertir nada con `order`:
+> el orden de lectura y el visual no se separan, y quien ya tiene cuenta entra sin scrollear.
 
 > El texto del panel va sobre un degradado, así que su contraste se mide contra **cada parada**:
 > la más clara es la que manda. Blanco puro da 5,43:1 ahí y el texto de apoyo 4,63:1 — los dos
