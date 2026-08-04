@@ -112,14 +112,17 @@
 
       <p class="auth-notice" id="auth-notice" hidden></p>
 
+      <!-- Cuatro modos sobre el mismo formulario: iniciar sesión, crear cuenta,
+           pedir el correo de recuperación y definir la contraseña nueva. Los
+           campos que no hacen falta se ocultan; los rótulos los pone auth.js. -->
       <form class="auth-form" id="auth-form" novalidate>
-        <label class="field">
+        <label class="field" id="auth-email-field">
           <span class="field-label">Email</span>
           <input type="email" id="auth-email" autocomplete="email" required>
         </label>
 
-        <label class="field">
-          <span class="field-label">Contraseña</span>
+        <label class="field" id="auth-password-field">
+          <span class="field-label" id="auth-password-label">Contraseña</span>
           <input type="password" id="auth-password" autocomplete="current-password" required>
         </label>
 
@@ -127,6 +130,8 @@
 
         <button type="submit" class="btn btn-brand auth-submit" id="auth-submit">Entrar</button>
         <button type="button" class="btn btn-ghost auth-toggle" id="auth-toggle">Crear una cuenta</button>
+
+        <button type="button" class="auth-forgot" id="auth-forgot">¿Olvidaste tu contraseña?</button>
       </form>
     </div>
 

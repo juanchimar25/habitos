@@ -53,7 +53,11 @@ const nuevoDom = () => {
 async function correrAuth(w) {
   const fuente = leer('auth.js')
     .replace(/^const \{ createClient \} = .*$/m,
-      'const createClient = window.__createClient;');
+      'const createClient = window.__createClient;')
+    /* `import.meta` solo existe dentro de un módulo, y acá el archivo se evalúa
+       envuelto en una función. En el navegador `auth.js` SÍ es un módulo, así
+       que la línea es correcta; lo que no sirve es este arnés. */
+    .replace(/new URL\('\.', import\.meta\.url\)\.href/, "'https://ejemplo.test/'");
   await w.eval(`(async () => { ${fuente} })()`);
 }
 

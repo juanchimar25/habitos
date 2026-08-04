@@ -350,6 +350,23 @@ body {
 .auth-submit { margin-top: .35rem; padding: .6rem; }
 .auth-toggle { align-self: center; font-size: .82rem; }
 
+/* Enlace de texto, no botón: es la salida menos frecuente de la pantalla y no
+   tiene que competir con «Entrar» ni con «Crear una cuenta». */
+.auth-forgot {
+  align-self: center;
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: .2rem;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: .78rem;
+  text-decoration: underline;
+  text-underline-offset: .2em;
+  cursor: pointer;
+}
+.auth-forgot:hover { color: var(--brand-text); }
+
 /* Aviso neutro: configuración faltante o mail de confirmación enviado */
 .auth-notice {
   width: 100%;

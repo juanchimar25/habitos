@@ -136,7 +136,7 @@ clonado el repositorio. Cuando un cambio de markup es intencional, `npm run snap
 ### Casos de comportamiento
 
 Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue funcionando*. Son
-**283 comprobaciones** repartidas en doce archivos, cada uno sobre una funcionalidad:
+**319 comprobaciones** repartidas en trece archivos, cada uno sobre una funcionalidad:
 
 | Caso | Qué cubre |
 |---|---|
@@ -151,6 +151,7 @@ Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue f
 | `vendor` | La app arranca con el cliente local y su `integrity` |
 | `red` | Qué primitivas de red toca el cliente real: ningún WebSocket |
 | `landing` | Pantalla partida de la puerta de sesión, apilado en móvil y contraste sobre el degradado |
+| `recuperacion` | El ciclo completo de «olvidaste tu contraseña», con el cliente instrumentado |
 | `migracion` | Un estado guardado por la versión anterior abre sin perder nada |
 
 Corren en **procesos separados** a propósito: cada uno instala su propio jsdom con reloj,
@@ -209,6 +210,26 @@ formulario queda arriba.
 > la más clara es la que manda. Blanco puro da 5,43:1 ahí y el texto de apoyo 4,63:1 — los dos
 > pasan AA. Por debajo del 86% de blanco se cae, y por eso el pie no usa un velo más tenue: su
 > jerarquía la dan el cuerpo más chico y una línea de separación.
+
+### Recuperar la contraseña
+
+Debajo del formulario hay un **«¿Olvidaste tu contraseña?»** que pide solo el email y manda un
+correo con un enlace. Al volver desde ese enlace la app pide directamente la contraseña nueva.
+
+El mismo formulario tiene cuatro modos —entrar, crear cuenta, pedir el correo y elegir la
+contraseña nueva—, y en cada uno se muestran solo los campos que hacen falta.
+
+> **La puerta sigue cerrada durante la recuperación.** El enlace del correo deja una sesión
+> válida, así que sin una guarda explícita la app se abriría y la pantalla para cambiar la
+> contraseña no llegaría a verse nunca: quien entró por haberla olvidado quedaría adentro sin
+> haberla cambiado. Recién se abre cuando `updateUser` confirma la nueva.
+
+> **El aviso no dice si la cuenta existe.** Responde «si hay una cuenta con ese email, te llega un
+> correo», y no «no encontramos esa cuenta». Lo segundo convertiría la pantalla en un verificador
+> de quién está registrado, disponible sin iniciar sesión.
+
+Para que el enlace vuelva a la app, su dirección tiene que estar declarada en Supabase →
+*Authentication → URL Configuration*. Si no está, el correo redirige al *Site URL* del proyecto.
 
 Al pie del menú lateral aparecen el **email de la sesión** y **Cerrar sesión**.
 
