@@ -136,7 +136,7 @@ clonado el repositorio. Cuando un cambio de markup es intencional, `npm run snap
 ### Casos de comportamiento
 
 Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue funcionando*. Son
-**277 comprobaciones** repartidas en doce archivos, cada uno sobre una funcionalidad:
+**283 comprobaciones** repartidas en doce archivos, cada uno sobre una funcionalidad:
 
 | Caso | Qué cubre |
 |---|---|

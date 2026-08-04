@@ -73,9 +73,8 @@ for (const [nombre, tema] of [['CLARO', claro], ['OSCURO', oscuro]]) {
    si la superficie habla del día de hoy o de la marca. */
 const superficies = [
   ['marcador del día actual', /\.col-day\.is-today \.dnum \{[^}]*\}/, '--today'],
-  ['botón + Agregar tarea', /\.btn-today \{[^}]*\}/, '--today'],
   ['vista activa del selector', /\.seg\[aria-pressed="true"\] \{[^}]*\}/, '--today'],
-  ['botón Entrar / Crear cuenta', /\n\.auth-submit \{[^}]*\}/, '--brand-text'],
+  ['modificador .btn-brand', /\n\.btn-brand \{[^}]*\}/, '--brand-text'],
 ];
 
 console.log('\n=== superficies con relleno de marca ===');
@@ -92,15 +91,41 @@ const conBlancoFijo = superficies.filter(([, re]) => /color:\s*#fff/.test(css.ma
 ok('  ninguna deja el blanco fijo', conBlancoFijo.length === 0,
   conBlancoFijo.map(s => s[0]).join(', ') || '(ninguna)');
 
-/* El botón no puede llevar además `btn-primary`: esa clase pinta con el color
-   de acento y se define DESPUÉS en la hoja, así que ganaría por orden. */
+/* --- la cascada, que es lo que de verdad decide -----------------------------
+   `.btn` y un modificador tienen la MISMA especificidad —una clase cada uno—,
+   así que gana el que aparezca después en la hoja. Un modificador definido
+   antes de `.btn` queda escrito pero sin efecto: el botón sale con el fondo de
+   la clase base. Comprobar solo que la regla contenga las declaraciones no
+   alcanza; hay que comprobar dónde está. */
+{
+  const linea = re => {
+    const m = css.match(re);
+    return m ? css.slice(0, m.index).split('\n').length : null;
+  };
+  const base = linea(/\n\.btn \{/);
+  ok('  se encuentra la clase base .btn', Number.isFinite(base), `línea ${base}`);
+
+  for (const [nombre, re] of [['.btn-brand', /\n\.btn-brand \{/],
+    ['.btn-primary', /\n\.btn-primary \{/], ['.btn-danger', /\n\.btn-danger \{/]]) {
+    const donde = linea(re);
+    ok(`  ${nombre} se define después de .btn`, donde > base,
+      `${nombre} en ${donde}, .btn en ${base}`);
+  }
+}
+
+/* --- quién lleva el relleno de marca en el HTML --------------------------- */
 {
   const html = leer('index.html');
-  const clases = html.match(/id="auth-submit"[^>]*/)?.[0]
-    ?? html.match(/class="([^"]*)"[^>]*id="auth-submit"/)?.[1] ?? '';
-  const etiqueta = html.match(/<button[^>]*id="auth-submit"[^>]*>/)?.[0] ?? '';
-  ok('  el botón no arrastra btn-primary', !/btn-primary/.test(etiqueta),
-    etiqueta.match(/class="[^"]*"/)?.[0] ?? clases);
+  for (const [nombre, id] of [['Entrar / Crear cuenta', 'auth-submit'],
+    ['+ Agregar tarea', 'btn-add-task']]) {
+    const etiqueta = html.match(new RegExp(`<button[^>]*id="${id}"[^>]*>`))?.[0]
+      ?? html.match(new RegExp(`<button[^>]*id="${id}"[\\s\\S]*?>`))?.[0] ?? '';
+    const clases = etiqueta.match(/class="([^"]*)"/)?.[1] ?? '';
+    ok(`  ${nombre} lleva btn-brand`, /\bbtn-brand\b/.test(clases), clases);
+    /* `btn-primary` pinta con el color de acento y también va después de `.btn`:
+       las dos juntas se pisarían según el orden, no según la intención. */
+    ok(`  ${nombre} sin btn-primary`, !/\bbtn-primary\b/.test(clases), clases);
+  }
 }
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');

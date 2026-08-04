@@ -19,7 +19,7 @@ const ok = (n, cond, det = '') => {
     barra.indexOf('btn-add-task') < barra.indexOf('btn-copy-prev'));
 
   const btn = doc.querySelector('#btn-add-task');
-  ok('lleva la clase de color de hoy', btn.classList.contains('btn-today'),
+  ok('lleva el relleno del color de la marca', btn.classList.contains('btn-brand'),
     btn.className);
   ok('dice «+ Agregar tarea»', btn.textContent.trim() === '+ Agregar tarea',
     JSON.stringify(btn.textContent.trim()));

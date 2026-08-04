@@ -345,22 +345,9 @@ body {
 
 .auth-form { width: 100%; display: flex; flex-direction: column; gap: .9rem; }
 
-/* Entrar / Crear cuenta lleva el color con que se escribe «Hábitos», no el de
-   acento. Es el mismo par que el resto de los acentos de la app, así que el
-   texto encima se adapta al tema y no queda blanco sobre lavanda. */
-.auth-submit {
-  margin-top: .35rem;
-  padding: .6rem;
-  background: var(--brand-text);
-  border-color: transparent;
-  color: var(--brand-fg);
-  font-weight: 620;
-}
-.auth-submit:hover:not(:disabled) {
-  background: var(--brand-text);
-  border-color: transparent;
-  filter: brightness(1.08);
-}
+/* Solo el encuadre: el color lo pone `.btn-brand`, que se define después de
+   `.btn` y por eso sí le gana. */
+.auth-submit { margin-top: .35rem; padding: .6rem; }
 .auth-toggle { align-self: center; font-size: .82rem; }
 
 /* Aviso neutro: configuración faltante o mail de confirmación enviado */
@@ -558,6 +545,25 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn-danger:hover { filter: brightness(1.08); background: var(--danger); border-color: var(--danger); }
 
+/* Relleno con el color de la marca, para la acción principal de cada pantalla:
+   entrar y dar de alta una tarea.
+
+   Va acá, junto al resto de los modificadores, y NO en la sección de cada
+   pantalla. `.btn` y un modificador tienen la misma especificidad —una clase—,
+   así que decide el orden de aparición: definido antes que `.btn`, la clase
+   base le pisaría el fondo y el botón saldría blanco. */
+.btn-brand {
+  background: var(--brand-text);
+  border-color: transparent;
+  color: var(--brand-fg);
+  font-weight: 620;
+}
+.btn-brand:hover:not(:disabled) {
+  background: var(--brand-text);
+  border-color: transparent;
+  filter: brightness(1.08);
+}
+
 .btn-ghost { border-color: transparent; background: transparent; color: var(--text-muted); }
 .btn-ghost:hover:not(:disabled) { background: var(--bg-sunken); border-color: transparent; color: var(--text); }
 
@@ -749,18 +755,9 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .month-bar .btn:disabled { opacity: .45; cursor: not-allowed; }
 .month-bar .btn:disabled:hover { background: transparent; }
 
-/* El alta de tarea es la acción principal de la barra, y lleva el mismo color
-   con que el encabezado marca el día de hoy. */
-.btn-today {
-  background: var(--today);
-  border-color: transparent;
-  color: var(--brand-fg);
-  font-weight: 620;
-}
-.btn-today:hover:not(:disabled) { background: var(--today); filter: brightness(1.08); }
 /* El `opacity` de la barra alcanzaría, pero el hover general de .btn pinta el
    fondo transparente y se perdería el color. */
-.month-bar .btn-today:disabled:hover { background: var(--today); }
+.month-bar .btn-brand:disabled:hover { background: var(--brand-text); }
 
 .btn-ghost-danger { color: var(--missed-fg); }
 .btn-ghost-danger:hover:not(:disabled) { background: var(--missed-bg); color: var(--missed-fg); }
