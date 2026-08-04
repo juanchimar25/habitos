@@ -1,3 +1,18 @@
+# Finales de línea LF en todo el árbol de trabajo, en cualquier sistema.
+#
+# No es cosmético: la CSP de `vercel.json` autoriza los bloques inline de
+# index.html por HASH de su contenido, y `index.html` lleva el `integrity` del
+# bundle de vendor/. Los dos son hashes byte a byte.
+#
+# Sin esta línea, un checkout en Windows con `core.autocrlf=true` convierte los
+# saltos a CRLF: el archivo pesa distinto, los hashes calculados en local dejan
+# de coincidir con los publicados, y `npm run check` falla. El peligro no es que
+# falle, es lo que viene después — si alguien "arregla" los hashes con los
+# valores CRLF, el navegador bloquea los scripts en producción, donde Vercel
+# sirve el archivo con LF. Sin scripts inline no hay tema; sin bundle no hay
+# sesión.
+* text=auto eol=lf
+
 # El bundle de `vendor/` está protegido por un `integrity` en index.html, que es
 # un hash BYTE A BYTE del archivo. Con la conversión automática de finales de
 # línea de Git, un checkout en Windows lo dejaría con CRLF: distinta cantidad de
