@@ -1,6 +1,6 @@
 /* Plantillas: la fecha de inicio es obligatoria, arranca en HOY y decide el
    mes destino. Hoy es jueves 30 de julio de 2026 (reloj del arnés). */
-import { montar } from '../harness.mjs';
+import { montar, moverMeses } from '../harness.mjs';
 import { ESTADO_VACIO } from '../escenarios.mjs';
 
 let fallos = 0;
@@ -13,7 +13,7 @@ const meses = w => JSON.parse(w.localStorage.getItem('tareas-diarias/v1/u-test')
 /** `fecha === null` deja el valor por omisión; una cadena lo reemplaza. */
 const abrir = async (estado, fecha, { irAMes } = {}) => {
   const { window, doc } = await montar(estado);
-  if (irAMes) for (let i = 0; i < irAMes; i++) doc.querySelector('#next-month').click();
+  moverMeses(doc, irAMes ?? 0);
   doc.querySelector('#btn-templates').click();
   if (fecha !== null) {
     const input = doc.querySelector('#templates-start');

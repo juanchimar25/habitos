@@ -180,6 +180,13 @@
   /** Días que abarca cada vista. La mensual se resuelve aparte, como el mes entero. */
   const VIEW_SIZE = { day: 1, week: 7 };
 
+  /** Rótulo de cada vista, para el botón que abre el desplegable. */
+  const VIEW_LABEL = { day: 'Diario', week: 'Semanal', month: 'Mensual' };
+
+  /* Qué mueve una flecha en cada vista, para nombrarlas por lo que hacen. Lleva
+     el artículo porque «semana» es femenino: «a la semana anterior», no «al». */
+  const VIEW_STEP = { day: 'al día', week: 'a la semana', month: 'al mes' };
+
   const LOCALE = 'es-AR';
 
   /** Rótulo del botón de confirmar cuando quien lo abre no pide otro. */
@@ -640,6 +647,28 @@
   let avisoSync = '';
 
   /**
+   * Espera antes de subir. Agrupa las ráfagas —marcar una fila entera son diez
+   * o quince clics seguidos— en una sola escritura, en vez de mandar el estado
+   * completo por cada celda.
+   *
+   * No se reinicia con cada cambio: el primero arma el temporizador y los que
+   * llegan después viajan con él. Un debounce que se reinicia dejaría que
+   * alguien marcando sin parar postergara la subida indefinidamente.
+   */
+  const ESPERA_SYNC = 800;
+
+  /** Reintento tras un fallo: 5s, 10s, 20s, 40s, y de ahí en más cada minuto. */
+  const REINTENTO_BASE = 5000;
+  const REINTENTO_TOPE = 60000;
+
+  let syncTimer = null;
+  /** Hay un upsert sin resolver. Nunca se lanzan dos a la vez: ver `drenarSync`. */
+  let syncEnVuelo = false;
+  /** El estado local tiene cambios que todavía no están en la base. */
+  let cambiosSinSubir = false;
+  let fallosSeguidos = 0;
+
+  /**
    * Avisa en pantalla, y una sola vez, cuando cambia el estado de la
    * sincronización. Un `console.error` no alcanza: fue exactamente así como
    * la app estuvo guardando solo en el navegador sin que se notara.
@@ -652,15 +681,94 @@
     else if (seRecupero) toast('Sincronización restablecida');
   }
 
-  function save() {
+  /**
+   * Marca la hora de los cambios que todavía no llegaron a la base. Vive en su
+   * propia clave y no dentro del estado, para no tocar el formato del payload
+   * —es el mismo JSON que exporta la app—. Se compara contra el `updated_at`
+   * remoto al iniciar sesión: ver `hydrateStateForUser`.
+   */
+  function marcarPendiente(iso) {
+    try {
+      if (iso) localStorage.setItem(`${STORAGE_KEY}/pendiente`, iso);
+      else localStorage.removeItem(`${STORAGE_KEY}/pendiente`);
+    } catch { /* sin almacenamiento se sigue igual, solo sin la red de seguridad */ }
+  }
+
+  function pendienteGuardado() {
+    try {
+      return localStorage.getItem(`${STORAGE_KEY}/pendiente`);
+    } catch {
+      return null;
+    }
+  }
+
+  function guardarLocal() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (err) {
       console.error('No se pudo guardar en localStorage', err);
       toast('No se pudieron guardar los cambios');
     }
+  }
 
-    void syncToSupabase();
+  function save() {
+    guardarLocal();
+    cambiosSinSubir = true;
+    marcarPendiente(new Date().toISOString());
+    programarSync();
+  }
+
+  /* ---- Preferencias de pantalla ----------------------------------------
+     Tema, zoom, plegado, paneles y modo de la columna de estatus describen
+     cómo se ve la app en ESTE aparato, no qué hizo el usuario. Se guardan
+     solo acá y no viajan a la base: antes iban en el mismo payload, así que
+     elegir tema claro en la compu lo cambiaba también en el teléfono — y
+     subía el diario entero para hacerlo.
+
+     El tema conserva su propia clave aparte porque lo lee el script
+     anti-parpadeo de `index.html`, antes de que exista `app.js`. */
+
+  const PREFS_KEY = 'tareas-diarias/prefs';
+  const CAMPOS_PREF = ['complianceMode', 'zoom', 'controlsCollapsed', 'panels'];
+
+  /** Guarda una preferencia. No toca la red: no hay nada que sincronizar. */
+  function savePrefs() {
+    guardarLocal();
+    try {
+      const prefs = {};
+      for (const campo of CAMPOS_PREF) prefs[campo] = state[campo];
+      localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    } catch { /* sin almacenamiento las preferencias duran lo que la pestaña */ }
+  }
+
+  /** Vuelca sobre `state` las preferencias de este dispositivo, si las hay. */
+  function aplicarPrefsLocales() {
+    let prefs = null;
+    try {
+      prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null');
+    } catch { return; }
+    if (!esDiccionario(prefs)) return;
+
+    if (CP_MODES.some(m => m.id === prefs.complianceMode)) {
+      state.complianceMode = prefs.complianceMode;
+    }
+    if (ZOOM_LEVELS.some(z => z.id === prefs.zoom)) state.zoom = prefs.zoom;
+    if (typeof prefs.controlsCollapsed === 'boolean') {
+      state.controlsCollapsed = prefs.controlsCollapsed;
+    }
+    if (esDiccionario(prefs.panels)) {
+      state.panels = {
+        tiles: prefs.panels.tiles !== false,
+        charts: prefs.panels.charts !== false,
+      };
+    }
+  }
+
+  /** Lo que se sube: el estado sin las preferencias de pantalla. */
+  function payloadRemoto() {
+    const { theme, ...resto } = state;
+    for (const campo of CAMPOS_PREF) delete resto[campo];
+    return resto;
   }
 
   function loadFromLocalStorage() {
@@ -681,7 +789,32 @@
     }
   }
 
-  async function syncToSupabase() {
+  /** Escribe el estado en la base. `true` si quedó guardado. */
+  async function subirEstado() {
+    try {
+      const { error } = await window.supabaseClient.from('app_state').upsert(
+        {
+          user_id: currentUserId,
+          payload: payloadRemoto(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error('No se pudo sincronizar con Supabase', err);
+      return false;
+    }
+  }
+
+  /**
+   * Pide una subida. Si ya hay un temporizador armado no hace nada: ese mismo
+   * se va a llevar también estos cambios. Tras un fallo la espera crece, para
+   * no castigar una base caída con un intento por cada clic.
+   */
+  function programarSync() {
+    if (!cambiosSinSubir || syncTimer !== null || syncEnVuelo) return;
     if (!currentUserId || !window.supabaseClient) return;
 
     // Escribir sin haber podido leer sería pisar el estado remoto a ciegas.
@@ -690,48 +823,103 @@
       return;
     }
 
-    try {
-      const { error } = await window.supabaseClient.from('app_state').upsert(
-        {
-          user_id: currentUserId,
-          payload: state,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id' },
-      );
-      if (error) throw error;
-      avisarSync('');
-    } catch (err) {
-      console.error('No se pudo sincronizar con Supabase', err);
-      avisarSync('No se pudieron guardar los cambios en la base. Quedaron en este navegador.');
-    }
+    const espera = fallosSeguidos
+      ? Math.min(REINTENTO_BASE * 2 ** (fallosSeguidos - 1), REINTENTO_TOPE)
+      : ESPERA_SYNC;
+
+    syncTimer = setTimeout(() => { syncTimer = null; void drenarSync(); }, espera);
   }
 
   /**
+   * Sube lo pendiente, de a una escritura por vez. Lo que se marque mientras
+   * hay una en vuelo se sube en la vuelta siguiente: lanzarlas en paralelo
+   * dejaría que la respuesta de una vieja pisara a una nueva.
+   */
+  async function drenarSync() {
+    if (syncEnVuelo || !cambiosSinSubir) return;
+    if (!currentUserId || !window.supabaseClient || !lecturaRemotaOk) return;
+
+    syncEnVuelo = true;
+    try {
+      while (cambiosSinSubir) {
+        // Se limpia ANTES de subir: lo que llegue durante el `await` vuelve a
+        // marcarlo y se sube en la vuelta siguiente, en vez de perderse.
+        cambiosSinSubir = false;
+
+        if (!await subirEstado()) {
+          cambiosSinSubir = true;
+          fallosSeguidos++;
+          avisarSync('No se pudieron guardar los cambios en la base. '
+            + 'Quedaron en este navegador y se reintenta solo.');
+          break;
+        }
+
+        fallosSeguidos = 0;
+        if (!cambiosSinSubir) marcarPendiente(null);
+        avisarSync('');
+      }
+    } finally {
+      syncEnVuelo = false;
+      programarSync();   // no hace nada si no quedó nada pendiente
+    }
+  }
+
+  /** Sube sin esperar el temporizador. */
+  function sincronizarYa() {
+    if (syncTimer !== null) { clearTimeout(syncTimer); syncTimer = null; }
+    // Un intento a pedido no arrastra el castigo de los anteriores.
+    fallosSeguidos = 0;
+    void drenarSync();
+  }
+
+  /* Agrupar las subidas abre una ventana de hasta `ESPERA_SYNC` con cambios
+     guardados acá y todavía no en la base. Si la pestaña se va justo ahí, se
+     sube en el acto; lo que aun así no llegue queda marcado como pendiente y
+     se resuelve al volver a entrar. */
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') sincronizarYa();
+    else programarSync();
+  });
+  window.addEventListener('pagehide', sincronizarYa);
+  window.addEventListener('online', sincronizarYa);
+
+  /**
    * Lee el estado del usuario en Supabase.
-   * @returns {Promise<'ok'|'vacio'|'error'>} `vacio` es una cuenta sin datos
-   *   todavía; `error` es no haber podido preguntar. Distinguirlos es el
-   *   punto: con `vacio` se puede subir la copia local, con `error` no.
+   * @returns {Promise<{estado:'ok'|'vacio'|'error', payload?:object, updatedAt?:string}>}
+   *   `vacio` es una cuenta sin datos todavía; `error` es no haber podido
+   *   preguntar. Distinguirlos es el punto: con `vacio` se puede subir la
+   *   copia local, con `error` no.
    */
   async function loadFromSupabase() {
-    if (!currentUserId || !window.supabaseClient) return 'error';
+    if (!currentUserId || !window.supabaseClient) return { estado: 'error' };
     try {
       const { data, error } = await window.supabaseClient
         .from('app_state')
-        .select('payload')
+        .select('payload, updated_at')
         .eq('user_id', currentUserId)
         .maybeSingle();
 
       if (error) throw error;
       if (data?.payload) {
-        state = normalize(data.payload);
-        return 'ok';
+        return { estado: 'ok', payload: data.payload, updatedAt: data.updated_at };
       }
-      return 'vacio';
+      return { estado: 'vacio' };
     } catch (err) {
       console.error('No se pudo leer el estado remoto de Supabase', err);
-      return 'error';
+      return { estado: 'error' };
     }
+  }
+
+  /**
+   * ¿Lo que quedó sin subir en este navegador es más nuevo que lo que hay en
+   * la base? Las dos marcas las escribe un cliente, así que se comparan como
+   * instantes y no como texto: el `updated_at` de Postgres vuelve con offset
+   * (`+00:00`) y el nuestro con `Z`, que ordenados como cadena mienten.
+   */
+  function localMasNuevo(pendiente, updatedAt) {
+    const local = Date.parse(pendiente || '');
+    const remoto = Date.parse(updatedAt || '');
+    return Number.isFinite(local) && Number.isFinite(remoto) && local > remoto;
   }
 
   async function hydrateStateForUser(user) {
@@ -739,10 +927,13 @@
     STORAGE_KEY = user?.id ? `${STORAGE_BASE}/${user.id}` : STORAGE_BASE;
     lecturaRemotaOk = false;
     avisoSync = '';
+    cambiosSinSubir = false;
+    fallosSeguidos = 0;
 
     if (!currentUserId) {
       state = estadoVacio();
       loadFromLocalStorage();
+      aplicarPrefsLocales();
       return;
     }
 
@@ -750,16 +941,35 @@
     state = estadoVacio();
 
     const remoto = await loadFromSupabase();
-    lecturaRemotaOk = remoto !== 'error';
+    lecturaRemotaOk = remoto.estado !== 'error';
 
-    if (remoto === 'ok') return;
+    if (remoto.estado === 'ok') {
+      /* La copia local puede ser MÁS NUEVA que la remota: si la pestaña se
+         cerró antes de que la última subida llegara, quedó marcada con la hora
+         de ese cambio. Tomar el remoto sin mirar la marca borraría justo lo
+         último que se hizo. */
+      const pendiente = pendienteGuardado();
+      if (localMasNuevo(pendiente, remoto.updatedAt) && loadFromLocalStorage()) {
+        cambiosSinSubir = true;
+        programarSync();
+      } else {
+        state = normalize(remoto.payload);
+        marcarPendiente(null);
+      }
+      aplicarPrefsLocales();
+      return;
+    }
 
     const hayLocal = loadFromLocalStorage();
+    aplicarPrefsLocales();
 
-    if (remoto === 'vacio') {
+    if (remoto.estado === 'vacio') {
       // Cuenta sin datos en la base: la copia de este navegador pasa a ser la
       // de referencia. Es el único caso en que se sube sin haber leído nada.
-      if (hayLocal) await syncToSupabase();
+      if (hayLocal) {
+        cambiosSinSubir = true;
+        await drenarSync();
+      }
       return;
     }
 
@@ -1052,9 +1262,14 @@
 
   const el = {
     monthLabel: $('#month-label'),
-    rangeLabel: $('#range-label'),
-    rangeNav: $('#range-nav'),
-    viewSwitch: $('#view-switch'),
+    viewBtn: $('#btn-view'),
+    viewText: $('#view-text'),
+    viewOptions: $('#view-options'),
+    actionsBtn: $('#btn-actions'),
+    actionsOptions: $('#actions-options'),
+    pickDay: $('#btn-pick-day'),
+    prevRange: $('#prev-range'),
+    nextRange: $('#next-range'),
     summary: $('#summary'),
     grid: $('#grid'),
     tableWrap: $('#table-wrap'),
@@ -1121,7 +1336,7 @@
   function render() {
     const onHome = ui.page === 'home';
     const onHelp = ui.page === 'help';
-    const { days, count } = visibleDays();
+    const { days } = visibleDays();
 
     // El selector de mes se muestra en la planilla y en los indicadores: ambos
     // son mensuales. En la guía no hay período que elegir, así que la barra de
@@ -1144,9 +1359,12 @@
     el.collapse.hidden = !onHome;
     applyCollapse();
 
-    // Vista y navegación del rango solo aplican a la planilla.
+    /* Vista y navegación del rango solo aplican a la planilla. El desplegable
+       es el mismo en las tres vistas: «Ir a…» no se apaga en la mensual —ahí
+       elegir un día lleva a SU mes, que es un salto tan válido como los otros—,
+       y un menú que cambia de opciones según dónde estés obliga a recordar
+       cuáles hay en cada una. */
     el.controlsCenter.hidden = !onHome;
-    el.rangeNav.hidden = !onHome || ui.view === 'month';
     el.monthBar.hidden = !onHome;
     el.board.hidden = !onHome;
     el.legend.hidden = !onHome;
@@ -1168,15 +1386,20 @@
       return;
     }
 
-    if (days.length) {
-      // A diferencia de rangeLabel(), acá el mes completo también se rotula
-      // como tramo: el rótulo queda oculto en esa vista, pero se mantiene.
-      el.rangeLabel.textContent = spanLabel(days);
-      el.rangeLabel.title = `Ventana ${ui.windowIndex + 1} de ${count}`;
+    el.viewText.textContent = VIEW_LABEL[ui.view];
+    el.viewBtn.title = `Vista ${VIEW_LABEL[ui.view].toLowerCase()} · clic para cambiarla`;
+    for (const opt of el.viewOptions.querySelectorAll('[data-view]')) {
+      const activa = opt.dataset.view === ui.view;
+      opt.setAttribute('aria-checked', String(activa));
+      opt.classList.toggle('is-active', activa);
     }
 
-    for (const btn of el.viewSwitch.querySelectorAll('.seg')) {
-      btn.setAttribute('aria-pressed', String(btn.dataset.view === ui.view));
+    // Las flechas se nombran por lo que mueven, que cambia con la vista.
+    const paso = VIEW_STEP[ui.view];
+    el.prevRange.title = `Ir ${paso} anterior`;
+    el.nextRange.title = `Ir ${paso} siguiente`;
+    for (const btn of [el.prevRange, el.nextRange]) {
+      btn.setAttribute('aria-label', btn.title);
     }
 
     renderMonthBar();
@@ -1265,7 +1488,7 @@
         // El tinte del cuerpo marca los días no requeridos por la frecuencia,
         // no los fines de semana: eso queda en el encabezado y en el pie.
         if (!isRequiredDay(task, d)) td.classList.add('is-optional');
-        if (sameDay(d, today)) td.classList.add('is-today');
+        // Hoy no se marca acá: solo en el encabezado. Ver `.cell-td` en la hoja.
         td.appendChild(statusButton(task, d));
         tr.appendChild(td);
       }
@@ -1995,7 +2218,7 @@
   el.grid.addEventListener('click', e => {
     if (e.target.closest('[data-compliance-mode]')) {
       state.complianceMode = nextComplianceMode();
-      save();
+      savePrefs();
       render();
       return;
     }
@@ -2181,9 +2404,13 @@
   function refreshTotals() {
     const { days } = visibleDays();
 
+    // Indexadas una vez: buscarlas dentro del bucle recorría la lista entera
+    // por cada fila, y esto corre en cada clic sobre una celda.
+    const porId = new Map(currentTasks().map(t => [t.id, t]));
+
     const rows = el.grid.querySelectorAll('tbody tr');
     rows.forEach(tr => {
-      const task = currentTasks().find(t => t.id === tr.dataset.taskId);
+      const task = porId.get(tr.dataset.taskId);
       if (!task) return;
       const cell = tr.querySelector('.row-total');
       if (!cell) return;   // columna de cumplimiento oculta
@@ -2244,21 +2471,80 @@
     }
   }
 
-  $('#prev-month').addEventListener('click', () => goToMonth(-1));
-  $('#next-month').addEventListener('click', () => goToMonth(1));
-  $('#btn-today').addEventListener('click', goToToday);
-  $('#prev-range').addEventListener('click', () => shiftRange(-1));
-  $('#next-range').addEventListener('click', () => shiftRange(1));
+  /* Las flechas mueven la ventana de la vista activa: un día, una semana o —en
+     la mensual, donde no hay ventana que correr dentro del mes— un mes. Es el
+     mismo criterio de las teclas ← →, así que comparten función. */
+  el.prevRange.addEventListener('click', () => shiftRangeOrMonth(-1));
+  el.nextRange.addEventListener('click', () => shiftRangeOrMonth(1));
 
-  el.viewSwitch.addEventListener('click', e => {
-    const btn = e.target.closest('.seg');
-    if (!btn) return;
-    ui.view = btn.dataset.view;
+  // ---------------------------------------------------------
+  // Desplegables
+  // ---------------------------------------------------------
+  //  Dos con el mismo comportamiento: el de vista y el de acciones del mes. Se
+  //  manejan desde una sola pieza para que abrir uno cierre al otro y para no
+  //  duplicar el cierre por Esc y por clic afuera.
+
+  const MENUS = [
+    { btn: el.viewBtn, pop: el.viewOptions },
+    { btn: el.actionsBtn, pop: el.actionsOptions },
+  ];
+
+  function setMenu(menu, abierto) {
+    menu.pop.hidden = !abierto;
+    menu.btn.setAttribute('aria-expanded', String(abierto));
+  }
+
+  const menuAbierto = () => MENUS.find(m => !m.pop.hidden) ?? null;
+
+  /** Cierra todos, y devuelve el que estaba abierto para poder recuperar foco. */
+  function cerrarMenus() {
+    const abierto = menuAbierto();
+    for (const m of MENUS) setMenu(m, false);
+    return abierto;
+  }
+
+  for (const menu of MENUS) {
+    menu.btn.addEventListener('click', () => {
+      const estaba = !menu.pop.hidden;
+      cerrarMenus();
+      setMenu(menu, !estaba);
+    });
+  }
+
+  /* El de acciones: casi todo lo que hay adentro abre un diálogo, así que se
+     cierra al elegir. El zoom es la excepción —cicla tres niveles— y se queda
+     abierto para poder recorrerlos sin volver a desplegar. */
+  el.actionsOptions.addEventListener('click', e => {
+    const opt = e.target.closest('.view-opt');
+    if (!opt || opt.disabled || opt.id === 'btn-zoom') return;
+    cerrarMenus();
+  });
+
+  el.viewOptions.addEventListener('click', e => {
+    const opt = e.target.closest('[data-view]');
+    if (!opt) return;
+    ui.view = opt.dataset.view;
     // Al cambiar de vista, mantener el foco en hoy si estamos en el mes actual.
     ui.windowIndex = (ui.year === today.getFullYear() && ui.month === today.getMonth())
       ? windowIndexFor(today)
       : 0;
+    cerrarMenus();
+    el.viewBtn.focus();
     render();
+  });
+
+  /* «Hoy» dentro del calendario: es el destino más frecuente del salto, y desde
+     que «Ir a hoy» se fundió con «Ir a un día…» es el único camino con el
+     puntero. Sirve en los dos modos —al mes actual o a su día— porque
+     `goToToday` fija mes y ventana de una. */
+  $('#jump-today').addEventListener('click', () => {
+    el.jumpDialog.close();
+    goToToday();
+  });
+
+  // Clic afuera: el menú es propio, así que hay que cerrarlo a mano.
+  document.addEventListener('click', e => {
+    if (menuAbierto() && !e.target.closest('.view-menu')) cerrarMenus();
   });
 
   // ---------------------------------------------------------
@@ -2367,8 +2653,13 @@
     render();
   }
 
-  $('#btn-pick-month').addEventListener('click', () => openJump('month'));
-  $('#btn-pick-day').addEventListener('click', () => openJump('day'));
+  el.monthLabel.addEventListener('click', () => openJump('month'));
+  /* Vive dentro del desplegable, así que hay que cerrarlo: si no, el menú queda
+     abierto por detrás del diálogo y reaparece al cerrarlo. */
+  el.pickDay.addEventListener('click', () => {
+    cerrarMenus();
+    openJump('day');
+  });
   $('#jump-prev').addEventListener('click', () => shiftJump(-1));
   $('#jump-next').addEventListener('click', () => shiftJump(1));
 
@@ -2907,11 +3198,11 @@
   // Los paneles de Análisis recuerdan si quedaron plegados.
   el.panelTiles.addEventListener('toggle', () => {
     state.panels.tiles = el.panelTiles.open;
-    save();
+    savePrefs();
   });
   el.panelCharts.addEventListener('toggle', () => {
     state.panels.charts = el.panelCharts.open;
-    save();
+    savePrefs();
   });
 
   // Alterna entre las dos secciones sin pasar por el menú.
@@ -2937,9 +3228,15 @@
   });
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && document.body.classList.contains('drawer-open')) {
-      setDrawer(false);
+    if (e.key !== 'Escape') return;
+
+    // Lo más cercano primero: un desplegable tapa al menú lateral.
+    const abierto = cerrarMenus();
+    if (abierto) {
+      abierto.btn.focus();   // al que lo abrió, no siempre el de vista
+      return;
     }
+    if (document.body.classList.contains('drawer-open')) setDrawer(false);
   });
 
   // ---------------------------------------------------------
@@ -3102,7 +3399,7 @@
 
   el.theme.addEventListener('click', () => {
     state.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-    save();
+    savePrefs();
     applyTheme();
   });
 
@@ -3130,7 +3427,7 @@
 
   el.zoom.addEventListener('click', () => {
     state.zoom = nextZoom();
-    save();
+    savePrefs();
     applyZoom();
   });
 
@@ -3155,7 +3452,7 @@
 
   el.collapse.addEventListener('click', () => {
     state.controlsCollapsed = !state.controlsCollapsed;
-    save();
+    savePrefs();
     applyCollapse();
   });
 
@@ -3164,7 +3461,13 @@
   // ---------------------------------------------------------
 
   document.addEventListener('keydown', e => {
-    if (e.target.matches('input, textarea') || document.querySelector('dialog[open]')) return;
+    /* Con el desplegable abierto los atajos quedan en suspenso: mover el
+       período por detrás del menú es desconcertante. Esc lo cierra, más arriba.
+
+       `matches?.` porque el blanco de un keydown no siempre es un elemento: sin
+       nada enfocado puede ser el propio `document`, que no tiene ese método. */
+    if (e.target.matches?.('input, textarea') || document.querySelector('dialog[open]')
+      || menuAbierto()) return;
 
     if (e.key === 'ArrowLeft') { shiftRangeOrMonth(-1); e.preventDefault(); }
     else if (e.key === 'ArrowRight') { shiftRangeOrMonth(1); e.preventDefault(); }

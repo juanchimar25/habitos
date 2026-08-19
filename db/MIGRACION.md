@@ -13,7 +13,7 @@ cualquiera de ellas y tener algo usable.
 | 1 — Hosting | ✅ hecha (Vercel, con fallbacks para Netlify y GitHub Pages) |
 | 2 — Login | ✅ hecha ([`auth.js`](../auth.js)) |
 | 3 — Persistencia contra Postgres | ⏳ **a medias** — ver abajo |
-| 4 — Offline | ⏸ sin empezar |
+| 4 — Offline | ⏳ apenas arrancada — se reintenta solo y al recuperar la conexión, pero no hay cola de operaciones |
 
 La etapa 3 se resolvió por un **atajo**: en vez de las tablas de [`schema.sql`](schema.sql), hoy
 existe una sola tabla `app_state` ([`supabase-app-state.sql`](supabase-app-state.sql)) con una
@@ -23,10 +23,14 @@ que ahora también contra la red.
 Eso ya da lo que importaba —los datos sobreviven a cambiar de navegador o de equipo—, y por eso
 no urge terminar. Lo que queda pendiente es lo que el atajo no resuelve:
 
-- **Cada clic sube el estado entero.** Con pocos meses es imperceptible; el problema crece con
-  el historial, no con el uso.
+- **Cada subida lleva el estado entero.** Ya no una por clic: las ráfagas se agrupan en una sola
+  escritura, nunca hay dos en vuelo y las preferencias de pantalla quedaron fuera del payload
+  (ver *Cómo se sube* en el README). Pero lo que viaja sigue siendo el estado completo, así que
+  el problema crece con el historial, no con el uso.
 - **Entre dispositivos gana el último que escribe**, y pisa el mes entero, no la celda.
-  Sin `updated_at` por fila no hay forma de mezclar.
+  Sin `updated_at` por fila no hay forma de mezclar. La marca de pendientes que hay hoy resuelve
+  un caso más chico —que la lectura remota no pise cambios locales que no llegaron a subir—, no
+  la mezcla entre dos aparatos que editaron a la vez.
 
 `schema.sql` es el destino de esa etapa. Está escrito y comentado, pero **ninguna de sus tablas
 se usa todavía**: `app.js` no las conoce.
@@ -92,9 +96,11 @@ Ya es útil: podés separar tus datos de los de otra persona en la misma máquin
 ### El problema
 
 `save()` serializa **el estado completo** y lo escribe. Contra `localStorage` es instantáneo y
-no importa. Contra la red, mandar más de un megabyte cada vez que hacés clic en una celda es
-inviable — y es exactamente lo que hace hoy `syncToSupabase()`, que es la deuda que esta etapa
-viene a pagar.
+no importa. Contra la red, mandar más de un megabyte por cada cambio es inviable.
+
+Agrupar las ráfagas bajó mucho la cuenta —una escritura por tanda en vez de una por celda— pero
+no cambia el tamaño de cada una: el que sube sigue siendo el estado entero. Esa es la deuda que
+esta etapa viene a pagar.
 
 ### El refactor
 
@@ -124,6 +130,11 @@ No poner `await` delante de cada clic. El patrón:
 
 `localStorage` deja de ser la base de datos y pasa a ser caché + cola de pendientes.
 
+> **Parte de esto ya está.** El planificador de `app.js` —agrupar, una sola escritura en vuelo,
+> reintento con espera creciente, marca de pendientes en `localStorage`— es la mitad de esta
+> pieza, y opera sobre el estado completo. Lo que falta es que lo que se encola sean operaciones
+> puntuales en vez del volcado entero; el mecanismo que las drena se puede reusar tal cual.
+
 ### Migrar los datos que ya tenés
 
 Sale gratis: `normalize()` y el JSON de exportación ya resuelven el formato. El importador
@@ -151,6 +162,12 @@ bandera `materialized`, un mes vaciado a propósito vuelve a heredar las tareas 
 ## Etapa 4 — Offline (opcional, y probablemente después)
 
 Un diario de hábitos se marca en el celular, a veces sin señal.
+
+Lo que ya funciona: una subida que falla se reintenta sola con espera creciente, y también al
+volver la conexión (`online`) o al volver a la pestaña. Lo que quedó sin subir se anota como
+pendiente y se rescata al volver a entrar, en vez de perderse contra la lectura remota.
+
+Lo que falta es lo de abajo:
 
 - Cola de operaciones pendientes en `localStorage`, drenada al recuperar conexión.
 - Conflictos: **gana la última escritura** por `updated_at` (el trigger ya está en el esquema).

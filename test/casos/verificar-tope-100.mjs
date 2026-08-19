@@ -2,7 +2,7 @@
    encima de 100%, ni en la fila, ni en el total general, ni en el análisis.
    Arnés: hoy = jueves 30/07/2026. Julio 2026 arranca miércoles: 22 días
    hábiles transcurridos y 8 de fin de semana. */
-import { montar } from '../harness.mjs';
+import { montar, verVista } from '../harness.mjs';
 
 let fallos = 0;
 const ok = (n, cond, det = '') => {
@@ -51,24 +51,24 @@ const medir = (doc, etiqueta) => {
 // --- semana con fin de semana incluido (20 al 26) --------------------------
 {
   const { doc } = await montar(estado);
-  doc.querySelector('.seg[data-view="week"]').click();
+  verVista(doc, 'week');
   doc.querySelector('#prev-range').click();          // de 27-31 a 20-26
-  medir(doc, `vista week · ${doc.querySelector('#range-label')?.textContent}`);
+  medir(doc, 'vista week · 20 jul – 26 jul');
 }
 
 // --- mes completo -----------------------------------------------------------
 {
   const { doc } = await montar(estado);
-  doc.querySelector('.seg[data-view="month"]').click();
+  verVista(doc, 'month');
   medir(doc, 'vista month · 1 jul – 31 jul');
 }
 
 // --- un sábado suelto -------------------------------------------------------
 {
   const { doc } = await montar(estado);
-  doc.querySelector('.seg[data-view="day"]').click();
+  verVista(doc, 'day');
   for (let i = 0; i < 5; i++) doc.querySelector('#prev-range').click();   // 30 → 25 (sábado)
-  medir(doc, `vista day · ${doc.querySelector('#range-label')?.textContent}`);
+  medir(doc, 'vista day · sábado 25');
 }
 
 // --- análisis: gráfico por tarea y tarjeta comparativa ----------------------

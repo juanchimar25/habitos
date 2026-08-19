@@ -1,5 +1,5 @@
-/* El alta de tarea vive en la barra del mes, a la izquierda de «Copiar tareas
-   del mes anterior», y con el color del día de hoy. */
+/* El alta de tarea abre el apartado «Tareas» del desplegable de acciones, que
+   es lo primero que hay adentro. */
 import { montar } from '../harness.mjs';
 import { ESTADO_LLENO, ESTADO_VACIO, ESTADO_BLOQUEADO } from '../escenarios.mjs';
 
@@ -9,18 +9,29 @@ const ok = (n, cond, det = '') => {
   if (!cond) fallos++;
 };
 
-// --- 1. ubicación en la barra del mes --------------------------------------
+// --- 1. ubicación dentro del desplegable de acciones -----------------------
 {
   const { doc } = await montar(ESTADO_LLENO);
-  const barra = [...doc.querySelectorAll('#month-bar > button')].map(b => b.id);
-  console.log('  orden en la barra:', barra.join(' · '));
-  ok('el alta es el primer botón', barra[0] === 'btn-add-task');
+
+  /* La barra del mes es un solo botón: los seis de antes viven adentro,
+     agrupados por lo que tocan. El relleno de marca pasó de estar en el alta a
+     estar en «Acciones», que es la entrada a todas. */
+  const barra = [...doc.querySelectorAll('#month-bar > * > button')].map(b => b.id);
+  console.log('  barra del mes:', barra.join(' · '));
+  ok('la barra es un solo botón', barra.join(',') === 'btn-actions', barra.join(','));
+  ok('con el relleno del color de la marca',
+    doc.querySelector('#btn-actions').classList.contains('btn-brand'));
+
+  const opciones = [...doc.querySelectorAll('#actions-options .view-opt')].map(b => b.id);
+  console.log('  acciones:', opciones.join(' · '));
+  ok('el alta es la primera acción', opciones[0] === 'btn-add-task', opciones[0]);
   ok('está antes de copiar del mes anterior',
-    barra.indexOf('btn-add-task') < barra.indexOf('btn-copy-prev'));
+    opciones.indexOf('btn-add-task') < opciones.indexOf('btn-copy-prev'));
+  ok('y las dos van en el apartado «Tareas»',
+    doc.querySelector('#btn-add-task').closest('[role="group"]')
+      ?.getAttribute('aria-labelledby') === 'grp-tareas');
 
   const btn = doc.querySelector('#btn-add-task');
-  ok('lleva el relleno del color de la marca', btn.classList.contains('btn-brand'),
-    btn.className);
   ok('dice «+ Agregar tarea»', btn.textContent.trim() === '+ Agregar tarea',
     JSON.stringify(btn.textContent.trim()));
 }

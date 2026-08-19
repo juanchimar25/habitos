@@ -1,6 +1,6 @@
 /* Alta de tarea: la fecha de inicio es obligatoria, arranca en HOY y decide a
    qué mes va la tarea. Hoy es jueves 30 de julio de 2026 (reloj del arnés). */
-import { montar } from '../harness.mjs';
+import { montar, moverMeses, verVista } from '../harness.mjs';
 import { ESTADO_LLENO, ESTADO_VACIO } from '../escenarios.mjs';
 
 let fallos = 0;
@@ -17,9 +17,7 @@ const enviar = doc => doc.querySelector('#task-form')
 /** Abre el alta, opcionalmente tras moverse de mes, y completa el formulario. */
 const crear = async (estado, { nombre = 'Nueva', fecha, mover = 0 } = {}) => {
   const { window, doc } = await montar(estado);
-  for (let i = 0; i < Math.abs(mover); i++) {
-    doc.querySelector(mover > 0 ? '#next-month' : '#prev-month').click();
-  }
+  moverMeses(doc, mover);
   doc.querySelector('[data-add-task]').click();
   doc.querySelector('#task-name').value = nombre;
   if (fecha !== undefined) doc.querySelector('#task-start').value = fecha;
@@ -53,7 +51,7 @@ const crear = async (estado, { nombre = 'Nueva', fecha, mover = 0 } = {}) => {
   ok('navegó a julio', /julio 2026/i.test(doc.querySelector('#month-label').textContent),
     doc.querySelector('#month-label').textContent);
 
-  doc.querySelector('.seg[data-view="month"]').click();
+  verVista(doc, 'month');
   const celdas = [...doc.querySelectorAll('.cell')];
   ok('no nace toda apagada', celdas.some(c => !c.disabled),
     `${celdas.filter(c => c.disabled).length}/${celdas.length} apagadas`);

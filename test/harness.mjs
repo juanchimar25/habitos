@@ -110,6 +110,50 @@ export async function montar(estado) {
 }
 
 /**
+ * Cambia de vista por el desplegable, que es el único camino: el carril de
+ * cuatro botones —«Hoy» y las tres vistas— ya no existe.
+ *
+ * Abre el menú antes de elegir. Clickear la opción con el menú cerrado también
+ * funciona en jsdom, pero probaría un recorrido que en un navegador no existe.
+ */
+export function verVista(doc, vista) {
+  doc.querySelector('#btn-view').click();
+  const opt = doc.querySelector(`.view-opt[data-view="${vista}"]`);
+  if (!opt) throw new Error(`No hay opción de vista «${vista}»`);
+  opt.click();
+}
+
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/**
+ * Mueve la planilla `delta` meses, por el calendario de meses.
+ *
+ * Es el único camino que hay: la línea del mes ya no tiene flechas, el nombre
+ * del mes ES el botón que abre el calendario. Los casos que antes hacían
+ * `#next-month.click()` usan esto, así que además de mover el mes ejercen el
+ * recorrido que hace un usuario de verdad.
+ */
+export function moverMeses(doc, delta) {
+  if (!delta) return;
+
+  const [nombre, anio] = doc.querySelector('#month-label').textContent.trim().split(/\s+/);
+  const desde = new Date(Number(anio), MESES.indexOf(nombre.toLowerCase()), 1);
+  const destino = new Date(desde.getFullYear(), desde.getMonth() + delta, 1);
+
+  doc.querySelector('#month-label').click();
+
+  const anioVisible = () => Number(doc.querySelector('#jump-label').textContent);
+  while (anioVisible() < destino.getFullYear()) doc.querySelector('#jump-next').click();
+  while (anioVisible() > destino.getFullYear()) doc.querySelector('#jump-prev').click();
+
+  const celda = [...doc.querySelectorAll('#jump-grid .jump-cell')]
+    .find(c => c.textContent.toLowerCase() === MESES[destino.getMonth()]);
+  if (!celda) throw new Error(`No se encontró ${MESES[destino.getMonth()]} en el calendario`);
+  celda.click();
+}
+
+/**
  * Normaliza HTML para comparar.
  *
  * Además de colapsar espacios, ordena alfabéticamente los atributos de

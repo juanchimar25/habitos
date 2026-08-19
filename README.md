@@ -136,28 +136,34 @@ clonado el repositorio. Cuando un cambio de markup es intencional, `npm run snap
 ### Casos de comportamiento
 
 Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue funcionando*. Son
-**319 comprobaciones** repartidas en trece archivos, cada uno sobre una funcionalidad:
+**433 comprobaciones** repartidas en quince archivos, cada uno sobre una funcionalidad:
 
 | Caso | Qué cubre |
 |---|---|
 | `plantillas` | Fecha obligatoria, mes destino, bloqueo, duplicados |
 | `tarea-fecha` | Alta y edición: valor por omisión, validación, no mudar de mes al editar |
 | `tope-100` | Ninguna tarea aporta más que su meta a los promedios |
-| `ir-a` | Los dos calendarios: días y meses |
-| `zoom` | Los tres niveles, alto de fila uniforme, ancho para el nombre |
-| `plegado` | «Análisis» en el encabezado y el plegado de controles |
-| `boton-alta` | Ubicación del alta y estado bloqueado |
+| `ir-a` | Los dos calendarios: el nombre del mes y «Ir a…» |
+| `zoom` | Los tres niveles, alto de fila y ancho de columna uniformes, ancho para el nombre |
+| `plegado` | «Análisis» en el encabezado, el armazón de alto fijo y el plegado de controles |
+| `boton-alta` | El alta dentro del desplegable de acciones y su estado bloqueado |
 | `color-marca` | Los rellenos con el color de la marca y su contraste AA en ambos temas |
 | `vendor` | La app arranca con el cliente local y su `integrity` |
 | `red` | Qué primitivas de red toca el cliente real: ningún WebSocket |
 | `landing` | Pantalla partida de la puerta de sesión, apilado en móvil y contraste sobre el degradado |
 | `recuperacion` | El ciclo completo de «olvidaste tu contraseña», con el cliente instrumentado |
 | `migracion` | Un estado guardado por la versión anterior abre sin perder nada |
+| `sincronizacion` | Cómo se sube: agrupado, de a uno, con reintento y sin las preferencias |
+| `vista` | Los dos desplegables: vista con sus flechas y saltos, y acciones del mes |
 
 Corren en **procesos separados** a propósito: cada uno instala su propio jsdom con reloj,
 almacenamiento y globals sustituidos, y compartir proceso haría que un caso viera el entorno del
-anterior. El costo es arrancar Node once veces; a cambio cada archivo se ejecuta a mano —
+anterior. El costo es arrancar Node quince veces; a cambio cada archivo se ejecuta a mano —
 `node test/casos/verificar-zoom.mjs`—, que es como se depuran.
+
+> `sincronizacion` monta además un **reloj de temporizadores propio**, para no esperar de verdad
+> los 800 ms de la agrupación ni los 5 s del primer reintento. El caso adelanta el reloj a mano y
+> comprueba qué se escribió en cada tramo.
 
 Cuando un caso falla, el runner imprime su salida completa al final, después del resumen: no hay
 que buscarla entre la de los que pasaron.
@@ -247,13 +253,51 @@ Se guardan en **dos lados a la vez**:
 
 Al iniciar sesión se lee Supabase primero. Si la cuenta no tiene nada allá, sube la copia local.
 
-**Si la base no contesta, la app no escribe.** Se queda en modo local, avisa en pantalla y no
-sincroniza hasta que recargues. Es a propósito: subir el estado que quedó en memoria sin haber
-podido leer el remoto reemplazaría datos del servidor a ciegas.
+**Si la base no contesta al abrir, la app no escribe.** Se queda en modo local, avisa en pantalla
+y no sincroniza hasta que recargues. Es a propósito: subir el estado que quedó en memoria sin
+haber podido leer el remoto reemplazaría datos del servidor a ciegas.
 
 > Ese aviso importa. Antes, un fallo de Supabase solo dejaba un `console.error` y la app seguía
 > como si nada, guardando únicamente en el navegador. Al cambiar de dominio o de navegador, esos
 > datos quedaban fuera de alcance sin que nada lo hubiera advertido.
+
+### Cómo se sube
+
+En `localStorage` se escribe en el acto, en cada cambio. A la base **no**:
+
+- **Las ráfagas se agrupan.** Marcar una fila entera son diez o quince clics seguidos; el primero
+  arma un temporizador de 800 ms y los demás viajan con él, en una sola escritura. El temporizador
+  **no se reinicia** con cada cambio: si se reiniciara, alguien marcando sin parar postergaría la
+  subida indefinidamente.
+- **Nunca hay dos escrituras en vuelo.** Lo que se marque mientras una está sin resolver se sube
+  en la vuelta siguiente. Lanzarlas en paralelo dejaba que la respuesta de una vieja pisara a una
+  nueva, que es un desorden que no se nota hasta que faltan datos.
+- **Un fallo se reintenta solo**, con una espera que crece —5 s, 10 s, 20 s, 40 s, y de ahí cada
+  minuto— para no castigar una base caída con un intento por cada clic. También se reintenta al
+  recuperar la conexión y al volver a la pestaña. Antes el aviso quedaba en pantalla y no se
+  volvía a intentar hasta recargar.
+- **Al irse de la pestaña se sube en el acto**, sin esperar el temporizador.
+
+Agrupar abre una ventana de hasta 800 ms con cambios guardados acá y todavía no en la base. Si la
+pestaña muere justo ahí —un cierre forzado, quedarse sin batería—, esos cambios quedan anotados en
+`tareas-diarias/v1/<id>/pendiente`, con la hora en que se hicieron. Al volver a entrar esa marca
+se compara contra el `updated_at` de la fila remota: **si lo local es más nuevo, gana lo local** y
+se sube. Sin esa comparación, la lectura remota pisaba en silencio justo lo último que se hizo.
+
+> Las dos marcas las escribe un cliente, así que se comparan como instantes y no como texto: el
+> `updated_at` de Postgres vuelve con offset (`+00:00`) y el nuestro con `Z`, y ordenadas como
+> cadena esas dos formas mienten.
+
+### Lo que no se sincroniza
+
+El tema, el zoom, el plegado de controles, los paneles del análisis y el modo de la columna
+*Estatus* describen cómo se ve la app **en este aparato**, no qué hizo el usuario. Se guardan solo
+en `localStorage` —en `tareas-diarias/prefs`, y el tema además en `tareas-diarias/theme`, que es
+la que lee el script anti-parpadeo antes de que exista `app.js`— y quedan fuera del payload.
+
+Antes iban en el mismo `jsonb` que los datos, con dos consecuencias: elegir tema claro en la
+computadora lo cambiaba también en el teléfono, y cada una de esas preferencias subía el diario
+entero para guardarse.
 
 La causa más probable de que la base rechace todo es que **falte la política de RLS** — ver la
 consulta de comprobación al final de [`db/supabase-app-state.sql`](db/supabase-app-state.sql).
@@ -265,8 +309,8 @@ consulta de comprobación al final de [`db/supabase-app-state.sql`](db/supabase-
 > de [`db/MIGRACION.md`](db/MIGRACION.md). Correrlo crea tablas vacías que nadie consulta.
 >
 > Lo que falta de esa etapa es cambiar el guardado de «volcar todo el estado» a operaciones
-> puntuales. Hoy cada clic sube el estado entero, y entre dos dispositivos gana el último que
-> escribe, pisando el mes completo en vez de la celda.
+> puntuales. Hoy cada subida lleva el estado entero —agrupada, pero entera— y entre dos
+> dispositivos gana el último que escribe, pisando el mes completo en vez de la celda.
 
 ## Funcionalidad
 
@@ -326,11 +370,29 @@ El tope no es solo de presentación: **cada tarea aporta como mucho su propia me
 
 Cada fila tiene, en la columna de tareas: un **casillero** para seleccionarla, los chevrones **▲ ▼** para subir o bajar la tarea de posición y **✎** para editarla. El orden se guarda junto con los datos.
 
-También se puede **arrastrar una tarea tomándola del nombre** para reordenarla. Una línea de acento marca dónde va a caer según de qué lado del medio de la fila esté el puntero. La fila solo se vuelve arrastrable mientras el puntero apoya sobre el nombre: si no, arrastrar desde una celda de estado movería la tarea sin querer. Los chevrones siguen ahí porque el arrastre no funciona en pantallas táctiles. El alta vive en **+ Agregar tarea**, primero en la barra de acciones del mes y con el mismo color con que el encabezado marca el día de hoy. Para borrar se usa el casillero (ver abajo).
+También se puede **arrastrar una tarea tomándola del nombre** para reordenarla. Una línea de acento marca dónde va a caer según de qué lado del medio de la fila esté el puntero. La fila solo se vuelve arrastrable mientras el puntero apoya sobre el nombre: si no, arrastrar desde una celda de estado movería la tarea sin querer. Los chevrones siguen ahí porque el arrastre no funciona en pantallas táctiles. El alta vive en **+ Agregar tarea**, primero del apartado *Tareas* del desplegable **Acciones** (ver abajo). Para borrar se usa el casillero (ver abajo).
+
+### Acciones del mes
+
+Todo lo que se puede hacer sobre el mes vive en un botón **Acciones**, agrupado por lo que toca:
+
+| Apartado | Qué hay |
+|---|---|
+| **Tareas** | *+ Agregar tarea*, *Copiar tareas del mes anterior*, y —con filas tildadas— *Eliminar N tareas* y *Resetear estados* |
+| **Visualización** | El zoom de la planilla. Solo en móvil: en escritorio la planilla entra y el apartado entero no existe |
+| **Período** | *Bloquear período* |
+
+> **Antes eran seis botones sueltos en una fila.** Agruparlos muestra una distinción que la fila plana no podía: ahí *Resetear estados* y *Bloquear período* se leían como vecinos del mismo rango, cuando uno borra marcas de tareas y el otro congela el mes entero.
+>
+> El menú **se cierra al elegir**, porque casi todo lo que hay adentro abre un diálogo. La excepción es el zoom: cicla tres niveles, así que se queda abierto para poder recorrerlos sin volver a desplegar.
+>
+> Es el mismo mecanismo que el desplegable de vista —cierra con `Esc`, con un clic afuera, y devuelve el foco al botón— y **abrir uno cierra al otro**.
+>
+> El relleno con el color de la marca pasó de *+ Agregar tarea* a **Acciones**: es la entrada a todas, y dejar el color adentro del menú lo escondía. El alta sigue siendo lo primero del primer apartado, y la pantalla de «sin tareas» conserva su propio botón, así que dar de alta la primera tarea sigue estando a un clic.
 
 ### Acciones sobre varias tareas
 
-Al tildar **una o más** casillas las filas quedan resaltadas y aparecen dos botones en la barra de acciones del mes, junto a *Copiar tareas del mes anterior*:
+Al tildar **una o más** casillas las filas quedan resaltadas y aparecen dos entradas más en el apartado *Tareas* del desplegable **Acciones**, debajo de *Copiar tareas del mes anterior*:
 
 | Botón | Qué hace |
 |---|---|
@@ -355,6 +417,10 @@ Cada celda se cambia haciendo **clic**, que cicla entre los cuatro estados:
 | No cumplido ✕ | Rojo | **0** |
 | No requerido – | Gris | sale de la meta |
 
+La **leyenda al pie de la planilla** nombra los cuatro estados del ciclo, con los mismos rótulos que la guía y sin el puntaje al lado: eso lo explica *Cómo usar*, y repetirlo en cada renglón alargaba las entradas sin agregar nada que se consulte de un vistazo. Tampoco lista *Sin cargar*, que es la ausencia de estado y no uno de ellos — la celda vacía ya se lee sola.
+
+En un teléfono las cuatro entradas van **en dos columnas**, así ocupan dos renglones y no cuatro. Las columnas se miden por su contenido y el par va centrado como bloque, de modo que los rótulos arrancan alineados entre sí en lugar de quedar cada uno centrado por su cuenta.
+
 ### No requerido
 
 El último estado del ciclo **saca ese día de la meta** en lugar de contarlo como fallado. Es para los días en que la tarea legítimamente no correspondía: un feriado en el que no trabajás ni estudiás, una licencia, un viaje.
@@ -368,6 +434,8 @@ Se ve con el mismo gris que los días que la frecuencia no pide, más un **guion
 Todas las celdas son clickeables, sin importar la frecuencia de la tarea. Los días que la frecuencia **no** pide llevan un tinte gris suave para distinguirlos de un vistazo: en una tarea *Lunes a viernes* son los fines de semana, en una *Personalizado* los días que no elegiste, y en las tareas *Semanal*, *Quincenal* y *Mensual* la fila entera —porque ningún día puntual es obligatorio, sirve cualquiera del período.
 
 El tinte de fin de semana se mantiene en el encabezado de días y en la fila `Tareas completadas`, como referencia de calendario.
+
+**El día de hoy se marca solo en el encabezado**, con la píldora del número. Antes su columna llevaba además un filete vertical del color de la marca a los dos lados, que competía con los colores de estado —que son los que hay que leer— y recortaba el verde o el rojo de cada celda. Saber qué día es hoy es contexto; qué se cumplió y qué no es el dato.
 
 **Shift + clic** retrocede en el ciclo (útil si te pasaste de estado).
 
@@ -486,32 +554,73 @@ Los totales siempre se calculan sobre el **rango visible**, así que cambian al 
 - **Semanal** — 7 días, de lunes a domingo
 - **Mensual** — todos los días del mes
 
-Las semanas se alinean al lunes y todas las vistas se recortan a los límites del mes, para que ningún total mezcle datos de dos meses distintos. Las flechas `‹ ›` del bloque de la derecha mueven la ventana; al llegar al borde saltan al mes contiguo.
+Se eligen en un **botón que muestra la vista activa** y despliega las otras. Las flechas `‹ ›` lo abrazan y mueven la ventana de esa vista: un día, una semana o —en la mensual, donde no hay ventana que correr dentro del mes— un mes. Al llegar al borde saltan al mes contiguo.
+
+Son los **tres únicos controles** de esa zona: todo lo demás —ir a hoy, saltar a un día— vive en el desplegable. Qué ventana se está mirando no lo dice un rótulo aparte sino los números de las columnas, que ya están ahí.
+
+Las semanas se alinean al lunes y todas las vistas se recortan a los límites del mes, para que ningún total mezcle datos de dos meses distintos.
+
+> **Antes eran dos filas y siete controles**: un carril con «Hoy», *Diario*, *Semanal* y *Mensual*, y debajo otra fila con `‹`, el rótulo, `›` y el calendario. Todo eso decía dos cosas —en qué ventana estoy y cómo me muevo entre ventanas—, así que ahora van juntas: el rótulo pasó a ser el subtítulo de su propio control en vez de una fila aparte.
+>
+> **El salto bajó al desplegable**, al final y detrás de un separador. No es una vista sino una acción, y así se lee: las tres vistas son `menuitemradio` y esa es un `menuitem`.
+>
+> El desplegable es propio y no un `<select>`: sus opciones no se pueden estilar y el nativo de Android se abre a pantalla completa. Cierra con `Esc`, con un clic afuera o al elegir, y devuelve el foco al botón. Mientras está abierto los atajos de teclado quedan en suspenso, para que las flechas no muevan el período por detrás del menú.
 
 ### Ir a una fecha
 
-Junto a cada selector hay un **icono de calendario** para saltar sin recorrer mes por mes:
+Hay dos calendarios para saltar sin recorrer mes por mes:
 
-| Icono | Abre | Qué muestra |
+| Se abre desde | Abre | Qué muestra |
 |---|---|---|
-| A la derecha del selector de **mes** | *Seleccionar mes* | Los doce meses de un año, sin días. Las flechas cambian de año |
-| A la derecha del selector de **día** | *Seleccionar día* | El calendario del mes, alineado al lunes. Las flechas cambian de mes |
+| El **nombre del mes**, que es un botón | *Seleccionar mes* | Los doce meses de un año, sin días. Las flechas cambian de año |
+| **Ir a…**, en el desplegable de vista | *Seleccionar día* | El calendario del mes, alineado al lunes. Las flechas cambian de mes |
+
+> **Ninguno de los dos es ya un icono.** La barra no tiene un solo calendario suelto: el de meses es el propio nombre del mes y el de días bajó al desplegable. Los dos son saltos largos —de julio a marzo, del 30 al 8— y ninguno es algo que se haga a cada rato, así que no necesitaban un control permanente ocupando la fila.
+>
+> **«Ir a hoy» e «Ir a un día…» eran el mismo gesto**, así que son una sola entrada: *Ir a…*. Hoy no es un destino aparte sino uno más del calendario —y ya venía marcado ahí con el color de la marca—, solo que el más frecuente.
+>
+> Por eso el diálogo tiene ahora un botón **Hoy**, junto a *Cancelar*: sin él, volver al mes actual con el puntero obligaba a paginar hasta encontrarlo, y la tecla `T` no sirve en un teléfono. Funciona en los dos modos del diálogo, el de días y el de meses.
+>
+> **La línea del mes es un solo control.** Antes eran tres —un icono de calendario, `‹` y `›`— para una misma cosa. Sigue leyéndose como el título de la barra —mismo cuerpo y mismo peso que cuando era texto— y el fondo que lo delata como control aparece recién al pasarle el mouse. El chevron `▾` lo pone el CSS, así que ningún lector de pantalla lo anuncia: el nombre accesible es el mes, y el `aria-haspopup="dialog"` avisa que abre un diálogo.
+>
+> El paso a paso no se pierde: las flechas cruzan al mes contiguo al llegar al borde, y están las teclas `←` `→`.
 
 Elegir un día lleva a la **ventana que lo contiene** según la vista activa: en semanal cae en su semana, en diaria en ese día. En los dos calendarios, el día o mes **de hoy** va relleno con el color de la marca y el que ya estás mirando queda contorneado. Navegar dentro del diálogo no mueve la planilla: recién cambia al elegir, y *Cancelar* la deja como estaba.
 
-El selector de día se oculta en la vista mensual, igual que sus flechas: ahí el mes entero es una sola ventana.
+**El desplegable es el mismo en las tres vistas.** En la mensual *Ir a…* sigue estando: ahí el mes entero es una sola ventana, así que elegir un día lleva a **su** mes, que es un salto tan válido como los otros. Las flechas también quedan — es donde pasan a mover de mes en mes.
+
+> Un menú que muda de opciones según dónde estés obliga a recordar cuáles hay en cada una, y hace que una desaparezca justo cuando se la fue a buscar.
 
 ### Plegar los controles (solo móvil)
 
-Junto al selector de mes —en el lugar que en escritorio ocupa *Análisis*— hay un botón que **pliega todo lo que hay entre la línea del mes y la planilla**: el selector de vista, la navegación del rango y las acciones del mes. En un teléfono son tres filas que empujan la planilla fuera de la pantalla.
+A la derecha de la línea del mes hay un botón que **pliega la fila que hay entre el mes y la planilla**: el selector de vista con sus flechas, y *Acciones*.
 
-Dice `–` cuando está desplegado y `+` cuando no, y **recuerda cómo lo dejaste**. Solo aparece en la planilla: en la sección de análisis esas tres zonas ya están ocultas y no habría sobre qué actuar.
+Dice `–` cuando está desplegado y `+` cuando no, y **recuerda cómo lo dejaste**. Solo aparece en la planilla: en la sección de análisis esas zonas ya están ocultas y no habría sobre qué actuar.
+
+> **En móvil la barra son dos filas**, no tres como antes:
+>
+> ```
+>              Agosto 2026 ▾                –
+>   ‹ Semanal ▾ ›                    Acciones
+> ```
+>
+> El mes va **centrado de verdad**: su fila es una rejilla de `1fr auto 1fr`, así que el rótulo queda al medio sin importar cuánto ocupe el plegado de la derecha. Debajo, las dos entradas a todo lo demás quedan una en cada punta.
+>
+> Para poder compartir fila, `#month-bar` pasó a vivir **dentro** de `.controls`. En escritorio sigue en una fila propia y contra la izquierda, igual que cuando era una sección hermana — lo consigue con `grid-column: 1 / -1`.
+>
+> La rejilla del mes es propia y **no `subgrid`**: eso pide Chrome 117 y la app declara soporte desde el 105.
+>
+> **El selector de vista mide siempre lo mismo de ancho.** Los tres rótulos no miden igual —«Diario» 85,5px contra 98,3 de «Semanal» y 98,1 de «Mensual»—, así que sin un piso el botón cambiaba de tamaño al cambiar de vista y arrastraba a las flechas que lo abrazan. El piso va en `em`, por encima del más ancho: se mide contra la tipografía del propio botón, así que si cambia el cuerpo la reserva lo acompaña.
+>
+> **Todos los controles de la barra miden lo mismo de alto**, por `--ctl-h`. Antes convivían cuatro alturas en la misma fila —30,8px las flechas y el plegado, 32,3 *Acciones*, 36,4 el mes y 38,3 la vista— porque cada uno lo resolvía con su propio padding. En una fila esa diferencia se lee como jerarquía, y acá no la hay: son todos pares.
+>
+> **Cada desplegable ancla del lado en que está su botón.** El de vista queda contra el borde izquierdo y el de acciones contra el derecho, así que crecen hacia adentro y ninguno se sale de la pantalla. Esa regla va **por id**: el menú de acciones comparte la clase `.view-options`, y acotarla por clase le pisaba el ancla y lo dejaba cortado.
 
 > El plegado va por una clase en el `body` y no por el atributo `hidden`, que ya lo usa el router para ocultar esas mismas zonas según la sección. Así las dos condiciones conviven sin pisarse.
 
 ### Zoom de la planilla (solo móvil)
 
-En pantallas angostas aparece un botón en la barra de acciones del mes, **junto a *Bloquear período***, que cambia la densidad de la planilla. Cicla tres niveles y recuerda el elegido.
+En pantallas angostas aparece el apartado **Visualización** del desplegable **Acciones**, con un control que cambia la densidad de la planilla. Cicla tres niveles y recuerda el elegido.
 
 No toca solo el ancho de las columnas: baja también el **alto de las filas** y el **cuerpo del nombre de la tarea**.
 
@@ -524,6 +633,12 @@ No toca solo el ancho de las columnas: baja también el **alto de las filas** y 
 *(vista mensual sobre un viewport de 390px, con la raíz en 14px; los caracteres son estimados)*
 
 **Todas las filas miden lo mismo**, entre el nombre en una línea o en dos. La celda de tareas usa `height` y no `min-height`: con un mínimo, un nombre largo empujaba su fila y la planilla quedaba escalonada. El alto se arma con las mismas piezas que ocupa la celda —dos líneas de nombre, una de frecuencia y el padding—, así que sigue al zoom sin números sueltos que se desincronicen. En pantallas de menos de 380px la frecuencia se oculta y el alto deja de reservarle lugar.
+
+**Y todas las columnas también**, por la misma razón y con el mismo remedio del lado del ancho: la tabla es `table-layout: fixed`, así que los anchos los fija la primera fila y el contenido de las celdas no los mueve.
+
+> Con el `auto` que traen las tablas por omisión, el ancho de cada columna lo decide lo que tiene adentro, y una celda con glifo (`✓ ~ ✕ –`) mide más que una vacía. Mientras la tabla entra en la pantalla no se nota —el espacio sobrante se reparte y empareja todo—, pero apenas desborda, que es lo normal en un teléfono, marcar unos días dejaba la planilla con columnas de **cinco anchos distintos**: 29, 29,77, 31, 32,5 y 34,28px donde tenía que haber un solo 29.
+>
+> En escritorio nunca se vio porque ahí la columna de día mide 38px en la vista mensual y el glifo entra sin empujar. En móvil son 29px, y en *Compacto* 23,8: el contenido siempre empuja. Es un bug que aparece **al usar la app**, no al abrirla, porque hace falta marcar celdas para que las columnas se desalineen.
 
 **Zoom out gana días sin comerse el nombre**, y eso descansa en dos decisiones:
 
@@ -579,9 +694,9 @@ Es reversible: el mismo botón pasa a decir **Desbloquear período**. El bloqueo
 
 ## Datos
 
-El estado completo va a Supabase y al `localStorage`, bajo la clave `tareas-diarias/v1/<id de usuario>` — ver [Dónde viven los datos](#dónde-viven-los-datos). Lo que sigue describe la forma de ese estado, que es la misma en los dos lados.
+El estado completo va al `localStorage`, bajo la clave `tareas-diarias/v1/<id de usuario>`, y a Supabase — ver [Dónde viven los datos](#dónde-viven-los-datos). La forma es la misma de los dos lados salvo por las preferencias de pantalla, que **solo existen en la copia local** (ver [Lo que no se sincroniza](#lo-que-no-se-sincroniza)).
 
-Las tareas se guardan en `months`, indexadas por `YYYY-MM`; solo aparecen los meses que fueron modificados. Los estados van aparte, en `status`, con clave `idDeTarea|YYYY-MM-DD`. Los meses bloqueados están en `locked` y la preferencia de indicadores en `showSummary`. Si tenías datos del formato anterior (una única lista global), se migran solos al mes más antiguo con estados cargados, así los meses siguientes lo heredan y no se pierde nada.
+Las tareas se guardan en `months`, indexadas por `YYYY-MM`; solo aparecen los meses que fueron modificados. Los estados van aparte, en `status`, con clave `idDeTarea|YYYY-MM-DD`. Los meses bloqueados están en `locked`, y los paneles del análisis en `panels`. Si tenías datos del formato anterior (una única lista global), se migran solos al mes más antiguo con estados cargados, así los meses siguientes lo heredan y no se pierde nada.
 
 - **Exportar** descarga un `.json` con tareas y estados.
 - **Importar** reemplaza los datos actuales por los del archivo (pide confirmación).
@@ -591,6 +706,26 @@ Usá exportar/importar para hacer backup o para pasar los datos a otro dispositi
 > Si editás la frecuencia de una tarea y algunos días dejan de aplicar, esos estados quedan guardados pero no se cuentan. Si volvés a la frecuencia anterior, reaparecen. Eliminar la tarea borra sus estados de ese mes definitivamente (ver [Independencia por mes](#independencia-por-mes)).
 
 ## Responsive
+
+- **La app ocupa la ventana y no desplaza: desplaza la planilla.** Quedan quietos el encabezado, la barra de controles, el encabezado de días de la planilla y la leyenda del pie; las filas de tareas pasan por debajo. En un mes cargado eso deja siempre a la vista qué día es cada columna, que es justo lo que hace falta mientras se recorren las tareas.
+
+  > **Por qué el armazón y no `sticky`.** `.table-wrap` ya desplazaba en horizontal, y al fijar un eje el otro deja de ser `visible`: el contenedor **es** un contenedor de scroll, así que un `sticky` de adentro se ancla a él y no a la ventana. Con la página como scroller, el encabezado de la planilla se empujaba hacia abajo hasta el medio de la tabla en vez de quedarse arriba.
+  >
+  > Dándole el scroll a `.table-wrap` y el alto sobrante por `flex`, ese mismo `sticky` se pega a su borde superior y funciona. Y las otras dos bandas dejan de necesitar `sticky`: el armazón les da su franja y nada pasa por debajo.
+  >
+  > La pieza que no se ve venir es **`min-height: 0`** en la cadena `.app-main` → `.board` → `.table-wrap`. Sin eso los hijos flex se niegan a bajar de su alto natural, no hay nada que recortar y el desborde reaparece abajo de todo.
+  >
+  > El alto es `100dvh` con `100vh` de reserva: sin `dvh`, la barra del navegador en el teléfono deja un trozo de app fuera de la pantalla.
+  >
+  > **En papel el armazón se suelta.** La hoja de impresión devuelve los altos a `auto` y quita el `overflow`, o se imprimiría solo lo que entraba en una ventana.
+  >
+  > **El tablero encierra su apilado** con `isolation: isolate`. Sus capas internas —el encabezado de días, las columnas fijas— competían de igual a igual con las de la barra de controles; al empatar decidía el orden del documento, y como el tablero va después, el encabezado de la tabla tapaba los desplegables. Encerrarlo es más sólido que subirle el número a la barra, que solo mueve el empate de lugar.
+  >
+  > El encabezado de la planilla se pega **un píxel por encima** del borde del contenedor, no pegado a él. Ese contenedor no siempre cae en una posición entera —medido: 178,97px—, y ahí lo pegado y lo que desplaza por detrás se rasterizan en bordes de píxel distintos: por esa costura de subpíxel asomaban las filas. El fondo estirado la tapa, y el píxel de más queda recortado contra el borde, donde no se ve.
+
+- El encabezado va **por debajo del velo del menú lateral** en el orden de apilado. Si estuviera por encima, abrir el menú lo dejaría iluminado y clickeable sobre un velo que atenúa todo lo demás.
+
+- **Análisis** y **Cómo usar** desplazan por dentro, que es lo que les corresponde: son largas y no tienen una planilla que se quede con el alto.
 
 - **Escritorio**: planilla completa; la columna de tareas y la de totales quedan fijas al hacer scroll horizontal.
 - **Mobile**: la tabla scrollea en horizontal con la columna de tareas siempre visible; celdas de 46 px de alto para que sean cómodas al tacto, y un **botón de zoom** para elegir cuántos días entran (ver arriba).

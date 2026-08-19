@@ -60,6 +60,9 @@
 
   --radius:        12px;
   --radius-sm:     8px;
+
+  /* Alto único de los controles de las dos barras. Ver `.controls .btn`. */
+  --ctl-h:         38px;
   --shadow:        0 1px 2px rgba(20, 30, 60, .06), 0 8px 24px rgba(20, 30, 60, .07);
   --shadow-sm:     0 1px 2px rgba(20, 30, 60, .08);
 
@@ -130,8 +133,17 @@ html { height: 100%; }
 
 /* `min-height` y no `height`: con `height: 100%` el contenido que desborda
    se sale de la caja del body y el padding inferior deja de respetarse. */
+/* La app ocupa la ventana y NO desplaza: lo que desplaza es la planilla por
+   dentro. Es lo que deja fijos el encabezado, los controles y el encabezado de
+   la planilla sin `sticky` ni medir alturas — quedan donde el armazón los pone.
+
+   `dvh` antes que `vh` para que la barra del navegador en el teléfono no deje
+   un trozo de app fuera de la pantalla; `vh` queda de reserva para los
+   navegadores que no lo entienden. */
 body {
-  min-height: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   margin: 0;
   padding: 0;
   background: var(--bg);
@@ -165,6 +177,14 @@ body {
   padding: .85rem clamp(.9rem, 3vw, 2rem);
   background: var(--bg-elev);
   border-bottom: 1px solid var(--border);
+
+  /* Queda a la vista siempre porque el armazón le da su propia franja y la app
+     no desplaza. No hace falta `sticky`: nada pasa por debajo.
+
+     El `z-index` lo deja por encima del contenido pero por DEBAJO del velo del
+     menú lateral (35): al abrirlo, el encabezado tiene que quedar atenuado como
+     todo lo demás y no flotando sobre el velo. */
+  flex: none;
   position: relative;
   z-index: 5;
 }
@@ -601,11 +621,24 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 /* ---------------- Layout ---------------- */
 
+/* El armazón: encabezado arriba con su alto propio y el resto para el contenido.
+   `min-height: 0` en la columna es lo que permite que un hijo con scroll se
+   achique; sin eso los hijos flex se niegan a bajar de su alto natural y el
+   desborde reaparece abajo de todo. */
+#app-root {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .app-main {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   max-width: 1500px;
   margin: 0 auto;
-  /* el respiro de abajo va acá y no en el body, que no lo aplica al desbordar */
-  padding: 1.25rem clamp(.9rem, 3vw, 2rem) 3.5rem;
+  padding: 1.25rem clamp(.9rem, 3vw, 2rem);
   display: flex;
   flex-direction: column;
   gap: 1.1rem;
@@ -616,7 +649,14 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 /* Ocupa el mismo ancho que la planilla, con tres zonas: mes a la izquierda,
    vista al medio y navegación del rango a la derecha. Los laterales son
    columnas iguales, así el grupo del medio queda centrado de verdad. */
+/* Franja propia bajo el encabezado, sin `sticky`: la app no desplaza, así que
+   se queda donde está. `z-index: 4` la deja por encima de la planilla —de ahí
+   cuelgan los desplegables, que se abren sobre ella— y por debajo del
+   encabezado (5). */
 .controls {
+  flex: none;
+  position: relative;
+  z-index: 4;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
@@ -625,68 +665,191 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 .control-group { display: flex; align-items: center; gap: .35rem; }
 
-.month-nav       { justify-self: start; }
-.controls-center { justify-self: center; gap: .5rem; }
-.range-nav       { justify-self: end; }
+/* Todos los controles de la barra miden lo mismo de alto. Antes convivían
+   cuatro alturas en la misma fila —30,8px las flechas y el plegado, 32,3 el de
+   acciones, 36,4 el mes y 38,3 el de vista—, y en una fila esa diferencia se
+   lee como jerarquía. Acá no la hay: son todos pares.
 
+   El alto lo fija `--ctl-h` y no el padding, así ninguno depende del cuerpo de
+   su texto ni de si lleva ícono. Con `border-box`, el padding que cada uno
+   traiga sigue valiendo para los costados y deja de empujar el alto. */
+.controls .btn,
 .month-label {
+  height: var(--ctl-h);
+  padding-block: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.month-nav { justify-self: start; }
+
+/* Ocupa la columna del medio de la barra; la tercera queda vacía, que es lo que
+   mantiene al grupo centrado sin un separador de mentira. */
+.controls-center { justify-self: center; }
+
+/* La barra de acciones vive DENTRO de `.controls` para poder compartir fila con
+   el selector de vista en móvil. En escritorio sigue en una fila propia, a lo
+   ancho y contra la izquierda, que es donde estaba cuando era una sección
+   hermana. */
+.month-bar { grid-column: 1 / -1; }
+
+/* El nombre del mes es el botón que abre el calendario de meses. Sigue leyéndose
+   como el título de la barra —el peso y el cuerpo son los de antes, cuando era
+   un `span`— y recién al pasarle el mouse aparece el fondo que lo delata como
+   control: es el rótulo de la zona, no un botón más de la fila.
+
+   El chevron va en el CSS y no en el markup: es decoración, y como `content`
+   ningún lector de pantalla lo anuncia. El nombre accesible queda siendo el mes,
+   que es lo que corresponde. */
+.month-label {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
   min-width: 10.5ch;
   text-align: center;
+  font: inherit;
   font-weight: 650;
   font-size: 1rem;
   text-transform: capitalize;
-}
-
-.range-label {
-  min-width: 15ch;
-  text-align: center;
-  font-size: .85rem;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.view-switch {
   display: flex;
   align-items: center;
-  background: var(--bg-sunken);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 3px;
-  gap: 2px;
+  justify-content: center;
+  gap: .3rem;
+  padding: .35rem .6rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .13s ease, border-color .13s ease;
 }
+.month-label::after {
+  content: '▾';
+  font-size: .8em;
+  line-height: 1;
+  color: var(--text-muted);
+  transition: color .13s ease;
+}
+.month-label:hover {
+  background: var(--bg-sunken);
+  border-color: var(--text-faint);
+}
+.month-label:hover::after { color: var(--text); }
 
-.seg {
+
+/* ---- Selector de vista ----
+   Un botón con la vista activa, abrazado por las flechas que mueven la ventana.
+   Antes eran cuatro botones en un carril («Hoy» y las tres vistas) más una fila
+   aparte con las flechas: dos filas y siete controles para decir en qué ventana
+   estoy y cómo me muevo. */
+
+.view-menu { position: relative; }
+
+/* El ancho no lo decide el rótulo: los tres tienen que medir lo mismo, o el
+   botón —y con él las flechas que lo abrazan— se corre al cambiar de vista.
+
+   Medidos a 390px: «Diario» 85,5px, «Semanal» 98,3 y «Mensual» 98,1. El piso va
+   por encima del más ancho, así que los tres lo alcanzan y ninguno lo pasa.
+   En `em` y no en `px`: se mide contra la tipografía del propio botón, así que
+   si cambia el cuerpo la reserva lo acompaña. El `11ch` anterior daba ~77px y
+   no llegaba a activarse nunca. */
+.view-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
+  min-width: 7.5em;
+  font-weight: 600;
+}
+.view-btn::after {
+  content: '▾';
+  font-size: .8em;
+  line-height: 1;
+  color: var(--text-muted);
+  transition: color .13s ease;
+}
+.view-btn:hover::after { color: var(--text); }
+
+/* El menú flota sobre la planilla, así que va por encima de la columna de
+   tareas y de los encabezados, que son sticky y tienen z-index propio. */
+.view-options {
+  position: absolute;
+  top: calc(100% + .35rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  min-width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: .3rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+.view-opt {
   appearance: none;
   border: 0;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text);
   font: inherit;
-  font-size: .82rem;
+  font-size: .85rem;
   font-weight: 550;
-  padding: .4rem .8rem;
-  border-radius: 7px;
-  cursor: pointer;
+  text-align: left;
   white-space: nowrap;
+  padding: .45rem .7rem;
+  border-radius: 6px;
+  cursor: pointer;
   transition: background .13s ease, color .13s ease;
-  /* base 0 + grow igual: ambos segmentos miden exactamente lo mismo */
-  flex: 1 1 0;
-  min-width: 9ch;
-  text-align: center;
+  /* En fila: varios llevan glifo o ícono delante del rótulo. */
+  display: flex;
+  align-items: center;
+  gap: .4rem;
 }
-.seg:hover { color: var(--text); }
+.view-opt:hover { background: var(--bg-sunken); }
 
-/* La vista activa se pinta como «+ Agregar tarea»: mismo color, mismo peso y
-   texto blanco. Las dos son la acción destacada de su barra, así que comparten
-   el color con que el encabezado marca el día de hoy. Sin sombra: acá el
-   relieve lo da el contraste con el carril hundido, no una elevación. */
-.seg[aria-pressed="true"] {
+/* La vista activa se pinta con el color de la marca, igual que «+ Agregar
+   tarea» y que el día de hoy en el encabezado. */
+.view-opt.is-active {
   background: var(--today);
   color: var(--brand-fg);
   font-weight: 620;
 }
-.seg[aria-pressed="true"]:hover { color: var(--brand-fg); filter: brightness(1.08); }
+.view-opt.is-active:hover { filter: brightness(1.08); }
 
-.range-nav[hidden] { display: none; }
+/* «Ir a hoy» es una acción, no una vista: la línea lo separa de las tres. */
+.view-opt-sep {
+  height: 1px;
+  margin: .3rem .35rem;
+  background: var(--border);
+}
+
+/* ---- Desplegable de acciones del mes ----
+   Ancla a la izquierda y no al centro: en escritorio la barra arranca contra el
+   borde izquierdo, y un menú centrado sobre su botón se saldría del contenedor.
+   En móvil el botón está contra el borde DERECHO y el ancla se invierte — ver
+   el bloque de 640px. */
+.actions-options { left: 0; transform: none; }
+
+.opt-group { display: flex; flex-direction: column; }
+
+.opt-group-title {
+  margin: .35rem .7rem .2rem;
+  font-size: .68rem;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* Mismo trato que el resto de los botones destructivos de la app. */
+.view-opt-danger { color: var(--missed-fg); }
+.view-opt-danger:hover:not(:disabled) { background: var(--missed-bg); }
+
+.view-opt:disabled { opacity: .45; cursor: not-allowed; }
+.view-opt:disabled:hover { background: transparent; }
+
+
 
 /* Los íconos heredan el color del botón, así que siguen al tema sin reglas aparte. */
 .cal-icon { width: 17px; height: 17px; display: block; }
@@ -694,7 +857,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 /* El zoom y el plegado responden a la falta de espacio: en escritorio no hay
    nada que resolver, así que los controles directamente no existen. */
-.zoom-btn,
+.zoom-group,
 .collapse-btn { display: none; }
 
 /* ---------------- Ir a un día o a un mes ---------------- */
@@ -760,12 +923,14 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 /* ---------------- Barra de acciones del mes ---------------- */
 
+/* Sin `margin-top` negativo: compensaba la separación entre secciones hermanas,
+   y ahora que es un ítem más de la rejilla de `.controls` solo lo desalineaba
+   de sus vecinos de fila. El espaciado lo pone el `gap`. */
 .month-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: .4rem;
-  margin-top: -.35rem;
 }
 
 .month-bar .btn { font-size: .82rem; padding: .4rem .7rem; }
@@ -778,9 +943,6 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 .btn-ghost-danger { color: var(--missed-fg); }
 .btn-ghost-danger:hover:not(:disabled) { background: var(--missed-bg); color: var(--missed-fg); }
-
-/* el bloqueo del período queda separado, contra el borde derecho */
-#btn-lock { margin-left: auto; }
 
 /* período cerrado: el botón queda marcado en ámbar */
 #btn-lock.is-locked {
@@ -805,6 +967,10 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 }
 
 /* ---------------- Análisis: paneles plegables ---------------- */
+
+/* Estas dos sí desplazan por dentro: son largas y no tienen una planilla que
+   se quede con el alto. */
+.analysis, .help { flex: 1; min-height: 0; overflow-y: auto; }
 
 .analysis { display: flex; flex-direction: column; gap: 1rem; }
 
@@ -1139,21 +1305,55 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 /* ---------------- Tabla ---------------- */
 
-.board { position: relative; }
+/* Se queda con todo el alto sobrante: la planilla es lo que crece, y la leyenda
+   de abajo mantiene su lugar en vez de irse de la pantalla.
 
+   `isolation: isolate` encierra el apilado de la planilla. Sin eso sus capas
+   internas —el encabezado de días en 4, las columnas fijas en 2 y 5— salen a
+   competir de igual a igual con las de la barra de controles, que está en 4: al
+   empatar decide el orden del documento, y como el tablero va después, el
+   encabezado de la tabla tapaba los desplegables. Encerrarlo es más sólido que
+   subirle el número a la barra, que solo mueve el empate de lugar. */
+.board {
+  position: relative;
+  isolation: isolate;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+
+/* El único que desplaza. Al ser ÉL el contenedor de scroll, el `sticky` del
+   encabezado de la planilla se ancla a su borde superior —`top: 0`— y las filas
+   pasan por debajo. Antes el contenedor no tenía alto propio y ese mismo
+   `sticky` no tenía contra qué anclarse: el encabezado se iba con la página. */
 .table-wrap {
-  overflow-x: auto;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  overscroll-behavior-x: contain;
 }
 .table-wrap:empty { display: none; }
 
+/* `fixed` y no `auto`: los anchos los fija la primera fila y el contenido de las
+   celdas no los mueve. Con `auto`, una celda con glifo (✓ ~ ✕ –) mide más que
+   una vacía, y cuando la tabla desborda —el caso normal en un teléfono— cada
+   columna terminaba con el ancho de lo que le tocó adentro: marcar unos días
+   dejaba la planilla con columnas de cinco anchos distintos.
+
+   No se notaba en escritorio porque ahí `--cell-w` (38px en la vista mes) es más
+   ancha que el glifo, así que el contenido nunca empujaba. En móvil son 29px y
+   sí empuja. Todas las columnas declaran su ancho, que es justo lo que este
+   modo necesita. */
 .grid {
   border-collapse: separate;
   border-spacing: 0;
+  table-layout: fixed;
   width: 100%;
   font-variant-numeric: tabular-nums;
 }
@@ -1196,7 +1396,25 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 }
 
 /* encabezado */
+/* Tercera banda fija: los días quedan a la vista mientras se recorren las
+   tareas, que es cuando hacen falta. Se pega al borde superior de `.table-wrap`.
+
+   El `z-index` tiene que superar al 2 de la columna de tareas del cuerpo: si no,
+   los nombres se dibujarían POR ENCIMA del encabezado al desplazar. */
 .grid thead th {
+  position: sticky;
+  /* Un píxel MÁS ARRIBA del borde, no pegado a él.
+
+     El contenedor no siempre cae en una posición entera —medido: 178,97px—, y
+     ahí el encabezado pegado y las filas que se desplazan por detrás terminan
+     rasterizados en bordes de píxel distintos. Por esa costura de subpíxel
+     asomaban las tareas al desplazar. Subiéndolo un píxel, su fondo la tapa.
+
+     Sin compensar con `padding`: eso lo agrandaría también en reposo, y el
+     corrimiento solo hace falta mientras está pegado. Lo que se pierde es un
+     píxel de fondo recortado contra el borde, que no se ve. */
+  top: -1px;
+  z-index: 4;
   background: var(--bg-sunken);
   border-bottom: 1px solid var(--border-strong);
   font-size: .72rem;
@@ -1205,8 +1423,10 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   padding: .45rem .25rem;
   vertical-align: middle;
 }
+/* Las esquinas quedan fijas en los dos ejes a la vez, por encima del resto del
+   encabezado, que ya está en 4. */
 .grid thead th.col-task,
-.grid thead th.col-total { background: var(--bg-sunken); z-index: 3; }
+.grid thead th.col-total { background: var(--bg-sunken); z-index: 5; }
 
 .grid thead th.col-total { padding-inline: .2rem; }
 
@@ -1352,7 +1572,11 @@ tbody tr:hover .move-stack,
 .cell-td { padding: 0; height: 1px; }
 /* Día que la frecuencia de la tarea no pide. Sigue siendo marcable. */
 .cell-td.is-optional { background: var(--weekend-bg); }
-.cell-td.is-today   { box-shadow: inset 1px 0 0 var(--today), inset -1px 0 0 var(--today); }
+
+/* El día de hoy se marca SOLO en el encabezado, con la píldora del número. Las
+   celdas del cuerpo llevaban además un filete vertical del color de la marca a
+   los dos lados de la columna, que competía con los colores de estado —que son
+   los que hay que leer— y recortaba el verde o el rojo de cada celda. */
 
 .cell {
   appearance: none;
@@ -1521,6 +1745,7 @@ tbody tr:hover .move-stack,
 /* ---------------- Referencias ---------------- */
 
 .legend {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1546,8 +1771,17 @@ tbody tr:hover .move-stack,
 .legend-hint { margin-left: auto; color: var(--text-faint); }
 
 @media (max-width: 640px) {
-  .legend { justify-content: center; }
-  .legend-item { width: 100%; justify-content: center; }
+  /* Dos columnas en vez de una entrada por fila: cuatro referencias cortas
+     ocupan dos renglones y no cuatro. Las columnas se miden por su contenido y
+     el par va centrado como bloque, así los rótulos arrancan alineados entre sí
+     en lugar de quedar cada uno centrado por su cuenta. */
+  .legend {
+    display: grid;
+    grid-template-columns: repeat(2, max-content);
+    justify-content: center;
+    gap: .45rem 1.25rem;
+  }
+  .legend-item { justify-content: flex-start; }
   .legend-item .chip { margin-right: .25rem; }
   .legend-hint { display: none; }
 }
@@ -1741,8 +1975,9 @@ tbody tr:hover .move-stack,
 /* vista mes: celdas más angostas para que entren 31 columnas */
 .grid.view-month { --cell-w: 38px; }
 
-/* vista diaria: la única columna de día ocupa el ancho sobrante */
-.grid.view-day { table-layout: fixed; }
+/* vista diaria: la única columna de día ocupa el ancho sobrante.
+   El `table-layout: fixed` que esto pedía ahora lo trae `.grid` para todas las
+   vistas; acá solo queda soltarle el mínimo para que pueda estirarse. */
 .grid.view-day .col-day { min-width: 0; }
 .grid.view-day thead .col-day:not(.is-today) .dnum { font-size: 1.05rem; }
 /* el "hoy" es una píldora: crecen círculo y número juntos para que no se desborde */
@@ -1827,45 +2062,68 @@ tbody tr:hover .move-stack,
     line-height: 1;
   }
 
-  /* Plegado: se van las tres zonas que hay entre la línea del mes y la planilla.
+  /* Plegado: se van las dos zonas que hay entre la línea del mes y la planilla.
      Va por clase en el body y no por `hidden`, que ya lo usa el router para
      ocultarlas según la sección; así las dos condiciones conviven. */
   body.controls-collapsed #controls-center,
-  body.controls-collapsed #range-nav,
   body.controls-collapsed #month-bar { display: none; }
 
-  /* En angosto las tres zonas pasan a filas apiladas, cada una a lo ancho. */
-  .controls { grid-template-columns: 1fr; gap: .6rem; }
-  .month-nav, .controls-center, .range-nav { justify-self: stretch; }
-  .month-nav, .range-nav { justify-content: space-between; }
-  .view-switch { flex: 1; }
-  .seg { padding: .45rem .35rem; min-width: 0; }
+  /* En angosto la barra son dos filas:
 
-  /* Comparte fila con «Bloquear período», así que va centrado como el resto de
-     la barra. El ancho lo pone `.month-bar .btn`. */
-  .zoom-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: .3rem;
+       fila 1        Agosto 2026 ▾                    –
+       fila 2   ‹ Semanal ▾ ›                 Acciones
+
+     El mes va centrado de verdad: las dos columnas de los costados son `1fr`,
+     así que el del medio queda al medio sin importar cuánto ocupe el plegado.
+     Abajo, vista contra la izquierda y acciones contra la derecha — las dos
+     entradas a todo lo demás, una en cada punta. */
+  .controls {
+    /* La primera se ajusta al selector de vista y la segunda se queda con el
+       resto, así «Acciones» llega al borde derecho sin apretar a la otra. */
+    grid-template-columns: auto 1fr;
+    gap: .5rem .6rem;
   }
 
-  /* Todas las posiciones van explícitas: con auto-colocación, un botón nuevo
-     se cuela en la primera celda libre y termina en una fila de más. */
-  .month-bar {
+  /* Rejilla propia y no `subgrid`: eso pide Chrome 117, y la app declara
+     soporte desde el 105. Los dos `1fr` de los costados son lo que deja el mes
+     centrado de verdad, sin importar cuánto ocupe el plegado. */
+  .month-nav {
+    grid-column: 1 / -1;
+    /* A lo ancho: sin esto el `justify-self: start` de la base la encoge al
+       tamaño de su contenido y el mes queda centrado dentro de esa caja, no
+       dentro de la barra. */
+    justify-self: stretch;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: .35rem;
-    align-items: stretch;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
   }
-  .month-bar .btn { font-size: .78rem; padding: .38rem .55rem; width: 100%; }
-  .month-bar #btn-add-task { grid-column: 1; grid-row: 1; }
-  .month-bar #btn-copy-prev { grid-column: 2; grid-row: 1; }
-  /* Fila que solo existe con tareas tildadas: oculta, no ocupa alto. */
-  .month-bar #btn-delete-sel { grid-column: 1; grid-row: 2; }
-  .month-bar #btn-reset-sel { grid-column: 2; grid-row: 2; }
-  .month-bar #btn-zoom { grid-column: 1; grid-row: 3; }
-  .month-bar #btn-lock { grid-column: 2; grid-row: 3; margin-left: 0; }
+  .month-nav .month-label  { grid-column: 2; }
+  .month-nav .collapse-btn { grid-column: 3; justify-self: end; }
+
+  .controls-center { grid-column: 1; justify-self: start; }
+  .month-bar       { grid-column: 2; justify-self: end; }
+
+  /* «Acciones» quedó contra el borde derecho, así que su menú crece hacia la
+     izquierda: anclado a la izquierda como en escritorio, se salía de la
+     pantalla y aparecía cortado. */
+  .actions-options { left: auto; right: 0; }
+
+  /* El de vista está contra el borde izquierdo y le pasa lo mismo al revés:
+     centrado sobre su botón se salía por ese lado.
+
+     Va por id y no por `.view-options`: el de acciones comparte esa clase, y
+     esta regla —posterior— le pisaba el `left: auto` de arriba. Con `left` y
+     `right` en 0 a la vez, el menú se encogía al ancho del botón y su contenido
+     `nowrap` se derramaba fuera de la pantalla. */
+  #view-options { left: 0; transform: none; }
+
+  /* El apartado «Visualización» del desplegable de acciones solo existe acá:
+     en escritorio la planilla entra y no hay densidad que elegir. */
+  .zoom-group { display: flex; }
+
+  /* La rejilla de dos columnas que acomodaba los seis botones ya no hace
+     falta: la barra es un solo botón. */
+  .month-bar .btn { font-size: .78rem; padding: .38rem .55rem; }
 
   .summary { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
   .tile { padding: .6rem .7rem; }
@@ -1935,6 +2193,17 @@ tbody tr:hover .move-stack,
   .app-header, .controls, .month-bar, .legend, .header-actions,
   .drawer, .drawer-backdrop,
   .task-actions, .move-stack, .task-pick { display: none !important; }
-  body { background: #fff; padding: 0; }
-  .table-wrap { overflow: visible; box-shadow: none; }
+
+  /* El armazón de alto fijo es para la pantalla: en papel la planilla tiene que
+     poder ocupar las hojas que haga falta. Sin esto se imprime solo lo que
+     entraba en una ventana. */
+  body { background: #fff; padding: 0; height: auto; overflow: visible; }
+  #app-root, .app-main, .board, .analysis, .help {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    display: block;
+  }
+  .table-wrap { overflow: visible; box-shadow: none; max-height: none; }
+  .grid thead th { position: static; }
 }

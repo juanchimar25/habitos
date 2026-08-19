@@ -275,88 +275,121 @@
 
     <section class="controls" aria-label="Controles de período">
       <div class="control-group month-nav">
-        <!-- Abre el salto a un mes, y va antes de las flechas: primero el salto
-             largo, después el paso a paso.
+        <!-- El nombre del mes ES el control: lo abre el mismo calendario que
+             antes vivía en un icono aparte, y reemplaza también a las flechas
+             de mes anterior/siguiente.
 
-             SVG y no un glifo: no hay carácter de calendario con cobertura real
-             en las fuentes de sistema, y el que más se acerca sale como caja
-             vacía en Android. -->
-        <button type="button" id="btn-pick-month" class="btn icon-btn"
-                title="Seleccionar mes" aria-label="Seleccionar mes">
-          <svg class="cal-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <rect x="1.6" y="3.1" width="12.8" height="11.3" rx="2"
-                  fill="none" stroke="currentColor" stroke-width="1.4"/>
-            <path d="M1.6 6.7h12.8M4.9 1.6v3M11.1 1.6v3"
-                  stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
-          </svg>
-        </button>
-
-        <button type="button" id="prev-month" class="btn icon-btn" aria-label="Mes anterior">‹</button>
-        <span id="month-label" class="month-label">—</span>
-        <button type="button" id="next-month" class="btn icon-btn" aria-label="Mes siguiente">›</button>
+             Tres controles para una sola cosa era de más: elegir mes es un
+             salto largo —de julio a marzo—, y hacerlo a golpes de flecha nunca
+             fue el camino bueno. Para el paso a paso quedan las flechas del
+             rango, que al llegar al borde saltan al mes contiguo, «Hoy», y las
+             teclas ← →. -->
+        <button type="button" id="month-label" class="month-label"
+                aria-haspopup="dialog" title="Elegir mes">—</button>
 
         <!-- Solo en móvil: pliega todo lo que hay entre la línea del mes y la
              planilla —vistas, navegación del rango y acciones del mes—. -->
         <button type="button" id="btn-collapse" class="btn icon-btn collapse-btn"
-                aria-expanded="true" aria-controls="controls-center range-nav month-bar">–</button>
+                aria-expanded="true" aria-controls="controls-center month-bar">–</button>
       </div>
 
+      <!-- En qué ventana estoy y cómo me muevo entre ventanas, en tres
+           controles: las flechas abrazan al selector de vista y todo lo demás
+           —ir a hoy, saltar a un día— vive en su desplegable. -->
       <div class="control-group controls-center" id="controls-center">
-        <button type="button" id="btn-today" class="btn btn-ghost">Hoy</button>
-        <div class="view-switch" id="view-switch" role="group" aria-label="Vista">
-          <button type="button" class="seg" data-view="day">Diario</button>
-          <button type="button" class="seg" data-view="week">Semanal</button>
-          <button type="button" class="seg" data-view="month">Mensual</button>
+        <button type="button" id="prev-range" class="btn icon-btn"
+                aria-label="Período anterior">‹</button>
+
+        <!-- El desplegable no es un <select>: sus opciones no se pueden estilar
+             y el nativo de Android se abre a pantalla completa. Es un menú
+             propio, con el patrón de `aria-haspopup` + `aria-expanded`. -->
+        <div class="view-menu">
+          <button type="button" id="btn-view" class="btn view-btn"
+                  aria-haspopup="menu" aria-expanded="false" aria-controls="view-options">
+            <span id="view-text">—</span>
+          </button>
+
+          <div class="view-options" id="view-options" role="menu"
+               aria-labelledby="btn-view" hidden>
+            <button type="button" class="view-opt" role="menuitemradio"
+                    aria-checked="false" data-view="day">Diario</button>
+            <button type="button" class="view-opt" role="menuitemradio"
+                    aria-checked="false" data-view="week">Semanal</button>
+            <button type="button" class="view-opt" role="menuitemradio"
+                    aria-checked="false" data-view="month">Mensual</button>
+
+            <!-- Debajo del separador, el salto: no es una vista, así que va como
+                 `menuitem` y no deja nada marcado. Es uno solo —«Ir a hoy» y
+                 «Ir a un día…» eran el mismo gesto— y abre el calendario, donde
+                 hoy ya viene marcado con el color de la marca. -->
+            <div class="view-opt-sep" role="separator"></div>
+            <button type="button" class="view-opt" role="menuitem"
+                    id="btn-pick-day" aria-haspopup="dialog">Ir a…</button>
+          </div>
         </div>
+
+        <button type="button" id="next-range" class="btn icon-btn"
+                aria-label="Período siguiente">›</button>
       </div>
 
-      <div class="control-group range-nav" id="range-nav">
-        <button type="button" id="prev-range" class="btn icon-btn" aria-label="Período anterior">‹</button>
-        <span id="range-label" class="range-label">—</span>
-        <button type="button" id="next-range" class="btn icon-btn" aria-label="Período siguiente">›</button>
-
-        <button type="button" id="btn-pick-day" class="btn icon-btn"
-                title="Seleccionar día" aria-label="Seleccionar día">
-          <svg class="cal-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <rect x="1.6" y="3.1" width="12.8" height="11.3" rx="2"
-                  fill="none" stroke="currentColor" stroke-width="1.4"/>
-            <path d="M1.6 6.7h12.8M4.9 1.6v3M11.1 1.6v3"
-                  stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
-          </svg>
-        </button>
-      </div>
+      <!-- Seis botones sueltos pasaron a uno. Adentro van agrupados por lo que
+          tocan —las tareas, cómo se ve la planilla, el estado del período—, que
+          es la distinción que la fila plana no podía mostrar: ahí «Resetear
+          estados» y «Bloquear período» se leían como vecinos del mismo rango. -->
+      <section class="month-bar" id="month-bar" aria-label="Acciones del mes">
+        <div class="view-menu">
+          <button type="button" id="btn-actions" class="btn btn-brand"
+                  aria-haspopup="menu" aria-expanded="false" aria-controls="actions-options">
+            Acciones
+          </button>
+    
+          <div class="view-options actions-options" id="actions-options" role="menu"
+               aria-labelledby="btn-actions" hidden>
+            <div class="opt-group" role="group" aria-labelledby="grp-tareas">
+              <p class="opt-group-title" id="grp-tareas">Tareas</p>
+              <button type="button" class="view-opt" role="menuitem"
+                      id="btn-add-task" data-add-task>+ Agregar tarea</button>
+              <button type="button" class="view-opt" role="menuitem" id="btn-copy-prev">
+                <span aria-hidden="true">⧉</span> Copiar tareas del mes anterior
+              </button>
+              <!-- Solo aparecen con tareas tildadas -->
+              <button type="button" class="view-opt view-opt-danger" role="menuitem"
+                      id="btn-delete-sel" hidden>
+                <span aria-hidden="true">🗑</span> <span id="delete-sel-text">Eliminar tareas</span>
+              </button>
+              <button type="button" class="view-opt" role="menuitem" id="btn-reset-sel" hidden>
+                <span aria-hidden="true">↺</span> Resetear estados
+              </button>
+            </div>
+    
+            <!-- El zoom solo existe en pantallas angostas, así que el apartado
+                 entero desaparece con él: un título sobre una lista vacía sería
+                 peor que no tenerlo. -->
+            <div class="opt-group zoom-group" role="group" aria-labelledby="grp-ver">
+              <div class="view-opt-sep" role="separator"></div>
+              <p class="opt-group-title" id="grp-ver">Visualización</p>
+              <button type="button" class="view-opt zoom-btn" role="menuitem" id="btn-zoom">
+                <svg class="zoom-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                  <circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M10.4 10.4L14.2 14.2M5 7h4"
+                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <span class="zoom-text" id="zoom-text">Normal</span>
+              </button>
+            </div>
+    
+            <div class="opt-group" role="group" aria-labelledby="grp-periodo">
+              <div class="view-opt-sep" role="separator"></div>
+              <p class="opt-group-title" id="grp-periodo">Período</p>
+              <button type="button" class="view-opt" role="menuitem" id="btn-lock">
+                <span aria-hidden="true">🔒</span> <span id="lock-text">Bloquear período</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
     </section>
 
-    <section class="month-bar" id="month-bar" aria-label="Acciones del mes">
-      <button type="button" id="btn-add-task" class="btn btn-brand" data-add-task>
-        + Agregar tarea
-      </button>
-
-      <button type="button" id="btn-copy-prev" class="btn btn-ghost">
-        <span aria-hidden="true">⧉</span> Copiar tareas del mes anterior
-      </button>
-
-      <!-- Solo aparecen con tareas tildadas -->
-      <button type="button" id="btn-delete-sel" class="btn btn-ghost btn-ghost-danger" hidden>
-        <span aria-hidden="true">🗑</span> <span id="delete-sel-text">Eliminar tareas</span>
-      </button>
-      <button type="button" id="btn-reset-sel" class="btn btn-ghost" hidden>
-        <span aria-hidden="true">↺</span> Resetear estados
-      </button>
-      <!-- Solo aparece en pantallas angostas: en escritorio la planilla entra. -->
-      <button type="button" id="btn-zoom" class="btn btn-ghost zoom-btn">
-        <svg class="zoom-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-          <circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"/>
-          <path d="M10.4 10.4L14.2 14.2M5 7h4"
-                stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-        <span class="zoom-text" id="zoom-text">Normal</span>
-      </button>
-
-      <button type="button" id="btn-lock" class="btn btn-ghost">
-        <span aria-hidden="true">🔒</span> <span id="lock-text">Bloquear período</span>
-      </button>
-    </section>
 
     <section class="analysis" id="analysis" aria-label="Análisis del mes">
       <details class="panel" id="panel-tiles" open>
@@ -475,10 +508,14 @@
     </section>
 
     <section class="legend" id="legend" aria-label="Referencias">
-      <span class="legend-item"><span class="chip st-done" aria-hidden="true">✓</span> Cumplido · 1 punto</span>
-      <span class="legend-item"><span class="chip st-partial" aria-hidden="true">~</span> Parcial · 0,5 puntos</span>
-      <span class="legend-item"><span class="chip st-missed" aria-hidden="true">✕</span> No cumplido · 0 puntos</span>
-      <span class="legend-item"><span class="chip st-none" aria-hidden="true"></span> Sin cargar</span>
+      <!-- Los cuatro estados del ciclo, con los mismos rótulos que la guía. Sin
+           el puntaje al lado —eso lo explica «Cómo usar»— y sin «Sin cargar»,
+           que es la ausencia de estado y no uno de ellos: la celda vacía ya se
+           lee sola. Cuatro entradas cortas entran en dos filas de a dos en un
+           teléfono, donde cinco largas ocupaban cinco. -->
+      <span class="legend-item"><span class="chip st-done" aria-hidden="true">✓</span> Cumplido</span>
+      <span class="legend-item"><span class="chip st-partial" aria-hidden="true">~</span> Parcial</span>
+      <span class="legend-item"><span class="chip st-missed" aria-hidden="true">✕</span> No cumplido</span>
       <span class="legend-item"><span class="chip is-optional" aria-hidden="true">–</span> No requerido</span>
       <span class="legend-hint">Clic para avanzar de estado · Shift + clic para retroceder</span>
     </section>
@@ -581,6 +618,12 @@
       <div class="jump-grid" id="jump-grid"></div>
 
       <div class="dialog-actions">
+        <!-- Volver a hoy tenía su propia entrada en el menú. Al fundirse con el
+             salto quedó acá, que es donde se lo busca: hoy es un destino más
+             del calendario, y el más frecuente. Sin esto, con el puntero habría
+             que paginar hasta el mes actual — el atajo `T` no alcanza en un
+             teléfono. -->
+        <button type="button" class="btn" id="jump-today">Hoy</button>
         <button type="button" class="btn" data-close-dialog>Cancelar</button>
       </div>
     </div>

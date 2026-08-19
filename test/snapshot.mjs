@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { montar, normalizarHtml } from './harness.mjs';
+import { montar, normalizarHtml, verVista } from './harness.mjs';
 import {
   ESTADO_LLENO, ESTADO_VACIO, ESTADO_BLOQUEADO, ESTADO_LEGADO, ESTADO_SUCIO,
 } from './escenarios.mjs';
@@ -29,7 +29,7 @@ function capturar(doc) {
   };
   // Qué secciones quedan ocultas. Va aparte del innerHTML porque ocultar un
   // bloque no cambia su contenido: sin esto, el test no vería la diferencia.
-  const visibilidad = ['.controls', '.month-nav', '#controls-center', '#range-nav',
+  const visibilidad = ['.controls', '.month-nav', '#controls-center',
     '#month-bar', '#board', '#legend', '#analysis', '#help', '#btn-page-toggle',
     '#btn-collapse']
     .map(sel => `${sel}:${doc.querySelector(sel)?.hidden ? 'oculto' : 'visible'}`)
@@ -47,6 +47,9 @@ function capturar(doc) {
     barraMes: html('#month-bar'),
     cajon: html('#drawer'),
     controles: html('.controls'),
+    // La leyenda de estados: hasta ahora solo se miraba si estaba visible, así
+    // que cambiarle las entradas no aparecía en ningún diff.
+    referencias: html('#legend'),
     vacio: html('#empty'),
     notaBloqueo: attrs('#locked-note'),
     titulo: doc.title,
@@ -59,7 +62,7 @@ async function recolectar() {
   // --- planilla en las tres vistas -------------------------------
   for (const vista of ['day', 'week', 'month']) {
     const { window, doc } = await montar(ESTADO_LLENO);
-    window.document.querySelector(`.seg[data-view="${vista}"]`).click();
+    verVista(window.document, vista);
     out[`planilla-${vista}`] = capturar(doc);
   }
 

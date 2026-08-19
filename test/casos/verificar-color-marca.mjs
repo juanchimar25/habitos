@@ -73,7 +73,7 @@ for (const [nombre, tema] of [['CLARO', claro], ['OSCURO', oscuro]]) {
    si la superficie habla del día de hoy o de la marca. */
 const superficies = [
   ['marcador del día actual', /\.col-day\.is-today \.dnum \{[^}]*\}/, '--today'],
-  ['vista activa del selector', /\.seg\[aria-pressed="true"\] \{[^}]*\}/, '--today'],
+  ['vista activa del desplegable', /\.view-opt\.is-active \{[^}]*\}/, '--today'],
   ['modificador .btn-brand', /\n\.btn-brand \{[^}]*\}/, '--brand-text'],
 ];
 
@@ -117,7 +117,7 @@ ok('  ninguna deja el blanco fijo', conBlancoFijo.length === 0,
 {
   const html = leer('index.html');
   for (const [nombre, id] of [['Entrar / Crear cuenta', 'auth-submit'],
-    ['+ Agregar tarea', 'btn-add-task']]) {
+    ['Acciones del mes', 'btn-actions']]) {
     const etiqueta = html.match(new RegExp(`<button[^>]*id="${id}"[^>]*>`))?.[0]
       ?? html.match(new RegExp(`<button[^>]*id="${id}"[\\s\\S]*?>`))?.[0] ?? '';
     const clases = etiqueta.match(/class="([^"]*)"/)?.[1] ?? '';

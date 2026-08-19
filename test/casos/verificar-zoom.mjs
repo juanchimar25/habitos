@@ -14,12 +14,21 @@ const guardado = w => JSON.parse(w.localStorage.getItem('tareas-diarias/v1/u-tes
 {
   const { doc } = await montar(ESTADO_LLENO);
   const btn = doc.querySelector('#btn-zoom');
-  ok('el botón vive en la barra del mes', btn?.parentElement?.id === 'month-bar',
-    btn?.parentElement?.id);
+  ok('el botón vive en el desplegable de acciones',
+    btn?.closest('#actions-options') !== null, btn?.parentElement?.className);
 
-  const orden = [...doc.querySelectorAll('#month-bar > button')].map(b => b.id);
-  console.log('  barra del mes:', orden.join(' · '));
-  ok('está pegado al de bloquear período',
+  /* Tiene apartado propio: la densidad de la planilla no es ni una acción sobre
+     las tareas ni el estado del período. El apartado entero desaparece en
+     escritorio, donde no hay densidad que elegir. */
+  ok('en el apartado «Visualización»',
+    btn?.closest('[role="group"]')?.getAttribute('aria-labelledby') === 'grp-ver',
+    btn?.closest('[role="group"]')?.getAttribute('aria-labelledby'));
+  ok('que es el que se oculta en escritorio',
+    btn?.closest('.zoom-group') !== null);
+
+  const orden = [...doc.querySelectorAll('#actions-options .view-opt')].map(b => b.id);
+  console.log('  acciones:', orden.join(' · '));
+  ok('está justo antes de bloquear período',
     orden.indexOf('btn-lock') - orden.indexOf('btn-zoom') === 1,
     `zoom en ${orden.indexOf('btn-zoom')}, lock en ${orden.indexOf('btn-lock')}`);
   ok('ya no está en el bloque de vistas', btn?.closest('#controls-center') === null);
@@ -116,6 +125,18 @@ const guardado = w => JSON.parse(w.localStorage.getItem('tareas-diarias/v1/u-tes
   }
   ok('compacto muestra más días que normal', dias('compacto') > dias('normal'));
   ok('normal muestra más días que cómodo', dias('normal') > dias('comodo'));
+
+  /* Toda la cuenta de arriba supone que una columna de día mide exactamente
+     `--cell-w`. Con el `table-layout: auto` que traen las tablas por omisión eso
+     era falso: el ancho lo decidía el contenido, y una celda con glifo medía más
+     que una vacía. Mientras la planilla entraba en pantalla no se veía —el
+     sobrante se reparte y empareja— pero apenas desbordaba, que es el caso normal
+     en un teléfono, marcar unos días la dejaba con columnas de cinco anchos
+     distintos. */
+  const bloqueGrid = css.match(/\n\.grid \{([\s\S]*?)\n\}/)?.[1] ?? '';
+  ok('los anchos los fija la columna y no su contenido',
+    /table-layout:\s*fixed/.test(bloqueGrid),
+    bloqueGrid.trim().replace(/\s+/g, ' ') || '(no se encontró el bloque .grid)');
 
   // --- el nombre ya no se corta en una sola línea --------------------------
   const reglaNombre = movil.match(/\.task-name \{([\s\S]*?)\n  \}/)?.[1] ?? '';

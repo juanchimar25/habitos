@@ -1,7 +1,7 @@
 /* Un usuario que ya venía usando la app abre esta versión. Su estado guardado
    no conoce `zoom` ni `controlsCollapsed`, y sus tareas tienen `start: null`,
    que era lo normal antes de que la fecha fuera obligatoria. */
-import { montar } from '../harness.mjs';
+import { montar, verVista } from '../harness.mjs';
 
 let fallos = 0;
 const ok = (n, cond, det = '') => {
@@ -71,7 +71,7 @@ const ESTADO_VIEJO = {
 // --- 3. las tareas sin fecha se pueden seguir marcando ---------------------
 {
   const { window, doc } = await montar(ESTADO_VIEJO);
-  doc.querySelector('.seg[data-view="month"]').click();
+  verVista(doc, 'month');
   const celdas = [...doc.querySelectorAll('tr[data-task-id="a"] .cell')];
   ok('ninguna celda queda apagada por falta de fecha',
     celdas.every(c => !c.disabled), `${celdas.filter(c => c.disabled).length} apagadas`);
@@ -84,7 +84,7 @@ const ESTADO_VIEJO = {
 // --- 4. editar una tarea vieja no le recorta el historial ------------------
 {
   const { window, doc } = await montar(ESTADO_VIEJO);
-  doc.querySelector('.seg[data-view="month"]').click();
+  verVista(doc, 'month');
   const apagadasAntes = [...doc.querySelectorAll('tr[data-task-id="a"] .cell')]
     .filter(c => c.disabled).length;
 
@@ -109,7 +109,7 @@ const ESTADO_VIEJO = {
 {
   const { doc } = await montar(ESTADO_VIEJO);
   for (const vista of ['day', 'week', 'month']) {
-    doc.querySelector(`.seg[data-view="${vista}"]`).click();
+    verVista(doc, vista);
     const pcts = [...doc.querySelectorAll('.compliance .cp-pct')]
       .map(n => n.textContent).filter(t => /%$/.test(t)).map(t => Number(t.replace('%', '')));
     const fuera = pcts.filter(p => p < 0 || p > 100);
@@ -139,7 +139,7 @@ const ESTADO_VIEJO = {
   ok('antes de guardar, el almacenamiento conserva la forma vieja',
     guardado(window).zoom === undefined);
 
-  doc.querySelector('.seg[data-view="month"]').click();
+  verVista(doc, 'month');
   doc.querySelector('tr[data-task-id="a"] .cell').click();       // marca → save()
 
   const g = guardado(window);
