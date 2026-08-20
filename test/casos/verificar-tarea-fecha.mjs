@@ -78,19 +78,7 @@ const crear = async (estado, { nombre = 'Nueva', fecha, mover = 0 } = {}) => {
   ok('navegó a marzo', /marzo 2026/i.test(doc.querySelector('#month-label').textContent));
 }
 
-// --- 6. el mes destino bloqueado rechaza ------------------------------------
-{
-  const { window, doc } = await crear({ ...ESTADO_VACIO, locked: { '2026-09': true } },
-    { fecha: '2026-09-15' });
-  enviar(doc);
-  const err = doc.querySelector('#task-error');
-  ok('muestra el error', err.hidden === false, err.textContent);
-  ok('nombra el mes destino', /septiembre 2026/i.test(err.textContent));
-  ok('no creó nada', !meses(window)['2026-09']);
-  ok('el diálogo sigue abierto', doc.querySelector('#task-dialog').hasAttribute('open'));
-}
-
-// --- 7. sin fecha, o con basura, no se guarda -------------------------------
+// --- 6. sin fecha, o con basura, no se guarda -------------------------------
 {
   const { window, doc } = await crear(ESTADO_VACIO, { fecha: '' });
   enviar(doc);
@@ -105,7 +93,7 @@ const crear = async (estado, { nombre = 'Nueva', fecha, mover = 0 } = {}) => {
   ok('formato no ISO → no crea', Object.keys(meses(window)).length === 0);
 }
 
-// --- 8. editar conserva la fecha propia y NO muda de mes --------------------
+// --- 7. editar conserva la fecha propia y NO muda de mes --------------------
 {
   const { doc } = await montar(ESTADO_LLENO);
   const fila = [...doc.querySelectorAll('tbody tr[data-task-id]')]
@@ -131,7 +119,7 @@ const crear = async (estado, { nombre = 'Nueva', fecha, mover = 0 } = {}) => {
     doc.querySelector('#month-label').textContent);
 }
 
-// --- 9. editar una tarea vieja sin fecha no recorta su historial ------------
+// --- 8. editar una tarea vieja sin fecha no recorta su historial ------------
 {
   const { window, doc } = await montar(ESTADO_LLENO);
   const fila = [...doc.querySelectorAll('tbody tr[data-task-id]')]

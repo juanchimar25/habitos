@@ -95,28 +95,20 @@ const abrir = async (estado, fecha, { irAMes } = {}) => {
   ok('navegó a marzo', /marzo 2026/i.test(doc.querySelector('#month-label').textContent));
 }
 
-// --- 8. el bloqueo se mide contra el mes destino ----------------------------
+// --- 8. un mes viejo como destino se agrega igual ---------------------------
+//  El cierre por día vive en las celdas: no alcanza al alta de tareas, ni
+//  siquiera si el mes destino ya pasó entero.
 {
-  const { window, doc } = await abrir({ ...ESTADO_VACIO, locked: { '2026-09': true } }, '2026-09-15');
+  const { window, doc } = await abrir(ESTADO_VACIO, '2026-03-15');
   const btn = doc.querySelectorAll('.tpl-add')[0];
-  ok('destino bloqueado apaga el botón', btn.disabled === true);
-  ok('la ayuda lo explica', /bloqueado/.test(doc.querySelector('#templates-start-hint').textContent),
-    doc.querySelector('#templates-start-hint').textContent.slice(0, 46) + '…');
+  ok('el botón queda habilitado', btn.disabled === false);
+  ok('sin ayuda que estorbe', doc.querySelector('#templates-start-hint').hidden === true);
   btn.click();
-  ok('no agregó nada', !meses(window)['2026-09']);
-}
-
-// --- 9. el mes visible bloqueado no estorba ---------------------------------
-{
-  const { window, doc } = await abrir({ ...ESTADO_VACIO, locked: { '2026-07': true } }, '2026-09-15');
-  ok('el diálogo abre con julio bloqueado',
-    doc.querySelector('#templates-dialog').hasAttribute('open'));
-  doc.querySelectorAll('.tpl-add')[0].click();
-  ok('agrega a septiembre igual', Boolean(meses(window)['2026-09']),
+  ok('agregó a marzo', Boolean(meses(window)['2026-03']),
     'meses: ' + Object.keys(meses(window)).join(', '));
 }
 
-// --- 10. duplicados contra el mes destino -----------------------------------
+// --- 9. duplicados contra el mes destino ------------------------------------
 {
   const conTareas = {
     ...ESTADO_VACIO,
@@ -128,7 +120,7 @@ const abrir = async (estado, fecha, { irAMes } = {}) => {
   ok('no duplica contra el mes destino', veces === 1, `«Meditar» aparece ${veces} vez/veces`);
 }
 
-// --- 11. no arrastra la fecha entre aperturas -------------------------------
+// --- 10. no arrastra la fecha entre aperturas -------------------------------
 {
   const { doc } = await abrir(ESTADO_VACIO, '2026-09-20');
   doc.querySelector('[data-close-dialog]').click();

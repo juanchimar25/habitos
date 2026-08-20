@@ -211,7 +211,9 @@
    * @property {string|null} start              fecha de inicio `YYYY-MM-DD`
    */
 
-  const today = startOfDay(new Date());
+  /* No es constante: al cruzar la medianoche se recalcula, y con eso el día que
+     acaba de terminar pasa a estar cerrado. Ver `programarMedianoche`. */
+  let today = startOfDay(new Date());
 
   let state = {
     /**
@@ -223,8 +225,6 @@
     months: /** @type {Record<string, Task[]>} */ ({}),
     /** Estados indexados por `taskId|YYYY-MM-DD`. */
     status: /** @type {Record<string, 'done'|'partial'|'missed'|'skip'>} */ ({}),
-    /** Meses bloqueados, indexados por `YYYY-MM`. Un mes bloqueado es de solo lectura. */
-    locked: /** @type {Record<string, true>} */ ({}),
     /** Qué muestra la columna de estatus: 'glyph' | 'pct' | 'both' | 'none'. */
     complianceMode: 'glyph',
     /** Densidad de la planilla en móvil: 'normal' | 'compacto' | 'comodo'. */
@@ -248,7 +248,62 @@
     onConfirm: /** @type {(() => void)|null} */ (null),
     /** Ids tildados para el borrado múltiple. No se persiste. */
     selected: /** @type {Set<string>} */ (new Set()),
+    /**
+     * Qué controles muestra cada fila, elegido desde «Opciones». En reposo las
+     * filas van limpias: ni casilleros ni chevrones. No se persiste — es una
+     * postura momentánea, no una preferencia.
+     * @type {null|'eliminar'|'resetear'|'reordenar'}
+     */
+    rowMode: null,
+    /**
+     * Orden de las tareas al entrar en la postura de reordenar, para poder
+     * volver atrás con ✕. Los chevrones aplican en el acto —hay que ver el
+     * movimiento para saber si quedó bien—, así que lo que hace cancelable al
+     * reordenado es guardar de dónde se salió.
+     * @type {string[]|null}
+     */
+    ordenPrevio: null,
+    /**
+     * Días ya transcurridos que se habilitaron a mano en esta sesión, por
+     * `YYYY-MM-DD`. No se persiste, y la medianoche lo vacía: el permiso vale
+     * para la corrección que se está haciendo, no para siempre.
+     * @type {Set<string>}
+     */
+    diasEditables: new Set(),
   };
+
+  /* Con la pestaña abierta toda la noche, `today` quedaría clavado en la
+     fecha de carga y el día recién terminado seguiría admitiendo clics. El
+     temporizador apunta a las 00:00 siguientes; `revisarDia` además se llama
+     al volver a la pestaña, porque un equipo suspendido no dispara timers a
+     tiempo. */
+  let relojDia = null;
+
+  function revisarDia() {
+    const ahora = startOfDay(new Date());
+    if (ahora.getTime() !== today.getTime()) {
+      today = ahora;
+      // El permiso sobre un día viejo no sobrevive al cambio de fecha.
+      ui.diasEditables.clear();
+      if (currentUserId) render();
+    }
+    programarMedianoche();
+  }
+
+  function programarMedianoche() {
+    clearTimeout(relojDia);
+    const manana = new Date(today);
+    manana.setDate(manana.getDate() + 1);
+
+    /* Un segundo de margen: apuntar exacto a las 00:00 a veces despierta antes.
+       Y nunca más de una hora de espera: un `setTimeout` de catorce horas no es
+       algo en lo que se pueda confiar —el navegador lo pospone en una pestaña de
+       fondo, y un cambio de hora del sistema lo deja apuntando a cualquier lado—.
+       Despertarse cada hora para no hacer nada no cuesta nada, y la comprobación
+       que corre al volver es la misma. */
+    const espera = Math.max(1000, manana - Date.now() + 1000);
+    relojDia = setTimeout(revisarDia, Math.min(espera, 60 * 60 * 1000));
+  }
 
   // ---------------------------------------------------------
   // Rutas
@@ -505,9 +560,7 @@
     return { year: d.getFullYear(), month: d.getMonth() };
   }
 
-  function isLocked(year = ui.year, month = ui.month) {
-    return Boolean(state.locked[monthKey(year, month)]);
-  }
+
 
   /**
    * Da a un mes su propia copia de la lista, para poder modificarla sin afectar
@@ -523,16 +576,6 @@
       state.months[key] = tasksOf(year, month).map(t => ({ ...t, weekdays: [...t.weekdays] }));
     }
     return state.months[key];
-  }
-
-  /**
-   * Puerta única para cualquier modificación del mes visible.
-   * Devuelve false y avisa si el período está bloqueado.
-   */
-  function ensureEditable() {
-    if (!isLocked()) return true;
-    toast('El período está bloqueado');
-    return false;
   }
 
   /**
@@ -578,8 +621,10 @@
   }
 
   /**
-   * Días que la frecuencia pide expresamente, solo a efectos visuales: el resto
-   * se tiñe para distinguirlos de un vistazo (siguen siendo marcables).
+   * Días que la frecuencia pide expresamente. El resto se tiñe para
+   * distinguirlos de un vistazo (siguen siendo marcables), y además quedan
+   * fuera del techo de la columna — ver `dayCompliance`.
+   *
    * Las periódicas no piden ningún día puntual —cualquiera sirve—, así que
    * ninguno figura como requerido y la fila entera queda teñida.
    */
@@ -877,8 +922,9 @@
      sube en el acto; lo que aun así no llegue queda marcado como pendiente y
      se resuelve al volver a entrar. */
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') sincronizarYa();
-    else programarSync();
+    if (document.visibilityState === 'hidden') return sincronizarYa();
+    revisarDia();
+    programarSync();
   });
   window.addEventListener('pagehide', sincronizarYa);
   window.addEventListener('online', sincronizarYa);
@@ -1070,16 +1116,10 @@
       status[key] = value;
     }
 
-    const locked = {};
-    for (const [key, value] of Object.entries(comoObjeto(data.locked))) {
-      if (RE_MES.test(key) && value === true) locked[key] = true;
-    }
-
     const theme = data.theme === 'light' || data.theme === 'dark' ? data.theme : null;
     return {
       months,
       status,
-      locked,
       complianceMode: CP_MODES.some(m => m.id === data.complianceMode)
         ? data.complianceMode
         : 'glyph',
@@ -1205,18 +1245,58 @@
   }
 
   /**
-   * Puntos de un día y su techo. Como del inicio en adelante cualquier tarea se
-   * puede marcar cualquier día, el techo es la cantidad de tareas ya iniciadas.
+   * Puntos que se marcaron ese día, cuenten o no para la meta de cada tarea.
+   * Es la medida de cuánto se HIZO, y la usan los indicadores de días más y
+   * menos productivos: marcar una semanal un lunes hace al lunes más
+   * productivo, aunque el lunes no la pidiera.
    */
-  function dayTotals(date) {
+  function dayPoints(date) {
+    let points = 0;
+    for (const task of tasksOf(date.getFullYear(), date.getMonth())) {
+      if (beforeStart(task, date)) continue;
+      const s = getStatus(task, date);
+      if (s) points += POINTS[s];
+    }
+    return points;
+  }
+
+  /**
+   * Cumplimiento de un día: lo que ese día pedía, más lo que se hizo sin que lo
+   * pidiera. Entran al conteo, cada una sumando uno al techo:
+   *
+   *   - Las que el día pide expresamente — `isRequiredDay`. Una semanal, una
+   *     quincenal o una de meta mensual no piden ningún día en particular
+   *     (cualquiera del período sirve); una de lunes a viernes no pide el
+   *     sábado; y las marcadas a mano como «no requerido» salen de la cuenta.
+   *   - Las que NO pedía pero se hicieron igual, cumplidas o parciales. Hacer
+   *     algo que no tocaba cuenta como hecho: el día tuvo una cosa más para
+   *     mostrar, no una menos.
+   *
+   * Lo que queda afuera es lo que ni se pedía ni se hizo. Una ✕ en un día que
+   * no la pedía tampoco entra: no hacer algo que nadie pidió no es un
+   * incumplimiento.
+   *
+   * Contar todas las iniciadas —lo que se hacía antes— inflaba el denominador
+   * con tareas que ese día no pedía nada: con 18 tareas de las que el lunes
+   * pedía 11, hacer 8 daba 44% en vez de 73%.
+   */
+  function dayCompliance(date) {
+    /* Un día que todavía no llegó no pide nada: nada venció aún, así que su
+       techo arranca vacío y la columna muestra «—» en vez de acusar un 0% de
+       incumplimiento por lo que no pasó todavía.
+
+       Lo que se haya marcado por adelantado sí cuenta, igual que cualquier otra
+       cosa hecha sin que el día la pidiera. */
+    const futuro = date > today;
+
     let points = 0;
     let max = 0;
     for (const task of tasksOf(date.getFullYear(), date.getMonth())) {
-      if (beforeStart(task, date)) continue;
-      // Un día marcado como no requerido tampoco cuenta para el techo del día.
-      if (allowsSkip(task) && isSkipped(task, date)) continue;
-      max += 1;
       const s = getStatus(task, date);
+      const hecha = s === 'done' || s === 'partial';
+      const pedida = !futuro && isRequiredDay(task, date);
+      if (!pedida && !hecha) continue;
+      max += 1;
       if (s) points += POINTS[s];
     }
     return { points, max };
@@ -1297,12 +1377,12 @@
     collapse: $('#btn-collapse'),
     addTask: $('#btn-add-task'),
     copyPrev: $('#btn-copy-prev'),
-    deleteSel: $('#btn-delete-sel'),
-    deleteSelText: $('#delete-sel-text'),
-    resetSel: $('#btn-reset-sel'),
-    lock: $('#btn-lock'),
-    lockText: $('#lock-text'),
-    lockedNote: $('#locked-note'),
+    modeDelete: $('#btn-mode-delete'),
+    modeReset: $('#btn-mode-reset'),
+    modeReorder: $('#btn-mode-reorder'),
+    modeConfirm: $('#mode-confirm'),
+    modeOk: $('#btn-mode-ok'),
+    modeCancel: $('#btn-mode-cancel'),
     controls: $('.controls'),
     controlsCenter: $('#controls-center'),
     monthBar: $('#month-bar'),
@@ -1417,34 +1497,39 @@
     else el.grid.innerHTML = '';
   }
 
-  /** Barra de acciones del mes: copiar del anterior, cerrar/abrir y mostrar indicadores. */
+  /** Barra de opciones del mes: copiar del anterior, cerrar/abrir y mostrar indicadores. */
   function renderMonthBar() {
-    const locked = isLocked();
     const prev = previousMonth();
     const prevTasks = tasksOf(prev.year, prev.month);
     const prevName = labelDeMes(prev.year, prev.month);
 
-    el.addTask.disabled = locked;
-    el.addTask.title = locked
-      ? 'El período está bloqueado'
-      : `Crear una tarea nueva (atajo: N)`;
+    el.addTask.disabled = false;
+    el.addTask.title = 'Crear una tarea nueva (atajo: N)';
 
-    el.copyPrev.disabled = locked || prevTasks.length === 0;
-    el.copyPrev.title = locked
-      ? 'El período está bloqueado'
-      : prevTasks.length === 0
-        ? `${prevName} no tiene tareas para copiar`
-        : `Reemplaza las tareas de este mes por las ${prevTasks.length} de ${prevName}`;
+    el.copyPrev.disabled = prevTasks.length === 0;
+    el.copyPrev.title = prevTasks.length === 0
+      ? `${prevName} no tiene tareas para copiar`
+      : `Reemplaza las tareas de este mes por las ${prevTasks.length} de ${prevName}`;
 
-    el.lockText.textContent = locked ? 'Desbloquear período' : 'Bloquear período';
-    el.lock.classList.toggle('is-locked', locked);
-    el.lock.setAttribute('aria-pressed', String(locked));
-    el.lock.title = locked
-      ? 'Volver a habilitar la edición de este mes'
-      : 'Bloquear este mes para que no se modifique por accidente';
+    const sinTareas = currentTasks().length === 0;
 
-    el.lockedNote.hidden = !locked;
-    el.empty.querySelector('[data-add-task]').disabled = locked;
+    for (const [btn, modo, verbo] of [
+      [el.modeDelete, 'eliminar', 'Elegir tareas para eliminar'],
+      [el.modeReset, 'resetear', 'Elegir tareas para resetear sus estados'],
+      [el.modeReorder, 'reordenar', 'Mostrar los chevrones para reordenar'],
+    ]) {
+      const activo = ui.rowMode === modo;
+      btn.disabled = sinTareas;
+      btn.setAttribute('aria-checked', String(activo));
+      btn.classList.toggle('is-active', activo);
+      btn.title = sinTareas ? 'No hay tareas en este mes'
+        : activo ? 'Volver a las filas limpias' : verbo;
+    }
+
+    el.empty.querySelector('[data-add-task]').disabled = false;
+
+    // También acá: sin tareas no se dibuja la tabla y `syncSelection` no corre.
+    renderModeConfirm();
   }
 
   function renderTable(days) {
@@ -1502,19 +1587,16 @@
     // --- tfoot ---
     const tfoot = elem('tfoot');
     const frow = elem('tr');
-    frow.appendChild(th('Tareas completadas', 'col-task', 'row'));
+    frow.appendChild(th('Cumplimiento diario', 'col-task', 'row'));
 
     for (const d of days) {
-      const { points, max } = dayTotals(d);
-
       const td = elem('td', 'col-day');
       if (isWeekend(d)) td.classList.add('is-weekend');
 
-      const span = elem('span', 'day-total', num(points));
-      if (points === 0) span.classList.add('is-zero');
-      else if (max > 0 && points >= max) span.classList.add('is-full');
+      const span = elem('span', 'day-total');
+      span.append(elem('span', 'dt-glyph'), elem('span', 'dt-pct'));
       td.appendChild(span);
-      td.title = `${fmtFull.format(d)}: ${num(points)} de ${num(max)} puntos`;
+      applyDayTotal(td, d);
       frow.appendChild(td);
     }
 
@@ -1548,18 +1630,42 @@
       all.indeterminate = count > 0 && count < total;
     }
 
-    // Las acciones sobre la selección aparecen en la barra del mes, al lado
+    // Los remates de la selección aparecen en la barra del mes, al lado
     // del alta, y solo mientras haya algo tildado.
-    el.deleteSel.hidden = count === 0;
-    el.resetSel.hidden = count === 0;
-    el.deleteSelText.textContent = `Eliminar ${count} ${count === 1 ? 'tarea' : 'tareas'}`;
+    renderModeConfirm();
+  }
 
-    // El reseteo alcanza solo lo visible, así que el botón lo anticipa.
-    if (count) {
-      const rango = rangeLabel(visibleDays().days);
-      el.deleteSel.title = `Las saca de ${labelDeMes()}`;
-      el.resetSel.title = `Deja en «sin cargar» las celdas de ${rango}`;
-    }
+  /**
+   * El ✓ y el ✕ de la barra: aparecen con la postura puesta y son el único
+   * modo de rematarla. El ✓ queda apagado mientras no haya nada que confirmar
+   * —ninguna tarea tildada—, así el botón dice por sí solo qué falta.
+   */
+  function renderModeConfirm() {
+    const modo = ui.rowMode;
+    el.modeConfirm.hidden = !modo;
+    if (!modo) return;
+
+    const count = ui.selected.size;
+    const plural = count === 1 ? 'tarea' : 'tareas';
+    const rango = rangeLabel(visibleDays().days);
+
+    const rotulos = {
+      eliminar: [
+        count ? `Eliminar ${count} ${plural} de ${labelDeMes()}` : 'Tildá las tareas a eliminar',
+        'Salir sin eliminar nada',
+      ],
+      resetear: [
+        count ? `Resetear ${count} ${plural} en ${rango}` : 'Tildá las tareas a resetear',
+        'Salir sin resetear nada',
+      ],
+      reordenar: ['Guardar este orden', 'Descartar los cambios de orden'],
+    }[modo];
+
+    el.modeOk.disabled = modo !== 'reordenar' && count === 0;
+    el.modeOk.title = rotulos[0];
+    el.modeOk.setAttribute('aria-label', rotulos[0]);
+    el.modeCancel.title = rotulos[1];
+    el.modeCancel.setAttribute('aria-label', rotulos[1]);
   }
 
   function th(text, className, scope) {
@@ -1568,31 +1674,44 @@
     return node;
   }
 
+  /**
+   * Las dos posturas que eligen tareas —eliminar y resetear— comparten los
+   * casilleros: lo que cambia es qué se ofrece hacer con lo tildado.
+   */
+  const modoConCasilleros = () => ui.rowMode === 'eliminar' || ui.rowMode === 'resetear';
+
   function taskHeaderCell(task, index, total) {
     const cell = th('', 'col-task', 'row');
     const wrap = elem('div', 'task-cell');
-    const locked = isLocked();
 
-    const pick = elem('input', 'task-pick');
-    pick.type = 'checkbox';
-    pick.dataset.taskId = task.id;
-    pick.checked = ui.selected.has(task.id);
-    pick.disabled = locked;
-    pick.title = `Seleccionar «${task.name}»`;
-    pick.setAttribute('aria-label', `Seleccionar ${task.name}`);
+    /* Casilleros y chevrones se DIBUJAN solo en su postura, no se esconden con
+       CSS: un control invisible pero presente sigue estando en el recorrido del
+       teclado y en el árbol de accesibilidad. */
+    const piezas = [];
 
-    const move = elem('div', 'move-stack');
-    move.append(
-      moveButton('up', '▲', locked || index === 0, `Subir «${task.name}»`),
-      moveButton('down', '▼', locked || index === total - 1, `Bajar «${task.name}»`),
-    );
+    if (modoConCasilleros()) {
+      const pick = elem('input', 'task-pick');
+      pick.type = 'checkbox';
+      pick.dataset.taskId = task.id;
+      pick.checked = ui.selected.has(task.id);
+      pick.title = `Seleccionar «${task.name}»`;
+      pick.setAttribute('aria-label', `Seleccionar ${task.name}`);
+      piezas.push(pick);
+    }
+
+    if (ui.rowMode === 'reordenar') {
+      const move = elem('div', 'move-stack');
+      move.append(
+        moveButton('up', '▲', index === 0, `Subir «${task.name}»`),
+        moveButton('down', '▼', index === total - 1, `Bajar «${task.name}»`),
+      );
+      piezas.push(move);
+    }
 
     // El nombre hace de agarre para arrastrar: blanco grande y no interactivo.
     const info = elem('div', 'task-info');
-    if (!locked) {
-      info.dataset.dragHandle = '';
-      info.title = 'Arrastrá para reordenar';
-    }
+    info.dataset.dragHandle = '';
+    info.title = 'Arrastrá para reordenar';
 
     const name = elem('span', 'task-name', task.name);
     name.title = task.name;
@@ -1612,10 +1731,9 @@
       action: 'edit',
       title: `Editar «${task.name}»`,
       label: `Editar ${task.name}`,
-      disabled: locked,
     }));
 
-    wrap.append(pick, move, info, actions);
+    wrap.append(...piezas, info, actions);
     cell.appendChild(wrap);
     return cell;
   }
@@ -1654,11 +1772,6 @@
     btn.setAttribute('aria-label',
       `${task.name}, ${fmtFull.format(date)}: ${status ? STATUS_LABEL[status] : 'sin cargar'}`);
 
-    // Un mes bloqueado conserva los colores cargados, pero deja de aceptar clics.
-    if (isLocked()) {
-      btn.disabled = true;
-      btn.title = 'Período bloqueado';
-    }
     return btn;
   }
 
@@ -1668,14 +1781,17 @@
 
     const wrap = elem('div', 'task-head');
 
-    const all = elem('input', 'task-pick');
-    all.type = 'checkbox';
-    all.dataset.pickAll = '';
-    all.disabled = isLocked();
-    all.title = 'Seleccionar todas las tareas';
-    all.setAttribute('aria-label', 'Seleccionar todas las tareas');
+    // El «todas» acompaña a los casilleros de las filas: sin ellos no gobierna nada.
+    if (modoConCasilleros()) {
+      const all = elem('input', 'task-pick');
+      all.type = 'checkbox';
+      all.dataset.pickAll = '';
+      all.title = 'Seleccionar todas las tareas';
+      all.setAttribute('aria-label', 'Seleccionar todas las tareas');
+      wrap.appendChild(all);
+    }
 
-    wrap.append(all, elem('span', '', 'Tareas'));
+    wrap.appendChild(elem('span', '', 'Tareas'));
     cell.appendChild(wrap);
     return cell;
   }
@@ -1746,6 +1862,34 @@
   }
 
   /**
+   * Total de una columna: el cumplimiento del día, con su símbolo y su
+   * porcentaje. Antes mostraba la suma cruda de puntos —«1,5»—, que no decía
+   * contra cuánto se medía: 1,5 puede ser excelente con dos tareas y flojo con
+   * ocho. El porcentaje ya trae esa comparación hecha, y el símbolo la resume.
+   *
+   * Los dos se ven SIEMPRE. El modo que cicla el encabezado `Estatus` gobierna
+   * esa columna, no el pie, así que estas piezas no llevan las clases que ese
+   * modo esconde: son `dt-*` y no `cp-*`.
+   */
+  function applyDayTotal(td, date) {
+    const { points, max } = dayCompliance(date);
+    const level = complianceOf(points, max);
+    const span = td.querySelector('.day-total');
+
+    span.classList.remove('cp-done', 'cp-partial', 'cp-missed', 'cp-empty');
+    span.classList.add(level ? `cp-${level.status}` : 'cp-empty');
+
+    span.querySelector('.dt-glyph').textContent = level ? level.glyph : '—';
+    span.querySelector('.dt-pct').textContent = level ? pct(level.ratio) : '';
+
+    td.title = level
+      ? `${fmtFull.format(date)}: ${pct(level.ratio)} — ${num(points)} de ${num(max)} puntos`
+      : date > today
+        ? `${fmtFull.format(date)}: todavía no transcurrió`
+        : `${fmtFull.format(date)}: ninguna tarea pide este día`;
+  }
+
+  /**
    * Los indicadores describen siempre el MES visible, no la ventana de la vista:
    * un promedio por día de la semana no significa nada dentro de una sola semana,
    * y la comparación es explícitamente mensual.
@@ -1785,7 +1929,7 @@
     for (const d of days) {
       if (d > today) continue;
       const bucket = buckets.get(d.getDay()) || { sum: 0, count: 0 };
-      bucket.sum += dayTotals(d).points;
+      bucket.sum += dayPoints(d);
       bucket.count += 1;
       buckets.set(d.getDay(), bucket);
     }
@@ -2257,7 +2401,6 @@
   }
 
   el.grid.addEventListener('mousedown', e => {
-    if (isLocked()) return;
     const tr = e.target.closest('[data-drag-handle]')?.closest('tr[data-task-id]');
     if (tr) tr.draggable = true;
   });
@@ -2304,7 +2447,7 @@
 
   /** Mueve `taskId` justo antes o después de `targetId`. */
   function reorderTask(taskId, targetId, antes) {
-    if (!ensureEditable() || taskId === targetId) return;
+    if (taskId === targetId) return;
 
     const tasks = materialize();
     const orden = tasks.map(t => t.id);
@@ -2326,7 +2469,6 @@
 
   /** Reordena una tarea manteniendo el scroll y el foco sobre el mismo botón. */
   function moveTask(taskId, delta) {
-    if (!ensureEditable()) return;
     const tasks = materialize();
     const from = tasks.findIndex(t => t.id === taskId);
     const to = from + delta;
@@ -2345,14 +2487,35 @@
     if (next && !next.disabled) next.focus();
   }
 
+  /**
+   * Un día pasa a estar cerrado apenas termina. No es un candado duro: se abre
+   * confirmando, y el permiso dura hasta la medianoche siguiente. Lo que evita
+   * es el clic distraído sobre una columna vieja, que antes pasaba inadvertido.
+   */
+  function diaCerrado(date) {
+    return date < today && !ui.diasEditables.has(dateKey(date));
+  }
+
   function cycleCell(cell, dir) {
-    if (!ensureEditable()) return;
     const task = currentTasks().find(t => t.id === cell.dataset.taskId);
     if (!task) return;
 
     const date = parseDateKey(cell.dataset.date);
     if (beforeStart(task, date)) {
       toast(`«${task.name}» empieza el ${fmtShort.format(parseDateKey(task.start))}`);
+      return;
+    }
+
+    if (diaCerrado(date)) {
+      confirmAction('Día ya transcurrido. ¿Querés modificarlo?', () => {
+        ui.diasEditables.add(dateKey(date));
+        // La celda sigue en el DOM: el diálogo no vuelve a dibujar la tabla.
+        cycleCell(cell, dir);
+      }, {
+        ok: 'Modificar',
+        tono: 'marca',
+        note: `${capitalizeFirstLetter(fmtFull.format(date))}.`,
+      });
       return;
     }
 
@@ -2420,13 +2583,7 @@
     const footCells = el.grid.querySelectorAll('tfoot .col-day');
 
     days.forEach((d, i) => {
-      const { points, max } = dayTotals(d);
-      const span = footCells[i]?.querySelector('.day-total');
-      if (!span) return;
-      span.textContent = num(points);
-      span.classList.toggle('is-zero', points === 0);
-      span.classList.toggle('is-full', max > 0 && points >= max);
-      footCells[i].title = `${fmtFull.format(d)}: ${num(points)} de ${num(max)} puntos`;
+      if (footCells[i]?.querySelector('.day-total')) applyDayTotal(footCells[i], d);
     });
 
     const grand = el.grid.querySelector('tfoot .grand-total');
@@ -2480,7 +2637,7 @@
   // ---------------------------------------------------------
   // Desplegables
   // ---------------------------------------------------------
-  //  Dos con el mismo comportamiento: el de vista y el de acciones del mes. Se
+  //  Dos con el mismo comportamiento: el de vista y el de opciones del mes. Se
   //  manejan desde una sola pieza para que abrir uno cierre al otro y para no
   //  duplicar el cierre por Esc y por clic afuera.
 
@@ -2511,7 +2668,7 @@
     });
   }
 
-  /* El de acciones: casi todo lo que hay adentro abre un diálogo, así que se
+  /* El de opciones: casi todo lo que hay adentro abre un diálogo, así que se
      cierra al elegir. El zoom es la excepción —cicla tres niveles— y se queda
      abierto para poder recorrerlos sin volver a desplegar. */
   el.actionsOptions.addEventListener('click', e => {
@@ -2722,7 +2879,6 @@
   });
 
   function openTaskDialog(taskId = null) {
-    if (!ensureEditable()) return;
     ui.editingId = taskId;
     const task = taskId ? currentTasks().find(t => t.id === taskId) : null;
 
@@ -2769,7 +2925,6 @@
 
   el.taskForm.addEventListener('submit', e => {
     e.preventDefault();
-    if (!ensureEditable()) return el.taskDialog.close();
 
     const name = capitalizeFirstLetter(el.taskName.value.trim());
     const freq = currentFreq();
@@ -2816,12 +2971,6 @@
     const month = inicio.getMonth();
     const nombreMes = labelDeMes(year, month);
 
-    // El bloqueo que corresponde es el del mes DESTINO. El del visible ya lo
-    // miró `ensureEditable()` al entrar.
-    if (isLocked(year, month)) {
-      return showFormError(`${capitalizeFirstLetter(nombreMes)} está bloqueado.`);
-    }
-
     materialize(year, month).push({ id: newId(), ...fields });
     save();
     el.taskDialog.close();
@@ -2852,12 +3001,13 @@
     for (const key of statusKeysOf(ids, month)) delete state.status[key];
 
     for (const id of ids) ui.selected.delete(id);
+    // Hecho el borrado, la postura ya no tiene sobre qué operar.
+    ui.rowMode = null;
     save();
     render();
   }
 
   function askDeleteTask(taskId) {
-    if (!ensureEditable()) return;
     const task = currentTasks().find(t => t.id === taskId);
     if (!task) return;
 
@@ -2873,7 +3023,6 @@
   }
 
   function askDeleteSelected() {
-    if (!ensureEditable()) return;
     const tasks = currentTasks().filter(t => ui.selected.has(t.id));
     if (!tasks.length) return;
     // Con una sola, el mensaje que la nombra es más claro que el genérico.
@@ -2919,7 +3068,6 @@
   }
 
   function askResetSelected() {
-    if (!ensureEditable()) return;
     const tasks = currentTasks().filter(t => ui.selected.has(t.id));
     if (!tasks.length) return;
 
@@ -2941,6 +3089,7 @@
       () => {
         for (const key of keys) delete state.status[key];
         ui.selected.clear();
+        ui.rowMode = null;   // hecho el reseteo, la postura se cierra sola
         save();
         render();
         toast(`${keys.length} estado(s) reseteados`);
@@ -2958,8 +3107,9 @@
    * @param text  párrafo principal
    * @param onOk  qué hacer al confirmar
    * @param opts  `items` se lista con viñetas debajo; `note` es una aclaración
-   *   al pie; `ok` es el rótulo del botón, que vuelve solo a "Eliminar" al
-   *   cerrarse el diálogo.
+   *   al pie; `ok` es el rótulo del botón; `tono` lo pinta de rojo ('peligro',
+   *   por omisión) o con el color de la marca ('marca'), para lo que confirma
+   *   sin destruir nada. Los tres vuelven a su valor al cerrarse el diálogo.
    */
   function confirmAction(text, onOk, opts = {}) {
     el.confirmText.textContent = text;
@@ -2973,6 +3123,12 @@
     el.confirmNote.hidden = !opts.note;
 
     el.confirmOk.textContent = opts.ok || OK_POR_DEFECTO;
+    /* El rojo es una advertencia, no una decoración: se guarda para lo que
+       borra o reemplaza. Confirmar una corrección sobre un día viejo no
+       destruye nada, y pintarla de rojo diría lo contrario. */
+    const marca = opts.tono === 'marca';
+    el.confirmOk.classList.toggle('btn-danger', !marca);
+    el.confirmOk.classList.toggle('btn-brand', marca);
 
     ui.onConfirm = onOk;
     el.confirmDialog.showModal();
@@ -2997,11 +3153,6 @@
   // ---------------------------------------------------------
   // Plantillas
   // ---------------------------------------------------------
-
-  /*  El diálogo NO exige que el mes visible sea editable. La fecha de inicio
-      decide a qué mes van las tareas, así que estar parado en un mes bloqueado
-      no impide agregar a otro. El bloqueo se comprueba contra el mes destino,
-      que es el único que se va a tocar. */
 
   function openTemplates() {
     /* Cada apertura vuelve a hoy. No recuerda la fecha anterior a propósito:
@@ -3037,34 +3188,24 @@
   function syncTemplatesTarget() {
     const destino = templatesTarget();
     const nombre = destino ? labelDeMes(destino.year, destino.month) : '';
-    const bloqueado = Boolean(destino) && isLocked(destino.year, destino.month);
 
     /* El nombre del mes viene en minúscula del locale, y así va bien en medio
        de una oración. Donde la abre hay que capitalizarlo a mano: el encabezado
        se apoya en un `text-transform` del CSS que acá no alcanza. */
-    /* Con una fecha válida y el mes destino editable no se dice nada: el botón
-       ya nombra a dónde van las tareas. La ayuda queda para los dos casos en
-       los que el botón está apagado y hace falta explicar por qué. */
-    el.templatesStartHint.textContent = !destino
-      ? 'Elegí la fecha en la que arrancan las tareas.'
-      : bloqueado
-        ? `${capitalizeFirstLetter(nombre)} está bloqueado. Hay que desbloquearlo para `
-          + 'poder agregarle tareas.'
-        : '';
+    /* Con una fecha válida no se dice nada: el botón ya nombra a dónde van las
+       tareas. La ayuda queda para el único caso en el que está apagado. */
+    el.templatesStartHint.textContent = destino
+      ? ''
+      : 'Elegí la fecha en la que arrancan las tareas.';
 
     // Vacío no alcanza: el `gap` de .field dejaría un escalón bajo el campo.
     el.templatesStartHint.hidden = !el.templatesStartHint.textContent;
 
-    /* Sin fecha no hay a dónde agregar, y un mes bloqueado no admite cambios.
-       En los dos casos el botón se apaga en vez de dejar que el clic falle: el
-       diálogo dice por qué antes de que nadie lo intente. */
+    /* Sin fecha no hay a dónde agregar: el botón se apaga en vez de dejar que
+       el clic falle, y el diálogo dice por qué antes de que nadie lo intente. */
     for (const btn of el.templatesList.querySelectorAll('.tpl-add')) {
-      btn.disabled = !destino || bloqueado;
-      btn.title = !destino
-        ? 'Elegí primero una fecha de inicio'
-        : bloqueado
-          ? `${capitalizeFirstLetter(nombre)} está bloqueado`
-          : `Agregar a ${nombre}`;
+      btn.disabled = !destino;
+      btn.title = destino ? `Agregar a ${nombre}` : 'Elegí primero una fecha de inicio';
     }
   }
 
@@ -3138,13 +3279,6 @@
 
     const { year, month } = destino;
     const nombreMes = labelDeMes(year, month);
-
-    // El bloqueo que importa es el del mes DESTINO, no el del que se está
-    // mirando. `ensureEditable()` no sirve acá: siempre mira el visible.
-    if (isLocked(year, month)) {
-      toast(`${capitalizeFirstLetter(nombreMes)} está bloqueado`);
-      return;
-    }
 
     const tasks = materialize(year, month);
     // Se comparan contra los nombres que YA estaban EN ESE MES: así una
@@ -3240,11 +3374,10 @@
   });
 
   // ---------------------------------------------------------
-  // Acciones del mes
+  // Opciones del mes
   // ---------------------------------------------------------
 
   el.copyPrev.addEventListener('click', () => {
-    if (!ensureEditable()) return;
 
     const prev = previousMonth();
     const source = tasksOf(prev.year, prev.month);
@@ -3285,26 +3418,74 @@
     toast(`${copy.length} tarea(s) copiadas del mes anterior`);
   }
 
-  el.deleteSel.addEventListener('click', askDeleteSelected);
-  el.resetSel.addEventListener('click', askResetSelected);
+  /**
+   * Pone la planilla en una postura, o la saca si ya estaba en esa. Elegir una
+   * apaga la otra: los casilleros y los chevrones compiten por el mismo lugar
+   * de la fila, y tenerlos juntos era lo que llenaba de controles cada renglón.
+   */
+  function setRowMode(modo) {
+    ui.rowMode = ui.rowMode === modo ? null : modo;
+    /* Cualquier cambio de postura suelta lo tildado. Eliminar y resetear
+       comparten los casilleros, y arrastrar una selección de una a la otra es
+       exactamente el descuido que termina borrando lo que se quería resetear. */
+    ui.selected.clear();
+    // Se anota de dónde se sale, para que ✕ pueda devolver el orden.
+    ui.ordenPrevio = ui.rowMode === 'reordenar' ? currentTasks().map(t => t.id) : null;
+    render();
+  }
 
-  el.lock.addEventListener('click', () => {
-    const key = monthKey(ui.year, ui.month);
-    const name = labelDeMes();
+  el.modeDelete.addEventListener('click', () => setRowMode('eliminar'));
+  el.modeReset.addEventListener('click', () => setRowMode('resetear'));
+  el.modeReorder.addEventListener('click', () => setRowMode('reordenar'));
 
-    if (isLocked()) {
-      delete state.locked[key];
-      save();
-      render();
-      toast(`${name} desbloqueado`);
-    } else {
-      state.locked[key] = true;
-      ui.selected.clear();   // un mes bloqueado no admite borrado múltiple
-      save();
-      render();
-      toast(`${name} bloqueado`);
-    }
-  });
+  /** Sale de la postura sin aplicar nada. */
+  function cancelarPostura() {
+    if (ui.rowMode === 'reordenar' && ui.ordenPrevio) restaurarOrden(ui.ordenPrevio);
+    ui.rowMode = null;
+    ui.ordenPrevio = null;
+    ui.selected.clear();
+    render();
+  }
+
+  /** Devuelve las tareas del mes al orden de `ids`, y lo guarda. */
+  function restaurarOrden(ids) {
+    const tasks = materialize();
+    const porId = new Map(tasks.map(t => [t.id, t]));
+    const vuelto = ids.map(id => porId.get(id)).filter(Boolean);
+    // Lo que se creó o borró mientras tanto se respeta: va detrás.
+    for (const t of tasks) if (!ids.includes(t.id)) vuelto.push(t);
+    if (vuelto.length !== tasks.length) return;   // algo no cuadra: mejor no tocar
+    tasks.length = 0;
+    tasks.push(...vuelto);
+    save();
+  }
+
+  /** Remata la postura puesta, siempre con su diálogo de confirmación. */
+  function confirmarPostura() {
+    if (ui.rowMode === 'eliminar') return askDeleteSelected();
+    if (ui.rowMode === 'resetear') return askResetSelected();
+    if (ui.rowMode !== 'reordenar') return;
+
+    const tasks = currentTasks();
+    const cambio = ui.ordenPrevio && ui.ordenPrevio.join() !== tasks.map(t => t.id).join();
+    if (!cambio) return cancelarPostura();   // nada que confirmar
+
+    confirmAction(
+      `Se va a guardar este orden para ${labelDeMes()}:`,
+      () => {
+        // Ya está aplicado; confirmar es quedarse con él y soltar la vuelta atrás.
+        ui.rowMode = null;
+        ui.ordenPrevio = null;
+        render();
+        toast('Orden guardado');
+      },
+      { items: tasks.map(t => t.name), ok: 'Guardar' },
+    );
+  }
+
+  el.modeOk.addEventListener('click', confirmarPostura);
+  el.modeCancel.addEventListener('click', cancelarPostura);
+
 
   // ---------------------------------------------------------
   // Exportar / importar
@@ -3354,6 +3535,8 @@
   // mostrando "Reemplazar" si alguien lo abriera por otro camino.
   el.confirmDialog.addEventListener('close', () => {
     el.confirmOk.textContent = OK_POR_DEFECTO;
+    el.confirmOk.classList.add('btn-danger');
+    el.confirmOk.classList.remove('btn-brand');
   });
 
   // ---------------------------------------------------------
@@ -3435,18 +3618,19 @@
   // Plegar los controles del período (solo móvil)
   // ---------------------------------------------------------
   //  Oculta todo lo que hay entre la línea del mes y la planilla: el selector
-  //  de vista, la navegación del rango y las acciones del mes. En un teléfono
+  //  de vista, la navegación del rango y las opciones del mes. En un teléfono
   //  eso son tres filas que empujan la planilla fuera de la pantalla.
 
   function applyCollapse() {
     const plegado = state.controlsCollapsed;
     document.body.classList.toggle('controls-collapsed', plegado);
 
-    el.collapse.textContent = plegado ? '+' : '–';
+    // El chevron es uno solo y gira; la clase decide hacia dónde apunta.
+    el.collapse.classList.toggle('is-collapsed', plegado);
     el.collapse.setAttribute('aria-expanded', String(!plegado));
     el.collapse.title = plegado
-      ? 'Mostrar las vistas y las acciones del mes'
-      : 'Ocultar las vistas y las acciones del mes';
+      ? 'Mostrar las vistas y las opciones del mes'
+      : 'Ocultar las vistas y las opciones del mes';
     el.collapse.setAttribute('aria-label', el.collapse.title);
   }
 
@@ -3526,7 +3710,7 @@
 
   function estadoVacio() {
     return {
-      months: {}, status: {}, locked: {},
+      months: {}, status: {},
       complianceMode: 'glyph',
       zoom: 'normal',
       controlsCollapsed: false,
@@ -3546,7 +3730,9 @@
       ui.year = today.getFullYear();
       ui.month = today.getMonth();
       ui.selected.clear();
+      ui.diasEditables.clear();
       ui.windowIndex = windowIndexFor(today);
+      programarMedianoche();
 
       // Los enlaces del menú se apuntan acá: `BASE` solo se conoce en runtime.
       for (const item of el.drawer.querySelectorAll('[data-page]')) {
@@ -3560,9 +3746,11 @@
 
     /** Llamado al cerrar sesión: no queda nada del usuario anterior en memoria. */
     stop() {
+      clearTimeout(relojDia);
       currentUserId = null;
       state = estadoVacio();
       ui.selected.clear();
+      ui.diasEditables.clear();
       el.grid.innerHTML = '';
       el.summary.innerHTML = '';
       el.charts.innerHTML = '';

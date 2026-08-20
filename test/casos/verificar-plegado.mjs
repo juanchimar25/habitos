@@ -28,7 +28,8 @@ const guardado = w => JSON.parse(w.localStorage.getItem('tareas-diarias/v1/u-tes
       === 'btn-page-toggle,btn-theme');
 
   ok('arranca desplegado', plegar.getAttribute('aria-expanded') === 'true');
-  ok('con el glifo de ocultar', plegar.textContent.trim() === '–', JSON.stringify(plegar.textContent.trim()));
+  ok('con el chevron hacia abajo', !plegar.classList.contains('is-collapsed'), plegar.className);
+  ok('que es un SVG y no un glifo', Boolean(plegar.querySelector('.chevron-icon')));
   ok('declara qué controla',
     plegar.getAttribute('aria-controls') === 'controls-center month-bar',
     plegar.getAttribute('aria-controls'));
@@ -42,14 +43,14 @@ const guardado = w => JSON.parse(w.localStorage.getItem('tareas-diarias/v1/u-tes
   plegar.click();
   ok('plegado: la clase queda en el body',
     doc.body.classList.contains('controls-collapsed'));
-  ok('el glifo pasa a +', plegar.textContent.trim() === '+');
+  ok('el chevron gira a la izquierda', plegar.classList.contains('is-collapsed'), plegar.className);
   ok('aria-expanded pasa a false', plegar.getAttribute('aria-expanded') === 'false');
   ok('el título dice cómo volver', /Mostrar/i.test(plegar.title), plegar.title);
   ok('queda guardado', guardado(window).controlsCollapsed === true);
 
   plegar.click();
   ok('desplegado: se va la clase', !doc.body.classList.contains('controls-collapsed'));
-  ok('y vuelve el glifo', plegar.textContent.trim() === '–');
+  ok('y vuelve a apuntar hacia abajo', !plegar.classList.contains('is-collapsed'));
   ok('y el guardado', guardado(window).controlsCollapsed === false);
 }
 
@@ -57,7 +58,8 @@ const guardado = w => JSON.parse(w.localStorage.getItem('tareas-diarias/v1/u-tes
 {
   const { doc } = await montar({ ...ESTADO_LLENO, controlsCollapsed: true });
   ok('rehidrata plegado', doc.body.classList.contains('controls-collapsed'));
-  ok('con el glifo correcto', doc.querySelector('#btn-collapse').textContent.trim() === '+');
+  ok('con el chevron a la izquierda',
+    doc.querySelector('#btn-collapse').classList.contains('is-collapsed'));
 }
 {
   const { doc } = await montar({ ...ESTADO_LLENO, controlsCollapsed: 'sí' });
@@ -89,19 +91,24 @@ const guardado = w => JSON.parse(w.localStorage.getItem('tareas-diarias/v1/u-tes
   ok('con filas de tareas', doc.querySelectorAll('#grid tbody tr[data-task-id]').length > 0);
 }
 
-// --- 6. el CSS pliega las tres zonas, y solo en móvil ----------------------
+// --- 6. el CSS pliega las dos zonas, en cualquier ancho -------------------
 {
   const css = leer('styles.css');
   const movil = [...css.matchAll(/@media \(max-width: 640px\) \{([\s\S]*?)\n\}/g)]
-    .map(m => m[1]).find(b => b.includes('controls-collapsed')) ?? '';
+    .map(m => m[1]).find(b => b.includes('#btn-page-toggle')) ?? '';
 
-  ok('la regla de plegado vive en el bloque móvil', movil !== '');
+  /* La barra tiene la misma disposición en todos los anchos, así que el plegado
+     también: su regla vive en la base y no dentro de un `@media`. */
+  const base = css.replace(/@media[\s\S]*?\n\}\n/g, '');
   for (const zona of ['#controls-center', '#month-bar']) {
-    ok(`  pliega ${zona}`, movil.includes(`body.controls-collapsed ${zona}`));
+    ok(`  pliega ${zona} en cualquier ancho`,
+      base.includes(`body.controls-collapsed ${zona}`));
   }
-  ok('el botón no existe fuera de móvil',
-    /\.collapse-btn \{ display: none; \}|\.zoom-btn,\s*\n\.collapse-btn \{ display: none; \}/.test(css));
-  ok('y aparece dentro del bloque móvil', /\.collapse-btn \{ display: grid; \}/.test(movil));
+  ok('el botón no se esconde por ancho', !/\.collapse-btn \{ display: none; \}/.test(css));
+  /* El zoom sí sigue siendo de móvil: en escritorio la planilla entra. */
+  ok('el zoom en cambio sí es solo de móvil',
+    /\.zoom-group \{ display: none; \}/.test(base)
+    && /\.zoom-group \{ display: flex; \}/.test(movil));
   ok('«Análisis» pierde el rótulo en móvil',
     /#btn-page-toggle \.nav-text \{ display: none; \}/.test(movil));
 

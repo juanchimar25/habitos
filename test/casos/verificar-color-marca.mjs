@@ -117,7 +117,7 @@ ok('  ninguna deja el blanco fijo', conBlancoFijo.length === 0,
 {
   const html = leer('index.html');
   for (const [nombre, id] of [['Entrar / Crear cuenta', 'auth-submit'],
-    ['Acciones del mes', 'btn-actions']]) {
+    ['Opciones del mes', 'btn-actions']]) {
     const etiqueta = html.match(new RegExp(`<button[^>]*id="${id}"[^>]*>`))?.[0]
       ?? html.match(new RegExp(`<button[^>]*id="${id}"[\\s\\S]*?>`))?.[0] ?? '';
     const clases = etiqueta.match(/class="([^"]*)"/)?.[1] ?? '';

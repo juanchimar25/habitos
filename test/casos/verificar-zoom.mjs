@@ -14,7 +14,7 @@ const guardado = w => JSON.parse(w.localStorage.getItem('tareas-diarias/v1/u-tes
 {
   const { doc } = await montar(ESTADO_LLENO);
   const btn = doc.querySelector('#btn-zoom');
-  ok('el botón vive en el desplegable de acciones',
+  ok('el botón vive en el desplegable de opciones',
     btn?.closest('#actions-options') !== null, btn?.parentElement?.className);
 
   /* Tiene apartado propio: la densidad de la planilla no es ni una acción sobre
@@ -27,10 +27,9 @@ const guardado = w => JSON.parse(w.localStorage.getItem('tareas-diarias/v1/u-tes
     btn?.closest('.zoom-group') !== null);
 
   const orden = [...doc.querySelectorAll('#actions-options .view-opt')].map(b => b.id);
-  console.log('  acciones:', orden.join(' · '));
-  ok('está justo antes de bloquear período',
-    orden.indexOf('btn-lock') - orden.indexOf('btn-zoom') === 1,
-    `zoom en ${orden.indexOf('btn-zoom')}, lock en ${orden.indexOf('btn-lock')}`);
+  console.log('  opciones:', orden.join(' · '));
+  ok('cierra la lista de opciones', orden.indexOf('btn-zoom') === orden.length - 1,
+    `zoom en ${orden.indexOf('btn-zoom')} de ${orden.length}`);
   ok('ya no está en el bloque de vistas', btn?.closest('#controls-center') === null);
   ok('arranca en Normal', doc.querySelector('#zoom-text').textContent === 'Normal',
     doc.querySelector('#zoom-text').textContent);

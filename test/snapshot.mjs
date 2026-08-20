@@ -13,7 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { montar, normalizarHtml, verVista } from './harness.mjs';
 import {
-  ESTADO_LLENO, ESTADO_VACIO, ESTADO_BLOQUEADO, ESTADO_LEGADO, ESTADO_SUCIO,
+  ESTADO_LLENO, ESTADO_VACIO, ESTADO_LEGADO, ESTADO_SUCIO,
 } from './escenarios.mjs';
 
 const DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '__snapshots__');
@@ -22,11 +22,6 @@ const ARCHIVO = path.join(DIR, 'dom.json');
 /** Superficies que se capturan en cada escenario. */
 function capturar(doc) {
   const html = sel => normalizarHtml(doc.querySelector(sel)?.innerHTML ?? '(ausente)');
-  const attrs = sel => {
-    const n = doc.querySelector(sel);
-    if (!n) return '(ausente)';
-    return [...n.attributes].map(a => `${a.name}="${a.value}"`).sort().join(' ');
-  };
   // Qué secciones quedan ocultas. Va aparte del innerHTML porque ocultar un
   // bloque no cambia su contenido: sin esto, el test no vería la diferencia.
   const visibilidad = ['.controls', '.month-nav', '#controls-center',
@@ -51,7 +46,6 @@ function capturar(doc) {
     // que cambiarle las entradas no aparecía en ningún diff.
     referencias: html('#legend'),
     vacio: html('#empty'),
-    notaBloqueo: attrs('#locked-note'),
     titulo: doc.title,
   };
 }
@@ -75,6 +69,9 @@ async function recolectar() {
   // --- selección múltiple -----------------------------------------
   {
     const { doc } = await montar(ESTADO_LLENO);
+    // Los casilleros existen solo en la postura «Eliminar tareas».
+    doc.querySelector('#btn-actions').click();
+    doc.querySelector('#btn-mode-delete').click();
     for (const cb of [...doc.querySelectorAll('.task-pick[data-task-id]')].slice(0, 3)) {
       cb.click();
     }
@@ -93,12 +90,6 @@ async function recolectar() {
     const { doc } = await montar(ESTADO_LLENO);
     doc.querySelector('[data-page="help"]').click();
     out['guia'] = capturar(doc);
-  }
-
-  // --- mes bloqueado -------------------------------------------------
-  {
-    const { doc } = await montar(ESTADO_BLOQUEADO);
-    out['bloqueado'] = capturar(doc);
   }
 
   // --- sin tareas ------------------------------------------------------
@@ -177,6 +168,7 @@ if (modo === 'guardar') {
   const bytes = claves.reduce((n, k) => n + JSON.stringify(datos[k]).length, 0);
   console.log(`Referencia guardada: ${claves.length} escenarios, ${(bytes / 1024).toFixed(0)} KB`);
   console.log(claves.map(k => '  · ' + k).join('\n'));
+  process.exit(0);
 } else if (modo === 'comparar') {
   if (!fs.existsSync(ARCHIVO)) {
     console.error('No hay referencia. Corré primero: node test/snapshot.mjs guardar');
@@ -239,6 +231,11 @@ if (modo === 'guardar') {
     process.exit(1);
   }
   console.log(`Sin cambios: ${total} escenarios idénticos al de referencia`);
+  /* Cada escenario deja su jsdom en pie, y ahí adentro hay un temporizador vivo
+     —el que relee la fecha al cruzar la medianoche—. Node no termina mientras
+     quede uno pendiente, así que se sale a mano. Es lo mismo que hace cada
+     archivo de `casos/`. */
+  process.exit(0);
 } else {
   console.error('Uso: node test/snapshot.mjs guardar|comparar');
   process.exit(2);

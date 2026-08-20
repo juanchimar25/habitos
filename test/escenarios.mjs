@@ -41,22 +41,16 @@ export const ESTADO_LLENO = {
     [MES]: TAREAS,
   },
   status: estados(),
-  locked: {},
   complianceMode: 'glyph',
   panels: { tiles: true, charts: true },
   theme: 'light',
 };
 
 export const ESTADO_VACIO = {
-  months: {}, status: {}, locked: {},
+  months: {}, status: {},
   complianceMode: 'glyph',
   panels: { tiles: true, charts: true },
   theme: 'light',
-};
-
-export const ESTADO_BLOQUEADO = {
-  ...ESTADO_LLENO,
-  locked: { [MES]: true },
 };
 
 /* Formato viejo: una única lista global de tareas, sin `months`. normalize()
@@ -68,7 +62,6 @@ export const ESTADO_LEGADO = {
     't1|2026-07-15': 'partial',
     't2|2026-07-16': 'missed',
   },
-  locked: {},
   theme: 'light',
 };
 
@@ -88,7 +81,6 @@ export const ESTADO_SUCIO = {
     '2026-08': 'no es una lista',
   },
   status: ['done', 'partial'],        // arreglo donde iba un diccionario
-  locked: ['2026-07'],                // idem
   complianceMode: 'inventado',
   panels: 'tampoco es un objeto',
   theme: 'fucsia',

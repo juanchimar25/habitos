@@ -6,7 +6,7 @@
    propio, para no esperar de verdad los 800 ms de la agrupación ni los 5 s del
    primer reintento. */
 import { JSDOM } from 'jsdom';
-import { leer, AHORA } from '../harness.mjs';
+import { leer, marcarCelda, AHORA } from '../harness.mjs';
 
 let fallos = 0;
 const ok = (n, cond, det = '') => {
@@ -24,7 +24,6 @@ const TAREAS = [
 const estadoCon = extra => ({
   months: { '2026-07': TAREAS },
   status: {},
-  locked: {},
   complianceMode: 'glyph',
   zoom: 'normal',
   controlsCollapsed: false,
@@ -153,7 +152,8 @@ async function montar({ local = null, remoto = null, pendiente = null, alSubir }
   return {
     window, doc, subidas, avanzar,
     /** Cicla el estado de una celda, como un clic del usuario. */
-    marcar: dia => doc.querySelector(`.cell[data-task-id="t1"][data-date="2026-07-${dia}"]`)?.click(),
+    marcar: dia => marcarCelda(
+      doc, doc.querySelector(`.cell[data-task-id="t1"][data-date="2026-07-${dia}"]`)),
     guardadoEn: k => (guardado.has(k) ? guardado.get(k) : null),
     ocultar: () => {
       visibilidad = 'hidden';
@@ -230,7 +230,7 @@ const REMOTO = { payload: estadoCon({}), updatedAt: '2026-07-30T10:00:00+00:00' 
   for (const campo of ['theme', 'zoom', 'controlsCollapsed', 'panels', 'complianceMode']) {
     ok(`el payload no lleva «${campo}»`, !(campo in payload));
   }
-  ok('pero sí los datos', ['months', 'status', 'locked'].every(k => k in payload));
+  ok('pero sí los datos', ['months', 'status'].every(k => k in payload));
 }
 
 // --- 4. cambiar una preferencia no sube nada ------------------------------

@@ -223,7 +223,7 @@ const opciones = doc => [...doc.querySelectorAll('#view-options .view-opt')];
   ok('sin salir de la vista mensual', texto(doc) === 'Mensual', texto(doc));
 }
 
-// --- 9. el desplegable de acciones del mes --------------------------------
+// --- 9. el desplegable de opciones del mes --------------------------------
 {
   const { doc } = await montar(ESTADO_LLENO);
   const barra = doc.querySelector('#month-bar');
@@ -233,15 +233,17 @@ const opciones = doc => [...doc.querySelectorAll('#view-options .view-opt')];
 
   doc.querySelector('#btn-actions').click();
   const dentro = [...doc.querySelectorAll('#actions-options .view-opt')].map(b => b.id);
-  console.log('  acciones:', dentro.join(' · '));
-  ok('las seis acciones viven adentro',
-    ['btn-add-task', 'btn-copy-prev', 'btn-delete-sel', 'btn-reset-sel', 'btn-zoom', 'btn-lock']
+  console.log('  opciones:', dentro.join(' · '));
+  ok('las cinco opciones viven adentro',
+    ['btn-add-task', 'btn-copy-prev', 'btn-mode-delete', 'btn-mode-reset',
+      'btn-mode-reorder', 'btn-zoom']
       .every(id => dentro.includes(id)), dentro.join(','));
+  ok('y el bloqueo de período ya no existe', !dentro.includes('btn-lock'));
 
   const titulos = [...doc.querySelectorAll('#actions-options .opt-group-title')]
     .map(t => t.textContent);
-  ok('agrupadas en tres apartados',
-    titulos.join(',') === 'Tareas,Visualización,Período', titulos.join(','));
+  ok('agrupadas en dos apartados',
+    titulos.join(',') === 'Tareas,Visualización', titulos.join(','));
   ok('cada apartado es un group con su rótulo',
     [...doc.querySelectorAll('#actions-options [role="group"]')]
       .every(g => doc.getElementById(g.getAttribute('aria-labelledby'))));
@@ -256,7 +258,7 @@ const opciones = doc => [...doc.querySelectorAll('#view-options .view-opt')];
   ok('abre el de vista', abierto(doc) && !acciones());
 
   doc.querySelector('#btn-actions').click();
-  ok('abrir el de acciones cierra el otro', acciones() && !abierto(doc));
+  ok('abrir el de opciones cierra el otro', acciones() && !abierto(doc));
 
   doc.querySelector('#btn-view').click();
   ok('y al revés también', abierto(doc) && !acciones());
@@ -282,12 +284,149 @@ const opciones = doc => [...doc.querySelectorAll('#view-options .view-opt')];
   ok('el alta cierra el menú', doc.querySelector('#actions-options').hidden === true);
   ok('y abre su diálogo', doc.querySelector('#task-dialog').hasAttribute('open'));
 }
+// --- 11b. las dos posturas de la fila -------------------------------------
 {
   const { doc } = await montar(ESTADO_LLENO);
+  const abrir = () => doc.querySelector('#btn-actions').click();
+  const filas = () => doc.querySelectorAll('#grid tbody tr[data-task-id]').length;
+
+  ok('en reposo las filas van limpias',
+    doc.querySelectorAll('.task-pick').length === 0
+    && doc.querySelectorAll('.move-stack').length === 0);
+  ok('y hay tareas que mostrar', filas() > 0);
+
+  abrir();
+  doc.querySelector('#btn-mode-delete').click();
+  ok('«Eliminar tareas» saca los casilleros',
+    doc.querySelectorAll('.task-pick[data-task-id]').length === filas());
+  ok('incluido el de «todas»', Boolean(doc.querySelector('[data-pick-all]')));
+  ok('sin chevrones', doc.querySelectorAll('.move-stack').length === 0);
+  ok('y queda marcada en el menú',
+    doc.querySelector('#btn-mode-delete').getAttribute('aria-checked') === 'true');
+
+  abrir();
+  doc.querySelector('#btn-mode-reorder').click();
+  ok('«Reordenar tareas» cambia a los chevrones',
+    doc.querySelectorAll('.move-stack').length === filas());
+  ok('y se lleva los casilleros', doc.querySelectorAll('.task-pick').length === 0);
+  ok('la otra se destilda sola',
+    doc.querySelector('#btn-mode-delete').getAttribute('aria-checked') === 'false');
+
+  abrir();
+  doc.querySelector('#btn-mode-reorder').click();
+  ok('volver a elegirla vuelve a las filas limpias',
+    doc.querySelectorAll('.move-stack').length === 0
+    && doc.querySelector('#btn-mode-reorder').getAttribute('aria-checked') === 'false');
+}
+{
+  /* Eliminar y resetear comparten los casilleros; lo que cambia es qué se
+     ofrece hacer con lo tildado. Cada confirmación aparece solo con SU postura:
+     ofrecer las dos sobre el mismo tildado invita a apretar la que no era. */
+  const { doc } = await montar(ESTADO_LLENO);
+  const postura = modo => {
+    doc.querySelector('#btn-actions').click();
+    doc.querySelector(`#btn-mode-${modo}`).click();
+  };
+  const tildar = n =>
+    [...doc.querySelectorAll('.task-pick[data-task-id]')].slice(0, n).forEach(c => c.click());
+
+  const barra = () => doc.querySelector('#mode-confirm');
+  const botonOk = () => doc.querySelector('#btn-mode-ok');
+
+  ok('en reposo no hay barra de confirmación', barra().hidden === true);
+
+  postura('delete');
+  ok('la postura la hace aparecer', barra().hidden === false);
+  ok('pero el ✓ arranca apagado', botonOk().disabled === true);
+  ok('y dice qué falta', /Tildá las tareas/.test(botonOk().title), botonOk().title);
+
+  tildar(2);
+  ok('con dos tildadas el ✓ se habilita', botonOk().disabled === false);
+  ok('y anuncia el alcance', /Eliminar 2 tareas/.test(botonOk().title), botonOk().title);
+
+  postura('reset');
+  ok('resetear también saca casilleros',
+    doc.querySelectorAll('.task-pick[data-task-id]').length > 0);
+  ok('y suelta lo que venía tildado', botonOk().disabled === true);
+
+  tildar(3);
+  ok('el ✓ ahora habla de resetear', /Resetear 3 tareas/.test(botonOk().title), botonOk().title);
+
+  postura('reorder');
+  ok('reordenar no tiene casilleros', doc.querySelectorAll('.task-pick').length === 0);
+  ok('y su ✓ va habilitado sin tildar nada', botonOk().disabled === false);
+}
+// --- 11c. confirmar y cancelar cada postura -------------------------------
+{
+  /* Eliminar: el ✓ abre el diálogo, y nada se toca hasta aceptarlo. */
+  const { window, doc } = await montar(ESTADO_LLENO);
+  const filas = () => doc.querySelectorAll('#grid tbody tr[data-task-id]').length;
+  const antes = filas();
+
   doc.querySelector('#btn-actions').click();
-  doc.querySelector('#btn-lock').click();
-  ok('bloquear cierra el menú', doc.querySelector('#actions-options').hidden === true);
-  ok('y bloquea de verdad', doc.querySelector('#locked-note').hidden === false);
+  doc.querySelector('#btn-mode-delete').click();
+  [...doc.querySelectorAll('.task-pick[data-task-id]')].slice(0, 2).forEach(c => c.click());
+  doc.querySelector('#btn-mode-ok').click();
+
+  ok('el ✓ pide confirmación', doc.querySelector('#confirm-dialog').hasAttribute('open'));
+  ok('y todavía no borró nada', filas() === antes, `${antes} → ${filas()}`);
+
+  doc.querySelector('#confirm-ok').click();
+  ok('al aceptar, borra', filas() === antes - 2, `${antes} → ${filas()}`);
+  ok('y la postura se cierra sola', doc.querySelector('#mode-confirm').hidden === true);
+  ok('sin dejar casilleros', doc.querySelectorAll('.task-pick').length === 0);
+  void window;
+}
+{
+  /* El ✕ sale sin tocar nada. */
+  const { doc } = await montar(ESTADO_LLENO);
+  const antes = doc.querySelectorAll('#grid tbody tr[data-task-id]').length;
+
+  doc.querySelector('#btn-actions').click();
+  doc.querySelector('#btn-mode-delete').click();
+  [...doc.querySelectorAll('.task-pick[data-task-id]')].slice(0, 2).forEach(c => c.click());
+  doc.querySelector('#btn-mode-cancel').click();
+
+  ok('el ✕ cierra la postura', doc.querySelector('#mode-confirm').hidden === true);
+  ok('sin borrar nada',
+    doc.querySelectorAll('#grid tbody tr[data-task-id]').length === antes);
+  ok('y sin abrir ningún diálogo',
+    doc.querySelector('#confirm-dialog').hasAttribute('open') === false);
+}
+{
+  /* Reordenar es el caso raro: los chevrones aplican en el acto, así que lo que
+     lo vuelve cancelable es que ✕ devuelva el orden de partida. */
+  const { doc } = await montar(ESTADO_LLENO);
+  const orden = () => [...doc.querySelectorAll('#grid tbody tr[data-task-id]')]
+    .map(tr => tr.dataset.taskId).join(',');
+  const inicial = orden();
+
+  doc.querySelector('#btn-actions').click();
+  doc.querySelector('#btn-mode-reorder').click();
+  doc.querySelector('[data-action="move-down"]:not(:disabled)').click();
+  ok('el chevron mueve en el acto', orden() !== inicial, `${inicial} → ${orden()}`);
+
+  doc.querySelector('#btn-mode-cancel').click();
+  ok('y el ✕ devuelve el orden', orden() === inicial, orden());
+}
+{
+  const { doc } = await montar(ESTADO_LLENO);
+  const orden = () => [...doc.querySelectorAll('#grid tbody tr[data-task-id]')]
+    .map(tr => tr.dataset.taskId).join(',');
+  const inicial = orden();
+
+  doc.querySelector('#btn-actions').click();
+  doc.querySelector('#btn-mode-reorder').click();
+  doc.querySelector('[data-action="move-down"]:not(:disabled)').click();
+  const movido = orden();
+
+  doc.querySelector('#btn-mode-ok').click();
+  ok('reordenar también pide confirmación',
+    doc.querySelector('#confirm-dialog').hasAttribute('open'));
+
+  doc.querySelector('#confirm-ok').click();
+  ok('al aceptar, el orden queda', orden() === movido && orden() !== inicial, orden());
+  ok('y la postura se cierra', doc.querySelector('#mode-confirm').hidden === true);
 }
 
 // --- 12. la geometría de la barra, que jsdom no puede medir ---------------
@@ -304,16 +443,20 @@ const opciones = doc => [...doc.querySelectorAll('#view-options .view-opt')];
      las cuatro alturas distintas en una misma fila. */
   ok('con el padding vertical anulado', /padding-block:\s*0/.test(alturas));
 
-  const movil = [...css.matchAll(/@media \(max-width: 640px\) \{([\s\S]*?)\n\}\n/g)]
-    .map(m => m[1]).find(b => b.includes('.actions-options')) ?? '';
-  ok('en móvil el menú de acciones ancla a la derecha',
-    /\.actions-options \{[^}]*right:\s*0/.test(movil));
-  /* El de acciones comparte la clase `.view-options`: si esa regla fuera por
-     clase le pisaría el ancla y el menú saldría cortado fuera de la pantalla.
-     Es exactamente lo que pasó. */
+  /* Cada desplegable ancla del lado en que está su botón, en todos los anchos:
+     la barra tiene una sola disposición. Anclados al revés se salen de la
+     pantalla y aparecen cortados. */
+  const base = css.replace(/@media[\s\S]*?\n\}\n/g, '');
+  ok('el menú de opciones ancla a la derecha',
+    /\.actions-options \{[^}]*right:\s*0/.test(base));
+  /* El de opciones comparte la clase `.view-options`, cuya regla base lo centra
+     con `left: 50%`. El ancla del de vista tiene que ser por ID: por clase le
+     pisaría el `left: auto` al de opciones y ese menú saldría cortado. Es
+     exactamente lo que pasó una vez. */
+  const trasAncla = base.slice(base.indexOf('.actions-options {'));
   ok('y el de vista se acota por id, no por clase',
-    /#view-options \{[^}]*left:\s*0/.test(movil)
-    && !/\n\s*\.view-options \{[^}]*left:/.test(movil));
+    /#view-options\s*\{[^}]*left:\s*0/.test(base) && !/\n\.view-options\s*\{/.test(trasAncla),
+    trasAncla.match(/\n\.view-options\s*\{/) ? 'hay una regla por clase después' : 'por id');
 }
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');

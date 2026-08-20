@@ -1,7 +1,7 @@
 /* Un usuario que ya venía usando la app abre esta versión. Su estado guardado
    no conoce `zoom` ni `controlsCollapsed`, y sus tareas tienen `start: null`,
    que era lo normal antes de que la fecha fuera obligatoria. */
-import { montar, verVista } from '../harness.mjs';
+import { marcarCelda, montar, verVista } from '../harness.mjs';
 
 let fallos = 0;
 const ok = (n, cond, det = '') => {
@@ -29,7 +29,6 @@ const ESTADO_VIEJO = {
     'a|2026-07-15': 'missed', 'b|2026-07-06': 'done', 'c|2026-07-03': 'done',
     'c|2026-07-20': 'done', 'd|2026-07-06': 'skip', 'd|2026-07-08': 'done',
   },
-  locked: { '2026-06': true },
   complianceMode: 'both',
   panels: { tiles: true, charts: false },
   theme: 'light',
@@ -46,7 +45,7 @@ const ESTADO_VIEJO = {
     `${Object.keys(guardado(window).status).length} de 9`);
   ok('las tareas conservan start: null',
     guardado(window).months['2026-07'].every(t => t.start === null));
-  ok('el mes bloqueado sigue bloqueado', guardado(window).locked['2026-06'] === true);
+  ok('descarta el bloqueo de mes, que ya no existe', !('locked' in guardado(window)));
   ok('respeta complianceMode guardado',
     doc.querySelector('#grid').className.includes('cpm-both'),
     doc.querySelector('#grid').className);
@@ -76,7 +75,7 @@ const ESTADO_VIEJO = {
   ok('ninguna celda queda apagada por falta de fecha',
     celdas.every(c => !c.disabled), `${celdas.filter(c => c.disabled).length} apagadas`);
 
-  celdas[9].click();                       // 10 de julio
+  marcarCelda(doc, celdas[9]);             // 10 de julio: día viejo, hay que confirmar
   ok('marcar sigue funcionando', Boolean(guardado(window).status['a|2026-07-10']),
     String(guardado(window).status['a|2026-07-10']));
 }
@@ -140,12 +139,12 @@ const ESTADO_VIEJO = {
     guardado(window).zoom === undefined);
 
   verVista(doc, 'month');
-  doc.querySelector('tr[data-task-id="a"] .cell').click();       // marca → save()
+  marcarCelda(doc, doc.querySelector('tr[data-task-id="a"] .cell'));   // marca → save()
 
   const g = guardado(window);
   ok('el guardado deja el estado completo',
     Object.keys(g).sort().join(',')
-      === 'complianceMode,controlsCollapsed,locked,months,panels,status,theme,zoom',
+      === 'complianceMode,controlsCollapsed,months,panels,status,theme,zoom',
     Object.keys(g).sort().join(','));
   ok('sin perder los meses', Object.keys(g.months).sort().join(',') === '2026-06,2026-07');
   ok('ni los estados previos', Object.keys(g.status).length >= 9,

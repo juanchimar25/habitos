@@ -122,9 +122,9 @@ exactamente eso con un ícono de la guía, que nació mal y sobrevivió a los 18
 
 `npm test` monta la app entera dentro de jsdom —el `index.html` real, el `app.js` real— con el
 reloj congelado y datos sembrados, y compara el HTML que produce contra una referencia guardada.
-Son 18 escenarios: las tres vistas, los cuatro modos de la columna Estatus, análisis, guía, mes
-bloqueado, sin tareas, selección múltiple, los diálogos, y dos de datos corruptos que ejercen las
-guardas de `normalize()`.
+Son 17 escenarios: las tres vistas, los cuatro modos de la columna Estatus, análisis, guía, sin
+tareas, selección múltiple, los diálogos, y dos de datos corruptos que ejercen las guardas de
+`normalize()`.
 
 Sirve para refactorizar: si el HTML sale igual, el comportamiento no cambió. No reemplaza probar
 en el navegador —no cubre CSS, gestos ni la sesión—, pero atrapa las regresiones de render.
@@ -136,17 +136,17 @@ clonado el repositorio. Cuando un cambio de markup es intencional, `npm run snap
 ### Casos de comportamiento
 
 Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue funcionando*. Son
-**433 comprobaciones** repartidas en quince archivos, cada uno sobre una funcionalidad:
+**504 comprobaciones** repartidas en dieciséis archivos, cada uno sobre una funcionalidad:
 
 | Caso | Qué cubre |
 |---|---|
-| `plantillas` | Fecha obligatoria, mes destino, bloqueo, duplicados |
+| `plantillas` | Fecha obligatoria, mes destino, duplicados |
 | `tarea-fecha` | Alta y edición: valor por omisión, validación, no mudar de mes al editar |
-| `tope-100` | Ninguna tarea aporta más que su meta a los promedios |
+| `tope-100` | Ninguna tarea aporta más que su meta, y qué entra en el techo de cada día |
 | `ir-a` | Los dos calendarios: el nombre del mes y «Ir a…» |
 | `zoom` | Los tres niveles, alto de fila y ancho de columna uniformes, ancho para el nombre |
 | `plegado` | «Análisis» en el encabezado, el armazón de alto fijo y el plegado de controles |
-| `boton-alta` | El alta dentro del desplegable de acciones y su estado bloqueado |
+| `boton-alta` | El alta dentro del desplegable de opciones |
 | `color-marca` | Los rellenos con el color de la marca y su contraste AA en ambos temas |
 | `vendor` | La app arranca con el cliente local y su `integrity` |
 | `red` | Qué primitivas de red toca el cliente real: ningún WebSocket |
@@ -154,11 +154,12 @@ Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue f
 | `recuperacion` | El ciclo completo de «olvidaste tu contraseña», con el cliente instrumentado |
 | `migracion` | Un estado guardado por la versión anterior abre sin perder nada |
 | `sincronizacion` | Cómo se sube: agrupado, de a uno, con reintento y sin las preferencias |
-| `vista` | Los dos desplegables: vista con sus flechas y saltos, y acciones del mes |
+| `vista` | Los dos desplegables, y las posturas de la fila que abre «Opciones» |
+| `dia-cerrado` | El cierre automático de los días transcurridos y la vuelta de medianoche |
 
 Corren en **procesos separados** a propósito: cada uno instala su propio jsdom con reloj,
 almacenamiento y globals sustituidos, y compartir proceso haría que un caso viera el entorno del
-anterior. El costo es arrancar Node quince veces; a cambio cada archivo se ejecuta a mano —
+anterior. El costo es arrancar Node dieciséis veces; a cambio cada archivo se ejecuta a mano —
 `node test/casos/verificar-zoom.mjs`—, que es como se depuran.
 
 > `sincronizacion` monta además un **reloj de temporizadores propio**, para no esperar de verdad
@@ -356,8 +357,6 @@ Si ya habías marcado días que después quedan antes del inicio, dejan de mostr
 
 Al **crear** una tarea el campo llega precargado con **hoy**, que es cuando suele empezar un hábito que estás dando de alta. Y esa fecha **decide a qué mes va la tarea**, sin importar en qué mes estés parado: darla de alta desde un mes viejo la crea igual en el mes de su fecha, y la app te lleva ahí. Es la misma regla que en las plantillas.
 
-Como el destino puede no ser el mes visible, el **bloqueo que se comprueba es el del mes destino**: con septiembre bloqueado, crear una tarea que arranca ahí se rechaza con un error en el formulario aunque estés parado en un julio editable.
-
 Al **editar** gana la fecha que ya tenga la tarea, y cambiarla **no la muda de mes**: la tarea vive en la lista del mes donde está, y mudarla partiría su historial en dos. Correr un inicio unos días es algo que se hace seguido y no debería tener ese efecto.
 
 Si una tarea no tiene fecha —por ser anterior a que el campo fuera obligatorio—, al editarla se propone el **día 1 del mes visible** y no hoy: proponer hoy recortaría el historial, porque guardar sin tocar nada apagaría los días ya cargados anteriores a la fecha y dejarían de contar para la meta. El día 1 es justamente lo que significaba no tener fecha, así que completarla no cambia nada.
@@ -368,42 +367,67 @@ Como marcar de más está permitido, **los puntos pueden superar la meta**: una 
 
 El tope no es solo de presentación: **cada tarea aporta como mucho su propia meta** a los promedios. Sin eso, hacer una tarea de lunes a viernes también el sábado compensaba el incumplimiento de otra tarea, y el total del rango subía sin que nada se hubiera cumplido mejor. Vale para el total del rango, para el gráfico de cumplimiento por tarea y para la comparación mensual.
 
-Cada fila tiene, en la columna de tareas: un **casillero** para seleccionarla, los chevrones **▲ ▼** para subir o bajar la tarea de posición y **✎** para editarla. El orden se guarda junto con los datos.
+**En reposo cada fila muestra solo el nombre, la frecuencia y ✎ para editarla.** Los casilleros y los chevrones **▲ ▼** aparecen recién al pedirlos, desde *Opciones* — ver [Posturas de la fila](#posturas-de-la-fila). El orden se guarda junto con los datos.
 
-También se puede **arrastrar una tarea tomándola del nombre** para reordenarla. Una línea de acento marca dónde va a caer según de qué lado del medio de la fila esté el puntero. La fila solo se vuelve arrastrable mientras el puntero apoya sobre el nombre: si no, arrastrar desde una celda de estado movería la tarea sin querer. Los chevrones siguen ahí porque el arrastre no funciona en pantallas táctiles. El alta vive en **+ Agregar tarea**, primero del apartado *Tareas* del desplegable **Acciones** (ver abajo). Para borrar se usa el casillero (ver abajo).
+También se puede **arrastrar una tarea tomándola del nombre** para reordenarla. Una línea de acento marca dónde va a caer según de qué lado del medio de la fila esté el puntero. La fila solo se vuelve arrastrable mientras el puntero apoya sobre el nombre: si no, arrastrar desde una celda de estado movería la tarea sin querer. Los chevrones siguen ahí porque el arrastre no funciona en pantallas táctiles. El alta vive en **+ Agregar tarea**, primero del apartado *Tareas* del desplegable **Opciones** (ver abajo). Para borrar se usa el casillero (ver abajo).
 
-### Acciones del mes
+### Opciones del mes
 
-Todo lo que se puede hacer sobre el mes vive en un botón **Acciones**, agrupado por lo que toca:
+Todo lo que se puede hacer sobre el mes vive en un botón **Opciones**, agrupado por lo que toca:
 
 | Apartado | Qué hay |
 |---|---|
-| **Tareas** | *+ Agregar tarea*, *Copiar tareas del mes anterior*, y —con filas tildadas— *Eliminar N tareas* y *Resetear estados* |
+| **Tareas** | *+ Agregar tarea*, *Copiar tareas del mes anterior*, y las tres posturas: *Eliminar tareas*, *Resetear estados* y *Reordenar tareas* |
 | **Visualización** | El zoom de la planilla. Solo en móvil: en escritorio la planilla entra y el apartado entero no existe |
-| **Período** | *Bloquear período* |
 
-> **Antes eran seis botones sueltos en una fila.** Agruparlos muestra una distinción que la fila plana no podía: ahí *Resetear estados* y *Bloquear período* se leían como vecinos del mismo rango, cuando uno borra marcas de tareas y el otro congela el mes entero.
+> **Antes eran seis botones sueltos en una fila.** Agruparlos muestra una distinción que la fila plana no podía: ahí *Resetear estados* y *Copiar tareas del mes anterior* se leían como vecinos del mismo rango, cuando uno borra marcas y el otro reemplaza la lista entera.
+>
+> Los íconos van en una **ranura de ancho fijo**: los glifos no miden lo mismo —un emoji es bastante más ancho que una flecha—, así que sin ranura cada renglón arrancaba su texto en un lugar distinto. Con ella quedan centrados en una columna y los siete rótulos empiezan en la misma vertical. El `+` del alta pasó a ser un ícono más, en vez de vivir dentro del texto.
 >
 > El menú **se cierra al elegir**, porque casi todo lo que hay adentro abre un diálogo. La excepción es el zoom: cicla tres niveles, así que se queda abierto para poder recorrerlos sin volver a desplegar.
 >
 > Es el mismo mecanismo que el desplegable de vista —cierra con `Esc`, con un clic afuera, y devuelve el foco al botón— y **abrir uno cierra al otro**.
 >
-> El relleno con el color de la marca pasó de *+ Agregar tarea* a **Acciones**: es la entrada a todas, y dejar el color adentro del menú lo escondía. El alta sigue siendo lo primero del primer apartado, y la pantalla de «sin tareas» conserva su propio botón, así que dar de alta la primera tarea sigue estando a un clic.
+> El relleno con el color de la marca pasó de *+ Agregar tarea* a **Opciones**: es la entrada a todas, y dejar el color adentro del menú lo escondía. El alta sigue siendo lo primero del primer apartado, y la pantalla de «sin tareas» conserva su propio botón, así que dar de alta la primera tarea sigue estando a un clic.
 
-### Acciones sobre varias tareas
+### Posturas de la fila
 
-Al tildar **una o más** casillas las filas quedan resaltadas y aparecen dos entradas más en el apartado *Tareas* del desplegable **Acciones**, debajo de *Copiar tareas del mes anterior*:
+En reposo las filas van limpias. Tres entradas del apartado *Tareas* las ponen en una **postura**, que hace aparecer en cada una los controles de esa operación:
 
-| Botón | Qué hace |
+| Entrada | Qué aparece en cada fila |
 |---|---|
-| **🗑 Eliminar N tareas** | Saca esas tareas del mes visible junto con sus estados de ese mes |
-| **↺ Resetear estados** | Deja en «sin cargar» las celdas de esas filas **dentro del rango visible**, sin tocar las tareas |
+| **🗑 Eliminar tareas** | El **casillero**, más el de *todas* junto al encabezado |
+| **↺ Resetear estados** | El **casillero**, igual que arriba |
+| **⇅ Reordenar tareas** | Los chevrones **▲ ▼**, uno al lado del otro |
 
-El casillero junto al encabezado **Tareas** selecciona o deselecciona todas de una vez, y queda en estado intermedio si hay algunas tildadas pero no todas. Los dos botones piden confirmación y listan las tareas afectadas.
+Con una postura puesta aparecen **✓ y ✕** en la barra, entre el selector de vista y *Opciones*. El **✓** remata la acción —siempre pasando por un diálogo de confirmación que nombra lo afectado— y el **✕** sale sin aplicar nada. El ✓ queda **apagado mientras no haya nada que confirmar**, y su tooltip dice qué falta: *«Tildá las tareas a eliminar»*.
 
-**El alcance de cada una es distinto, a propósito.** Eliminar saca la tarea del mes, así que borra sus estados de todo el mes. Resetear opera sobre **lo que estás viendo**: en vista semanal borra solo esa semana, en diaria solo ese día, en mensual el mes entero. El diálogo nombra el rango antes de confirmar y el tooltip del botón lo anticipa.
+Elegir una postura **apaga las otras** —compiten por el mismo lugar de la fila— y volver a elegir la que está puesta devuelve las filas a su estado limpio. Sin tareas en el mes las tres se apagan, porque no habría sobre qué operar.
 
-Ambas respetan el aislamiento entre meses. La selección se limpia al cambiar de mes, al bloquear el período y al completar cualquiera de las dos acciones.
+> **Reordenar es el caso raro.** Los chevrones aplican en el acto: hay que ver el movimiento para saber si quedó bien. Lo que lo vuelve cancelable es que al entrar se anota el orden de partida, así el ✕ puede devolverlo. Confirmar es quedarse con lo que ya está aplicado y soltar esa vuelta atrás.
+>
+> **La confirmación está en la barra y no en el menú.** Antes eran dos entradas más del desplegable —*Eliminar N tareas*, *Resetear N tareas*—, que obligaban a volver a abrirlo para rematar lo que ya se había empezado, justo cuando la mirada estaba en las filas tildadas.
+>
+> **Cualquier cambio de postura suelta lo tildado.** Eliminar y resetear comparten los casilleros, y arrastrar una selección de una a la otra es exactamente el descuido que termina borrando lo que se quería limpiar.
+
+> **Antes estaban siempre.** Cada renglón cargaba con un casillero y un par de chevrones que casi nunca se usan, apretados contra el nombre y a media opacidad para que estorbaran poco. Sacándolos de ahí, el nombre respira y los chevrones pueden ser grandes y horizontales cuando por fin hacen falta — que es justo cuando hay que apuntarles con el dedo.
+>
+> Los controles **no se esconden con CSS: no se dibujan**. Uno invisible pero presente sigue estando en el recorrido del teclado y en el árbol de accesibilidad.
+
+### Sobre varias tareas a la vez
+
+Con una postura de selección puesta, al tildar **una o más** casillas las filas quedan resaltadas y el **✓** de la barra se habilita. Qué hace depende de la postura:
+
+| Postura | Qué hace el ✓ |
+|---|---|
+| **Eliminar tareas** | Saca esas tareas del mes visible junto con sus estados de ese mes |
+| **Resetear estados** | Deja en «sin cargar» las celdas de esas filas **dentro del rango visible**, sin tocar las tareas |
+
+El casillero junto al encabezado **Tareas** selecciona o deselecciona todas de una vez, y queda en estado intermedio si hay algunas tildadas pero no todas. Las dos piden confirmación y listan las tareas afectadas; hecha la acción, la postura **se cierra sola**.
+
+**El alcance de cada una es distinto, a propósito.** Eliminar saca la tarea del mes, así que borra sus estados de todo el mes. Resetear opera sobre **lo que estás viendo**: en vista semanal borra solo esa semana, en diaria solo ese día, en mensual el mes entero. El diálogo nombra el rango antes de confirmar, y el tooltip del ✓ lo anticipa.
+
+Ambas respetan el aislamiento entre meses. La selección se limpia al cambiar de mes y al completar cualquiera de las dos acciones.
 
 ### Estados y puntaje
 
@@ -433,7 +457,7 @@ Se ve con el mismo gris que los días que la frecuencia no pide, más un **guion
 
 Todas las celdas son clickeables, sin importar la frecuencia de la tarea. Los días que la frecuencia **no** pide llevan un tinte gris suave para distinguirlos de un vistazo: en una tarea *Lunes a viernes* son los fines de semana, en una *Personalizado* los días que no elegiste, y en las tareas *Semanal*, *Quincenal* y *Mensual* la fila entera —porque ningún día puntual es obligatorio, sirve cualquiera del período.
 
-El tinte de fin de semana se mantiene en el encabezado de días y en la fila `Tareas completadas`, como referencia de calendario.
+El tinte de fin de semana se mantiene en el encabezado de días y en la fila `Cumplimiento diario`, como referencia de calendario.
 
 **El día de hoy se marca solo en el encabezado**, con la píldora del número. Antes su columna llevaba además un filete vertical del color de la marca a los dos lados, que competía con los colores de estado —que son los que hay que leer— y recortaba el verde o el rojo de cada celda. Saber qué día es hoy es contexto; qué se cumplió y qué no es el dato.
 
@@ -458,7 +482,28 @@ Además del color, cada estado tiene un símbolo, así la planilla sigue siendo 
   > **El porcentaje es un avance, no un ritmo.** Un período recién empezado muestra números bajos aunque no falte nada: el 4 de agosto, una tarea diaria marcada los cuatro días va 4 de 31 en la vista mensual, o sea 13%, y con los umbrales de arriba eso se pinta en rojo. Para leer «cómo voy hoy» sirve la vista diaria o la semanal, donde el período es corto; la mensual dice cuánto del mes llevás hecho.
 
   Si la frecuencia no pide ningún día del rango —una *Lunes a viernes* en la vista diaria de un sábado— no hay nada que medir y muestra `—`.
-- **Por columna** (fila `Tareas completadas` al pie): suma de puntos de todas las tareas ese día.
+- **Por columna** (fila `Cumplimiento diario` al pie): cumplimiento de ese día, con el mismo símbolo y los mismos umbrales que la columna `Estatus` — el símbolo arriba y el porcentaje debajo.
+
+  El día cuenta **lo que pedía, más lo que hiciste sin que lo pidiera**. Cada una suma uno al techo:
+
+  | Entra | Cuándo |
+  |---|---|
+  | Las que el día **pide** | Siempre, se hayan hecho o no |
+  | Las que **no pedía** | Solo si se hicieron —cumplida o parcial— |
+
+  Lo que queda afuera es lo que ni se pedía ni se hizo: una *Semanal* sin tocar ese día, una *Lunes a viernes* en sábado, una *Personalizado* fuera de sus días, o una marcada a mano como *no requerido*. Una ✕ en un día que no la pedía tampoco entra — no hacer algo que nadie pidió no es un incumplimiento.
+
+  > **Hacer de más suma, no resta.** Una tarea semanal marcada un martes agrega 1 al techo y 1 a lo hecho: el día tuvo una cosa más para mostrar. Es la diferencia con la fila y el total del rango, donde `aporte` topea cada tarea en su meta — ahí lo de más compensaría el incumplimiento de otra, y acá no hay nada que compensar.
+  >
+  > **Los días que no transcurrieron muestran `—`.** Nada venció todavía, así que no hay techo: un 0% ahí acusaría de incumplido un día que no llegó. Lo que se haya marcado por adelantado sí se ve —lo hecho es lo hecho—; lo que no se muestra es un incumplimiento inventado. Es el mismo criterio con el que los promedios por día de la semana ya descartaban el futuro.
+  >
+  > Antes el techo eran **todas las tareas iniciadas**, pidiera el día o no. Con 18 tareas de las que el lunes pedía 11, hacer 8 daba **44%** cuando la cuenta es 8 sobre 11: **73%**. Si el día no pide nada y no se hizo nada, muestra `—`, no 0%.
+
+  > Antes mostraba la suma cruda de puntos —«1,5»—, que no decía contra cuánto se medía: 1,5 puede ser excelente con dos tareas y flojo con ocho. El porcentaje ya trae esa comparación hecha y el símbolo la resume de un vistazo.
+  >
+  > Los dos se ven **siempre**. El modo que cicla el encabezado `Estatus` gobierna esa columna, no el pie, así que estas piezas no llevan las clases que ese modo esconde.
+  >
+  > Van apilados y no uno al lado del otro porque la columna de un día mide 29px en móvil, y 23,8 en *Compacto*: es el mismo apilado del encabezado, donde el nombre del día va sobre el número. El cuerpo del porcentaje sigue al zoom — con cuerpo fijo, «100%» pide 24px y en *Compacto* se desbordaba por dos décimas.
 - **Esquina inferior derecha**: cumplimiento global del rango visible, con el mismo criterio.
 
 **Clic en el encabezado `Estatus`** para ciclar entre cuatro formas de mostrarlo. El modo activo se lee debajo del rótulo de la columna:
@@ -507,9 +552,9 @@ El campo abre en **hoy**, así que la plantilla apunta por omisión al mes actua
 
 El campo **no recuerda el valor anterior**: vuelve a hoy en cada apertura, así ninguna plantilla sale disparada a un mes que ya nadie eligió.
 
-Como el destino puede no ser el mes visible, el **bloqueo que se comprueba es el del mes destino**: con septiembre bloqueado los botones aparecen apagados y el diálogo dice por qué, aunque estés parado en un julio perfectamente editable. Y al revés — un julio bloqueado ya no impide agregar tareas a septiembre. Los nombres duplicados también se comparan contra el mes destino.
+Los nombres duplicados también se comparan contra el mes destino, no contra el visible.
 
-Las tareas de una plantilla se crean con ids nuevos, así que no arrastran estados de ningún lado, y respetan el bloqueo del período igual que cualquier otra alta.
+Las tareas de una plantilla se crean con ids nuevos, así que no arrastran estados de ningún lado.
 
 Se cierra con el botón **✕**, con `Esc` o haciendo clic fuera. El selector de mes sigue visible en la sección de Análisis, porque las tarjetas son mensuales; el selector de vista y la navegación por semana/día solo aparecen en el Diario.
 
@@ -554,7 +599,9 @@ Los totales siempre se calculan sobre el **rango visible**, así que cambian al 
 - **Semanal** — 7 días, de lunes a domingo
 - **Mensual** — todos los días del mes
 
-Se eligen en un **botón que muestra la vista activa** y despliega las otras. Las flechas `‹ ›` lo abrazan y mueven la ventana de esa vista: un día, una semana o —en la mensual, donde no hay ventana que correr dentro del mes— un mes. Al llegar al borde saltan al mes contiguo.
+Se eligen en un **botón que muestra la vista activa** y despliega las otras. Las flechas `◀ ▶` lo abrazan y mueven la ventana de esa vista: un día, una semana o —en la mensual, donde no hay ventana que correr dentro del mes— un mes. Al llegar al borde saltan al mes contiguo.
+
+> Los punteros de la app son todos **triángulos sólidos**: las flechas del rango, las del calendario, el del plegado y los `▲ ▼` de reordenar. Van a cuerpo reducido —`.62rem` contra el `1rem` del resto de los glifos— porque rellenos pesan mucho más que los `‹ ›` que reemplazaron, y a cuerpo pleno se comían el botón.
 
 Son los **tres únicos controles** de esa zona: todo lo demás —ir a hoy, saltar a un día— vive en el desplegable. Qué ventana se está mirando no lo dice un rótulo aparte sino los números de las columnas, que ya están ahí.
 
@@ -581,7 +628,7 @@ Hay dos calendarios para saltar sin recorrer mes por mes:
 >
 > Por eso el diálogo tiene ahora un botón **Hoy**, junto a *Cancelar*: sin él, volver al mes actual con el puntero obligaba a paginar hasta encontrarlo, y la tecla `T` no sirve en un teléfono. Funciona en los dos modos del diálogo, el de días y el de meses.
 >
-> **La línea del mes es un solo control.** Antes eran tres —un icono de calendario, `‹` y `›`— para una misma cosa. Sigue leyéndose como el título de la barra —mismo cuerpo y mismo peso que cuando era texto— y el fondo que lo delata como control aparece recién al pasarle el mouse. El chevron `▾` lo pone el CSS, así que ningún lector de pantalla lo anuncia: el nombre accesible es el mes, y el `aria-haspopup="dialog"` avisa que abre un diálogo.
+> **La línea del mes es un solo control.** Antes eran tres —un icono de calendario, `‹` y `›`— para una misma cosa. Lleva el mismo recuadro que el selector de vista: los dos abren algo, y conviene que se lean como lo que son. Lo propio suyo es el cuerpo y el peso, que lo mantienen como título de la barra. Sin indicador de desplegable: el recuadro ya dice que es un control, y el `aria-haspopup="dialog"` avisa que abre un diálogo.
 >
 > El paso a paso no se pierde: las flechas cruzan al mes contiguo al llegar al borde, y están las teclas `←` `→`.
 
@@ -591,36 +638,40 @@ Elegir un día lleva a la **ventana que lo contiene** según la vista activa: en
 
 > Un menú que muda de opciones según dónde estés obliga a recordar cuáles hay en cada una, y hace que una desaparezca justo cuando se la fue a buscar.
 
-### Plegar los controles (solo móvil)
+### Plegar los controles
 
-A la derecha de la línea del mes hay un botón que **pliega la fila que hay entre el mes y la planilla**: el selector de vista con sus flechas, y *Acciones*.
+A la derecha de la línea del mes hay un botón que **pliega la fila que hay entre el mes y la planilla**: el selector de vista con sus flechas, y *Opciones*.
 
-Dice `–` cuando está desplegado y `+` cuando no, y **recuerda cómo lo dejaste**. Solo aparece en la planilla: en la sección de análisis esas zonas ya están ocultas y no habría sobre qué actuar.
+Es un **triángulo que gira**: apunta hacia abajo con los controles a la vista y hacia la izquierda cuando están plegados — el giro dice hacia dónde se fueron. **Recuerda cómo lo dejaste.** Funciona en cualquier ancho, no solo en móvil. Solo aparece en la planilla: en la sección de análisis esas zonas ya están ocultas y no habría sobre qué actuar.
 
-> **En móvil la barra son dos filas**, no tres como antes:
+> Sigue siendo SVG y no el glifo `▼`: girando una sola forma, las dos posiciones son idénticas y la transición sale gratis.
+
+> **La barra son dos filas, en todos los anchos:**
 >
 > ```
->              Agosto 2026 ▾                –
->   ‹ Semanal ▾ ›                    Acciones
+>                 Agosto 2026                        ⌄
+>   ◀ Semanal ▶                        ✓ ✕   Opciones
 > ```
 >
 > El mes va **centrado de verdad**: su fila es una rejilla de `1fr auto 1fr`, así que el rótulo queda al medio sin importar cuánto ocupe el plegado de la derecha. Debajo, las dos entradas a todo lo demás quedan una en cada punta.
 >
-> Para poder compartir fila, `#month-bar` pasó a vivir **dentro** de `.controls`. En escritorio sigue en una fila propia y contra la izquierda, igual que cuando era una sección hermana — lo consigue con `grid-column: 1 / -1`.
+> Para poder compartir fila, `#month-bar` pasó a vivir **dentro** de `.controls`. La rejilla del mes es propia y **no `subgrid`**: eso pide Chrome 117 y la app declara soporte desde el 105.
 >
-> La rejilla del mes es propia y **no `subgrid`**: eso pide Chrome 117 y la app declara soporte desde el 105.
+> **Lo único que cambia con el ancho es dónde cae el ✓ ✕.** En escritorio se apoya contra *Opciones*, que es donde termina la mirada al recorrer una fila larga. En móvil va **centrado en el hueco** que queda entre el selector de vista y *Opciones*, sin pegarse a ninguno: ahí ese hueco es chico, y apoyarlo contra un extremo lo hacía leer como parte de él. Por eso es hijo directo de la rejilla y no del grupo de vista: desde adentro del grupo no habría forma de moverlo.
 >
-> **El selector de vista mide siempre lo mismo de ancho.** Los tres rótulos no miden igual —«Diario» 85,5px contra 98,3 de «Semanal» y 98,1 de «Mensual»—, así que sin un piso el botón cambiaba de tamaño al cambiar de vista y arrastraba a las flechas que lo abrazan. El piso va en `em`, por encima del más ancho: se mide contra la tipografía del propio botón, así que si cambia el cuerpo la reserva lo acompaña.
+> **El selector de vista mide siempre lo mismo de ancho.** Los tres rótulos no miden igual —«Diario» 38,2px de texto contra 53,9 de «Semanal»—, así que sin un piso el botón cambiaba de tamaño al cambiar de vista y arrastraba a las flechas que lo abrazan. El piso queda apenas por encima del más ancho: **84px** para 81,1 de contenido. Va en `em` y no en `px`, para que se mida contra la tipografía del propio botón y la reserva acompañe un cambio de cuerpo.
 >
-> **Todos los controles de la barra miden lo mismo de alto**, por `--ctl-h`. Antes convivían cuatro alturas en la misma fila —30,8px las flechas y el plegado, 32,3 *Acciones*, 36,4 el mes y 38,3 la vista— porque cada uno lo resolvía con su propio padding. En una fila esa diferencia se lee como jerarquía, y acá no la hay: son todos pares.
+> **Ninguno de los dos lleva indicador de desplegable.** El recuadro ya dice que son controles, y sin él los anchos se ajustaron: el selector de vista bajó de 105 a 84px —los 7,5em anteriores estaban dimensionados *con* el chevron que llevaban antes, y dejaban 24px de aire adentro— y el del mes perdió su piso, que con 93px nunca llegaba a atar nada (el mes más corto, «mayo 2026», ya mide 112).
 >
-> **Cada desplegable ancla del lado en que está su botón.** El de vista queda contra el borde izquierdo y el de acciones contra el derecho, así que crecen hacia adentro y ninguno se sale de la pantalla. Esa regla va **por id**: el menú de acciones comparte la clase `.view-options`, y acotarla por clase le pisaba el ancla y lo dejaba cortado.
+> **Todos los controles de la barra miden lo mismo de alto**, por `--ctl-h`. Antes convivían cuatro alturas en la misma fila —30,8px las flechas y el plegado, 32,3 *Opciones*, 36,4 el mes y 38,3 la vista— porque cada uno lo resolvía con su propio padding. En una fila esa diferencia se lee como jerarquía, y acá no la hay: son todos pares.
+>
+> **Cada desplegable ancla del lado en que está su botón** —y ahora en todos los anchos, porque la disposición es una sola—. El de vista queda contra el borde izquierdo y el de opciones contra el derecho, así que crecen hacia adentro y ninguno se sale de la pantalla. Esa regla va **por id**: el menú de opciones comparte la clase `.view-options`, cuya regla base lo centra, y acotarla por clase le pisaba el ancla y lo dejaba cortado.
 
 > El plegado va por una clase en el `body` y no por el atributo `hidden`, que ya lo usa el router para ocultar esas mismas zonas según la sección. Así las dos condiciones conviven sin pisarse.
 
 ### Zoom de la planilla (solo móvil)
 
-En pantallas angostas aparece el apartado **Visualización** del desplegable **Acciones**, con un control que cambia la densidad de la planilla. Cicla tres niveles y recuerda el elegido.
+En pantallas angostas aparece el apartado **Visualización** del desplegable **Opciones**, con un control que cambia la densidad de la planilla. Cicla tres niveles y recuerda el elegido.
 
 No toca solo el ancho de las columnas: baja también el **alto de las filas** y el **cuerpo del nombre de la tarea**.
 
@@ -680,23 +731,29 @@ Ejemplo: creás *Leer* y *Correr* en julio. Agosto y septiembre las muestran sol
 
 El botón **⧉ Copiar tareas del mes anterior** reemplaza la lista del mes visible por una copia de la del mes anterior. Pide confirmación porque es destructivo: las tareas que no estén en el mes anterior desaparecen de este mes junto con los estados que hayas cargado en él.
 
-Las tareas que sobreviven a la copia conservan sus estados de este mes, así que sirve para volver a alinear un mes que quedó desprolijo sin perder lo ya marcado. Los meses anteriores nunca se tocan. El botón queda deshabilitado si el mes anterior no tiene tareas o si el período está bloqueado.
+Las tareas que sobreviven a la copia conservan sus estados de este mes, así que sirve para volver a alinear un mes que quedó desprolijo sin perder lo ya marcado. Los meses anteriores nunca se tocan. El botón queda deshabilitado si el mes anterior no tiene tareas.
 
-### Bloquear y desbloquear el período
+### Días cerrados
 
-**🔒 Bloquear período** deja el mes en solo lectura, para que no se modifique por accidente una vez terminado:
+Un día **se cierra solo apenas termina**. No hay botón que apretar: a partir de las 00:00, todos los días transcurridos quedan cerrados, incluido el que acaba de concluir.
 
-- Las celdas conservan sus colores y puntajes, pero dejan de responder al clic.
-- No se pueden agregar, editar, eliminar ni reordenar tareas, y *+ Agregar tarea* queda deshabilitado.
-- Un aviso ámbar sobre la planilla indica que el período está bloqueado.
+Cerrado no quiere decir intocable. Un clic sobre una celda de un día viejo no marca: abre un pedido de confirmación —*«Día ya transcurrido. ¿Querés modificarlo?»*, con la fecha completa al pie— y recién al aceptar se aplica el mismo clic que se había hecho. Cancelar deja todo como estaba. El botón de aceptar va con el color de la marca y no con el rojo del resto de las confirmaciones: acá no se destruye nada, y el rojo diría lo contrario.
 
-Es reversible: el mismo botón pasa a decir **Desbloquear período**. El bloqueo es por mes, así que podés tener bloqueado julio y seguir cargando agosto.
+El permiso que da esa confirmación es **de ese día y de nadie más**: destrabado el martes, el miércoles sigue preguntando. Y **no se persiste**: vale mientras dure la sesión y se pierde en la medianoche siguiente, junto con el día que en ese momento deja de ser hoy.
+
+- **Hoy** se marca sin preguntar, todas las veces que haga falta.
+- Los **días por venir** también: adelantar una marca sigue siendo válido, y el cumplimiento del día ya lo contempla.
+- El cierre alcanza **solo a las celdas**. Agregar, editar, eliminar, reordenar o copiar tareas no depende de ninguna fecha.
+
+> **Por qué se reemplazó al bloqueo por mes.** Antes había un *🔒 Bloquear período* que dejaba el mes entero en solo lectura, y había que acordarse de apretarlo. Lo que protegía —no ensuciar sin querer un período ya cerrado— es exactamente lo que hace falta todos los días, no una vez por mes; y lo que costaba era que un mes bloqueado también apagaba el alta de tareas y las tres posturas de la fila, que no tenían nada que ver.
+>
+> **La vuelta de medianoche es real, no un efecto del recargado.** Con la pestaña abierta toda la noche, la fecha del navegador avanza igual: un temporizador apunta a las 00:00 siguientes y, al llegar, relee el día, vacía los permisos y redibuja. Un equipo suspendido no dispara temporizadores a tiempo, así que la misma comprobación corre también al volver a la pestaña.
 
 ## Datos
 
 El estado completo va al `localStorage`, bajo la clave `tareas-diarias/v1/<id de usuario>`, y a Supabase — ver [Dónde viven los datos](#dónde-viven-los-datos). La forma es la misma de los dos lados salvo por las preferencias de pantalla, que **solo existen en la copia local** (ver [Lo que no se sincroniza](#lo-que-no-se-sincroniza)).
 
-Las tareas se guardan en `months`, indexadas por `YYYY-MM`; solo aparecen los meses que fueron modificados. Los estados van aparte, en `status`, con clave `idDeTarea|YYYY-MM-DD`. Los meses bloqueados están en `locked`, y los paneles del análisis en `panels`. Si tenías datos del formato anterior (una única lista global), se migran solos al mes más antiguo con estados cargados, así los meses siguientes lo heredan y no se pierde nada.
+Las tareas se guardan en `months`, indexadas por `YYYY-MM`; solo aparecen los meses que fueron modificados. Los estados van aparte, en `status`, con clave `idDeTarea|YYYY-MM-DD`, y los paneles del análisis en `panels`. El cierre por día no se guarda: se deduce de la fecha, así que no hay nada que sincronizar ni que pueda quedar desfasado entre dispositivos. Un estado viejo que traiga el `locked` del bloqueo por mes se descarta al abrirlo. Si tenías datos del formato anterior (una única lista global), se migran solos al mes más antiguo con estados cargados, así los meses siguientes lo heredan y no se pierde nada.
 
 - **Exportar** descarga un `.json` con tareas y estados.
 - **Importar** reemplaza los datos actuales por los del archivo (pide confirmación).

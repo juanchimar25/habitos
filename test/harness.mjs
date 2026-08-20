@@ -54,6 +54,14 @@ export async function montar(estado) {
   }
   window.Date = DateFija;
 
+  /* jsdom no trae `CSS.escape`, que el navegador sí tiene. Sin esto, todo
+     selector armado con un id de tarea revienta y el error se traga adentro
+     del listener: la prueba pasa igual, midiendo menos de lo que cree. */
+  if (!window.CSS) window.CSS = {};
+  if (!window.CSS.escape) {
+    window.CSS.escape = v => String(v).replace(/[^a-zA-Z0-9_-]/g, c => `\\${c}`);
+  }
+
   // --- almacenamiento --------------------------------------------
   const guardado = new Map([
     [`tareas-diarias/v1/${usuario.id}`, JSON.stringify(estado)],
@@ -151,6 +159,26 @@ export function moverMeses(doc, delta) {
     .find(c => c.textContent.toLowerCase() === MESES[destino.getMonth()]);
   if (!celda) throw new Error(`No se encontró ${MESES[destino.getMonth()]} en el calendario`);
   celda.click();
+}
+
+/**
+ * Cicla una celda como lo haría un usuario, incluso si el día ya pasó.
+ *
+ * Un día transcurrido queda cerrado y el clic abre un pedido de confirmación
+ * en lugar de marcar. Casi todos los casos apuntan a fechas viejas —`AHORA`
+ * es el 30 de julio—, así que este ayudante hace el recorrido completo:
+ * clic, y si aparece el diálogo, confirmar.
+ */
+export function marcarCelda(doc, celda) {
+  if (!celda) throw new Error('No hay celda que marcar');
+  celda.click();
+
+  const dialogo = doc.querySelector('#confirm-dialog');
+  if (!dialogo.hasAttribute('open')) return;
+  if (!/transcurrido/i.test(doc.querySelector('#confirm-text').textContent)) {
+    throw new Error('El diálogo abierto no es el del día cerrado');
+  }
+  doc.querySelector('#confirm-ok').click();
 }
 
 /**
