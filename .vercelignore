@@ -10,6 +10,11 @@ db/
 # Pruebas: corren en local con `npm test`, el navegador no las necesita.
 test/
 
+# Generador de los íconos de la PWA. Los PNG que produce SÍ se publican
+# —están en `iconos/`—; el script que los dibuja se corre a mano cuando
+# cambia el logo.
+tools/
+
 # Configuración de los otros hostings. Se mantienen versionadas para no
 # perder la portabilidad a Netlify y GitHub Pages, pero en Vercel no se usan.
 # Las cabeceras de `_headers` acá las declara `vercel.json`.

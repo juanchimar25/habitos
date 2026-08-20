@@ -11,4 +11,4 @@
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'sha256-Kij5n+tTAX/incXA40KqtNNt+zGfPTs95ePrW1MQF7Y=' 'sha256-RuP1Gp25pSrG6XDWkQAJTmk6nElFGfBRToDmmkIjLG0='; style-src 'self' 'sha256-xU2Fxy9uxOdU8pLNfsEKMYB5APxoAmkvSXXroTC0XDc='; img-src 'self' data:; connect-src 'self' https://kbeqyhsblsczhhtqwfrj.supabase.co; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'sha256-Kij5n+tTAX/incXA40KqtNNt+zGfPTs95ePrW1MQF7Y=' 'sha256-RuP1Gp25pSrG6XDWkQAJTmk6nElFGfBRToDmmkIjLG0='; style-src 'self' 'sha256-xU2Fxy9uxOdU8pLNfsEKMYB5APxoAmkvSXXroTC0XDc='; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://kbeqyhsblsczhhtqwfrj.supabase.co; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'

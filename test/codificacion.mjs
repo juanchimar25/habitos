@@ -29,7 +29,13 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
    comentario de acá. */
 const REEMPLAZO = String.fromCharCode(0xFFFD);
 
-const EXTENSIONES = new Set(['.html', '.js', '.mjs', '.css', '.md', '.sql', '.json']);
+/* `.webmanifest` entra porque de ahí sale el nombre que el launcher pone
+   debajo del ícono: guardado con la codificación equivocada, «Hábitos» queda
+   roto en la pantalla de inicio del teléfono y no en ninguna pantalla de la
+   app, que es donde nadie lo iría a buscar. */
+const EXTENSIONES = new Set([
+  '.html', '.js', '.mjs', '.css', '.md', '.sql', '.json', '.webmanifest',
+]);
 
 /* `__snapshots__` queda afuera por ser generado: copia el HTML de la app, así
    que un carácter roto en un fuente aparecería dos veces y la segunda no

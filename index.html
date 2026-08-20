@@ -6,6 +6,11 @@
   <meta name="description" content="Planilla mensual de hábitos con puntaje por tarea y por día.">
   <meta name="theme-color" content="#0f172a">
   <title>Hábitos</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <!-- iOS no lee el manifest: la pantalla completa y el ícono se piden acá. -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Hábitos">
+  <link rel="apple-touch-icon" href="iconos/icon-192.png">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,2 98,50 2,50' fill='%238158a4'/><polygon points='2,50 98,50 50,98' fill='%233d4a7b'/><path d='M27 46 L45 64 L74 30' fill='none' stroke='%23fff' stroke-width='13'/></svg>">
   <style>html{background:#f4f6fb;color:#16203a}html[data-theme='dark']{background:#0d1220;color:#e7ecf7}body{background:transparent;color:inherit}</style>
   <script>
@@ -501,6 +506,19 @@
         </div>
 
         <div class="help-step">
+          <span class="help-icon" aria-hidden="true">📱</span>
+          <div>
+            <h3>Instalarla en el teléfono</h3>
+            <p>Se puede instalar como una app: queda con su ícono en la pantalla de inicio, abre sin la barra del navegador y <strong>funciona sin conexión</strong>.</p>
+            <ul>
+              <li><strong>Android</strong>: abrila en Chrome y elegí <em>Instalar aplicación</em> en el menú de tres puntos.</li>
+              <li><strong>iPhone</strong>: en Safari, <em>Compartir</em> → <em>Agregar a inicio</em>.</li>
+            </ul>
+            <p>Sin conexión vas a poder ver y marcar todo: los cambios quedan guardados en el teléfono y se suben solos cuando vuelve internet. Lo único que necesita red es iniciar sesión la primera vez.</p>
+          </div>
+        </div>
+
+        <div class="help-step">
           <span class="help-icon" aria-hidden="true">💾</span>
           <div>
             <h3>Datos y seguridad</h3>
@@ -680,5 +698,10 @@
   <script src="app.js"></script>
   <!-- El módulo va último: espera a que `window.Habitos` exista. -->
   <script type="module" src="auth.js"></script>
+
+  <!-- Registro del service worker. No participa del arranque: si falla, o si
+       el navegador no lo soporta, la app funciona igual — solo que sin poder
+       abrirse sin conexión. -->
+  <script defer src="pwa.js"></script>
 </body>
 </html>

@@ -13,6 +13,10 @@ tareas-diarias/
 ├── app.js       ← la planilla y todo lo que la rodea
 ├── auth.js      ← la sesión (Supabase Auth)
 ├── config.js    ← ⚠ acá van tus credenciales
+├── manifest.webmanifest  ← se instala como app — ver «En el teléfono»
+├── sw.js                 ← el service worker: abre sin conexión
+├── pwa.js                ← lo registra
+├── iconos/               ← PNG del launcher, generados por tools/
 ├── db/
 │   ├── supabase-app-state.sql  ← la tabla que la app usa hoy
 │   ├── schema.sql              ← el esquema por tablas (etapa futura)
@@ -62,6 +66,50 @@ tiene que devolver `index.html` en todas.
 Si `config.js` sigue con los valores de ejemplo, la pantalla de login lo dice en lugar de fallar
 en silencio.
 
+## En el teléfono
+
+La app es una **PWA instalable**: se agrega al launcher como cualquier otra, abre a pantalla completa y **arranca sin conexión**.
+
+**Para instalarla en Android**, abrila en Chrome y elegí *Instalar aplicación* en el menú de tres puntos. Si no aparece, es que falta alguna de las condiciones de abajo. En iPhone es Safari → *Compartir* → *Agregar a inicio*; iOS no lee el manifest, así que la pantalla completa y el ícono los piden los `<meta name="apple-*">` de `index.html`.
+
+Hacen falta tres cosas, y las tres ya están resueltas:
+
+| | Dónde |
+|---|---|
+| **HTTPS** | Lo dan Vercel, Netlify y GitHub Pages. En `localhost` también cuenta, así que se puede probar en local |
+| **Manifest** | [`manifest.webmanifest`](manifest.webmanifest) — nombre, íconos, `display: standalone` y los atajos a *Diario* y *Análisis* |
+| **Service worker** | [`sw.js`](sw.js), registrado por [`pwa.js`](pwa.js) |
+
+Las rutas del manifest son **relativas**, no absolutas: así se instala igual servida en la raíz del dominio que en un subdirectorio, que es el caso de GitHub Pages. `npm run check` falla si alguna se vuelve absoluta.
+
+### Qué se guarda para andar sin conexión
+
+El service worker precachea el **armazón**: el HTML, el CSS, los tres scripts, el cliente de Supabase y los íconos. Con eso la app dibuja aunque no haya red.
+
+**Los datos no se cachean ahí.** Ya viven en `localStorage`, que es local, y en Supabase. Las llamadas a la base ni se tocan: una respuesta vieja de `app_state` servida desde el caché sería *peor* que un error, porque la app la tomaría por buena y subiría encima. Sin red, `hydrateStateForUser` cae en la copia local y avisa que no está sincronizando — el mismo camino de siempre.
+
+| Qué pide la app | Qué hace el service worker |
+|---|---|
+| Una ruta (`/diario`, `/analisis`) | Red primero; sin red, el `index.html` cacheado |
+| CSS, scripts, íconos | Del caché, y se refresca de fondo |
+| Cualquier cosa que no sea GET, o de otro origen | Pasa derecho — ahí adentro está Supabase |
+
+Como los recursos salen del caché, **una versión nueva entra recién en la carga siguiente**: la primera visita después de publicar todavía muestra la anterior. Es el precio de que abrir sea instantáneo.
+
+> **Al publicar cambios hay que subir `VERSION` en `sw.js`.** Es lo que invalida el caché viejo; si se olvida, los navegadores que ya tienen la app instalada siguen sirviendo el armazón anterior. La lista `ARMAZON` la verifica `npm run check`, que falla si nombra un archivo que no existe o si `index.html` carga un `vendor/` que el service worker no precachea.
+
+### Íconos
+
+Los PNG de `iconos/` se generan con [`tools/generar-iconos.mjs`](tools/generar-iconos.mjs) —`npm run iconos`— a partir del mismo logo que el favicon. El PNG se codifica a mano con `zlib`, que viene en Node: la app no tiene dependencias y el [`.npmrc`](.npmrc) bloquea los scripts de instalación, así que arrastrar una librería de imágenes para tres archivos que casi nunca cambian no valía la pena. **Los PNG se versionan**; el script existe para rehacerlos si cambia el logo, no para correr en cada build — la app sigue sin tener build.
+
+Hay tres: 192 y 512 con fondo transparente, y un **maskable** de 512. Ese último lo recorta el launcher a la forma que quiera —círculo, gota, redondeado—, así que lleva fondo opaco y el logo dentro de la zona segura, el 80% central. Sin él, Android encierra el ícono en un cuadrado blanco.
+
+### Lo que una PWA no da
+
+No hay **widgets** en la pantalla de inicio ni **notificaciones programadas** para recordarte una tarea. Eso pide una app nativa, que significaría reescribir la interfaz y —más caro— duplicar toda la lógica de cálculo: metas por período, períodos partidos, días transcurridos. Dos implementaciones que tienen que dar el mismo número, o el teléfono y la computadora se contradicen.
+
+Tampoco está en Play Store. Se puede empaquetar como TWA con Bubblewrap —lo de acá es requisito de eso, así que no hay trabajo tirado—, pero adentro seguiría siendo esta misma app.
+
 ## Rutas
 
 Las tres secciones tienen dirección propia, se pueden compartir y responden a los botones de
@@ -98,7 +146,7 @@ para las pruebas, y nada de `node_modules` llega al navegador.
 
 ```sh
 npm ci            # instala exactamente lo del package-lock.json
-npm run check     # sintaxis, codificación de los fuentes y CSP al día
+npm run check     # sintaxis, codificación, CSP y PWA al día
 npm test          # snapshots del DOM + casos de comportamiento
 npm run casos     # solo los casos; acepta filtros: npm run casos -- zoom plegado
 npm run snapshot  # regraba la referencia (solo si el cambio es intencional)

@@ -23,3 +23,10 @@
 # Vale para todo `vendor/`, no solo para el archivo actual, así el próximo que
 # se agregue queda cubierto sin que nadie tenga que acordarse.
 vendor/** -text
+
+# Los íconos de la PWA son PNG, y un PNG con los finales de línea "normalizados"
+# es un PNG roto: el byte 0x0A aparece dentro de los datos comprimidos, no como
+# salto de línea. La regla de arriba dice `text=auto`, que en principio detecta
+# los binarios solos, pero acá no se deja librado a la heurística — es el mismo
+# motivo por el que `vendor/` lleva su propia línea.
+*.png -text
