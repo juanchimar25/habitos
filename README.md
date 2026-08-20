@@ -136,7 +136,7 @@ clonado el repositorio. Cuando un cambio de markup es intencional, `npm run snap
 ### Casos de comportamiento
 
 Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue funcionando*. Son
-**616 comprobaciones** repartidas en dieciocho archivos, cada uno sobre una funcionalidad:
+**623 comprobaciones** repartidas en dieciocho archivos, cada uno sobre una funcionalidad:
 
 | Caso | Qué cubre |
 |---|---|
@@ -515,6 +515,8 @@ La meta del mes es **4**, que es la cantidad de semanas que el mes contiene de v
 > Las quincenas nunca tuvieron el problema en la vista mensual: se cortan por día del mes (1 al 15 y 16 a fin de mes), así que siempre son dos completas.
 
 Cuando la parte visible **ni llega a pedir una acción**, no hay obligación que incumplir: ahí la meta la fija lo que hiciste. Sin marcar muestra `—` y no un 0%, y marcando te acredita — una semanal hecha el 1 de agosto va 1 sobre 1, no queda invisible.
+
+> **Esa meta improvisada nunca pasa de lo que pide el período completo.** Una tarea de *una vez por semana* no puede pedir dos en media semana por haberla hecho dos veces. Sin el tope, hacerla de más se cobraba a sí mismo: las dos marcas levantaban una meta de 2 y se gastaban en llenarla, así que una tarea hecha **dos veces** en la semana en curso medía **igual** que otra hecha una sola vez. El tope es el del período, no un 1 fijo: una de *dos veces al mes* puede improvisar hasta 2.
 
 Por eso el guion de la columna `Estatus` tiene ahora **dos motivos distintos**, y el tooltip dice cuál:
 

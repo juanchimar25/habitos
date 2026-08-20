@@ -1246,7 +1246,7 @@
     let max = 0;
     let dias = 0;
     for (const p of periodos.values()) {
-      max += metaEnAcciones(objetivo * (p.dias / p.largo), p.puntos);
+      max += metaEnAcciones(objetivo * (p.dias / p.largo), p.puntos, objetivo);
       dias += p.dias;
     }
 
@@ -1267,9 +1267,19 @@
    * cumplido da 100% y parcial da 50%, mientras que un tramo en blanco no
    * muestra nada —un cero acusaría de incumplida a una tarea que ahí no debía
    * nada—.
+   *
+   * Pero esa meta improvisada NUNCA pasa de lo que pide el período completo:
+   * una tarea de una vez por semana no puede pedir dos en media semana por
+   * haberla hecho dos veces. Sin el tope, hacerla de más se cobraba a sí mismo
+   * —dos marcas en la semana en curso levantaban una meta de 2 y se gastaban
+   * en llenarla—, y una tarea hecha dos veces terminaba midiendo igual que una
+   * hecha una sola vez.
+   *
+   * @param objetivo cuántas veces pide la tarea en un período completo.
    */
-  function metaEnAcciones(prorrateada, puntos) {
-    return prorrateada >= 1 ? Math.ceil(prorrateada) : Math.ceil(puntos);
+  function metaEnAcciones(prorrateada, puntos, objetivo) {
+    if (prorrateada >= 1) return Math.ceil(prorrateada);
+    return Math.min(Math.ceil(puntos), objetivo);
   }
 
   /**

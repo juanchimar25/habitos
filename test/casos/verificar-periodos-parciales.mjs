@@ -295,5 +295,70 @@ const enMarzo = async (vista, estado) => {
   ok('y no acusa incumplimiento', f.pct !== '0%', f.pct || '—');
 }
 
+// --- un tramo no pide más de lo que pide el período entero -----------------
+{
+  /* Dos semanales en julio de 2026, con hoy = jueves 30. Las semanas del mes
+     son 1-5, 6-12, 13-19, 20-26 y 27-31; la última va por su cuarto día, así
+     que todavía no exige nada.
+
+       A — una marca, en la semana ya cerrada del 13 al 19
+       B — dos marcas, las dos en la semana en curso
+
+     La meta que un tramo se improvisa cuando no llega a pedir una acción no
+     puede pasar de lo que pide el período completo: una tarea de una vez por
+     semana no pide dos en media semana por haberla hecho dos veces. Sin el
+     tope, las dos marcas de B levantaban una meta de 2 y se gastaban en
+     llenarla, así que hacerla el doble medía igual que hacerla una sola vez. */
+  const tareas = [
+    tarea('a', 'Una vez, semana cerrada', 'weekly'),
+    tarea('b', 'Dos veces, semana en curso', 'weekly'),
+  ];
+
+  const { doc } = await montar({
+    months: { '2026-07': tareas },
+    status: {
+      'a|2026-07-15': 'done',
+      'b|2026-07-29': 'done',
+      'b|2026-07-30': 'done',
+    },
+    complianceMode: 'both', panels: { tiles: true, charts: true }, theme: 'light',
+  });
+  verVista(doc, 'month');
+
+  const a = fila(doc, 'a');
+  const b = fila(doc, 'b');
+  console.log('\n=== el tramo en curso no pide de más ===');
+  console.log(`  una vez, semana cerrada   → ${a.pct}  ·  ${a.title}`);
+  console.log(`  dos veces, semana en curso→ ${b.pct}  ·  ${b.title}`);
+
+  ok('la semana en curso pide 1 y no 2', b.meta === 4, `meta ${b.meta}`);
+  ok('hacerla dos veces no se cobra a sí mismo', b.pct === '50%', b.pct);
+  ok('y mide más que hacerla una sola vez', a.pct === '33%', a.pct);
+  ok('los puntos crudos siguen a la vista', /2 sobre una meta de 4/.test(b.title), b.title);
+}
+{
+  /* El tope es EL DEL PERÍODO y no un 1 fijo. Una tarea de dos veces al mes,
+     mirada en la semana del 27 al 31, prorratea 2 × 4/31 = 0,26: no llega a
+     pedir una acción, así que la meta la fija lo hecho. Con tres marcas queda
+     en 2 —lo que pide el mes entero—, ni 3 (sin tope) ni 1 (con un tope fijo
+     de una vez). */
+  const tareas = [tarea('c', 'Socializar', 'custom', { customMode: 'count', target: 2 })];
+  const status = {};
+  for (const d of [28, 29, 30]) status[`c|2026-07-${d}`] = 'done';
+
+  const { doc } = await montar({
+    months: { '2026-07': tareas }, status,
+    complianceMode: 'both', panels: { tiles: true, charts: true }, theme: 'light',
+  });
+  verVista(doc, 'week');          // ventana 27-31, cuatro días vencidos
+
+  const f = fila(doc, 'c');
+  console.log(`\n=== dos al mes, tres marcas en la semana ===\n  ${f.title}`);
+  ok('el tope de un tramo es lo que pide el período', f.meta === 2, `meta ${f.meta}`);
+  ok('lo hecho de más sigue crudo en el tooltip', /3 sobre una meta de 2/.test(f.title),
+    f.title);
+  ok('y el porcentaje topea en 100', f.pct === '100%', f.pct);
+}
+
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');
 process.exit(fallos ? 1 : 0);
