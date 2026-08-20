@@ -10,8 +10,8 @@
    almacenamiento y globals sustituidos, y compartir proceso
    haría que un caso viera el entorno que dejó el anterior.
 
-   El costo es arrancar Node once veces; a cambio, cada archivo
-   sigue siendo ejecutable a mano, que es como se depuran.
+   El costo es arrancar Node una vez por archivo; a cambio, cada
+   uno sigue siendo ejecutable a mano, que es como se depuran.
    ============================================================ */
 
 import fs from 'node:fs';

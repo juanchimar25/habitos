@@ -1067,17 +1067,48 @@ body.controls-collapsed #month-bar { display: none; }
      cuando la tarjeta se estira hasta igualar a sus vecinas */
   display: flex;
   flex-direction: column;
+  /* ancla del botón de medida, que va en la esquina */
+  position: relative;
 }
 
+/* Botón de la esquina del análisis diario: alterna entre `123` y `%`.
+   Absoluto para no robarle ancho al título, que sigue centrado en la tarjeta
+   entera y no en lo que sobra al costado del botón. */
+.chart-mode {
+  position: absolute;
+  top: .55rem;
+  right: .6rem;
+  min-width: 2rem;
+  padding: .12rem .4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  color: var(--text-muted);
+  font-size: .72rem;
+  font-weight: 620;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.chart-mode:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* El encabezado va centrado, como el de las tarjetas de indicadores. El hint
+   acompaña al título y se centra con él: dejarlo a la izquierda partía en dos
+   un bloque que se lee como uno solo. */
 .chart-title {
   font-size: .85rem;
   font-weight: 620;
   color: var(--text);
+  text-align: center;
 }
 .chart-hint {
   margin: .1rem 0 .75rem;
   font-size: .74rem;
   color: var(--text-faint);
+  text-align: center;
 }
 .chart-empty {
   margin: 1.25rem 0;
@@ -1258,29 +1289,43 @@ body.controls-collapsed #month-bar { display: none; }
   gap: .7rem;
 }
 
+/* Columna flexible para poder repartir el alto sobrante. En la grilla del
+   panel todas las tarjetas miden lo que la más alta, así que a casi todas les
+   sobra alto: sin esto el contenido queda clavado bajo el rótulo y el hueco
+   entero cae abajo. El rótulo se queda arriba y lo que sigue se centra —ver
+   los `auto` de `.tile-value`, `.tile-sub`, `.tile-list` y `.tile-ranks`. */
 .tile {
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: .75rem .9rem;
   box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
 }
 
 .tile-label {
-  margin: 0 0 .2rem;
+  /* Separación del contenido: antes la ponía un `gap` del contenedor, que ya
+     no sirve porque el `auto` de los hijos se lleva todo el espacio libre. */
+  margin: 0 0 .35rem;
   font-size: .72rem;
   font-weight: 600;
   letter-spacing: .04em;
   text-transform: uppercase;
   color: var(--text-faint);
+  text-align: center;
 }
 
+/* `auto` arriba acá y abajo en el subtítulo: el espacio libre se reparte en
+   partes iguales a los dos lados, así el par valor + explicación queda
+   centrado sin que se separen entre sí. */
 .tile-value {
-  margin: 0;
+  margin: auto 0 0;
   font-size: 1.5rem;
   font-weight: 680;
   line-height: 1.15;
   letter-spacing: -.02em;
+  text-align: center;
   /* Cifras proporcionales: es un número grande y suelto, no una columna.
      Con `tabular-nums` cada dígito ocupa el ancho de un 0 y a este tamaño
      un "121" se ve desarmado. Las tabulares quedan donde sí alinean:
@@ -1288,10 +1333,11 @@ body.controls-collapsed #month-bar { display: none; }
 }
 
 .tile-sub {
-  margin: .15rem 0 0;
+  margin: .15rem 0 auto;
   font-size: .78rem;
   line-height: 1.3;
   color: var(--text-muted);
+  text-align: center;
   /* hasta dos líneas; el texto completo queda en el title */
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1300,11 +1346,35 @@ body.controls-collapsed #month-bar { display: none; }
   overflow: hidden;
 }
 
+/* Caja con el contenido de la tarjeta, hermana de `.rank`: mismo fondo
+   hundido, mismo borde y mismo radio, para que el panel se lea con un solo
+   lenguaje. Se estira hasta llenar el alto que queda bajo el rótulo —de ahí
+   el `flex: 1 1 auto`— y adentro sigue siendo columna, así los `auto` de
+   `.tile-value` y `.tile-list` centran el contenido dentro de la caja igual
+   que lo centraban dentro de la tarjeta. */
+.tile-box {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  padding: .7rem .8rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--bg-sunken);
+}
+
 /* varios datos en una tarjeta van listados, no de corrido.
-   Con muchos ítems la lista scrollea para no estirar toda la fila. */
+   Con muchos ítems la lista scrollea para no estirar toda la fila.
+
+   La lista se mide por su contenido y va centrada COMO BLOQUE, igual que la
+   leyenda del pie en móvil: así las viñetas quedan alineadas entre sí en lugar
+   de que cada ítem se centre por su cuenta, que dejaría los renglones en
+   diagonal. `max-width` la frena en el ancho de la tarjeta cuando un nombre de
+   tarea es largo. */
 .tile-list {
-  margin: .35rem 0 0;
+  margin: .35rem auto auto;
   padding-left: 1rem;
+  width: max-content;
+  max-width: 100%;
   max-height: 7.5rem;
   overflow-y: auto;
   display: flex;
@@ -1315,6 +1385,16 @@ body.controls-collapsed #month-bar { display: none; }
   color: var(--text-muted);
 }
 .tile-list li::marker { color: var(--text-faint); }
+
+/* Un listado de nombres, no un par de datos: son muchos y scrollean. Ocupa el
+   ancho entero de la tarjeta, así los nombres arrancan contra el margen
+   izquierdo y la barra de scroll queda contra el derecho. Centrada como bloque
+   la barra caía al final del texto, en el medio de la tarjeta y encima del
+   nombre más largo. */
+.tile-list.is-nombres {
+  width: auto;
+  margin-inline: 0;
+}
 
 /* tonos según lo que informa la tarjeta */
 .tile.tone-alert .tile-value { color: var(--missed-strong); }
@@ -1328,17 +1408,101 @@ body.controls-collapsed #month-bar { display: none; }
 .tile.tone-best  .tile-value { color: var(--done-strong); }
 .tile.tone-worst .tile-value { color: var(--missed-strong); }
 
-/* varios valores apilados: se achican para que un empate largo no estire la fila */
-.tile-value.is-stacked {
+/* ---- Días productivos: una subtarjeta por medida ----
+   Cada medida es una caja hundida dentro de la tarjeta: el criterio a la
+   izquierda y el resultado —día y cifra— a la derecha. Encerrar cada una
+   separa las dos lecturas de un vistazo, que en una lista corrida se leían
+   como cuatro renglones sueltos.
+
+   `--bg-sunken` es el token para esto: en claro queda apenas más gris que el
+   blanco de la tarjeta, y en oscuro apenas más negro. La jerarquía se sostiene
+   en los dos temas sin definir colores nuevos. */
+.tile-ranks {
+  /* Ancho de la columna del criterio. Fijo y COMPARTIDO por las dos
+     subtarjetas: es lo que deja los días alineados entre sí, que con un ancho
+     por contenido quedarían corridos según lo que midiera cada rótulo.
+     `subgrid` lo resolvería sin número, pero pide Chrome 117 y la app declara
+     soporte desde el 105 — la misma razón por la que `.month-nav` lleva su
+     propia rejilla. */
+  --rank-criterio: 7.75rem;
+
+  margin-block: auto;
+  padding: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  font-size: .95rem;
-  line-height: 1.35;
-  max-height: 7rem;
-  overflow-y: auto;
+  gap: .45rem;
 }
-.tile.tone-best  .tile-value.is-stacked,
-.tile.tone-worst .tile-value.is-stacked { font-size: .95rem; }
+
+.rank {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .2rem .6rem;
+  padding: .45rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--bg-sunken);
+}
+
+.rank-label {
+  margin: 0;
+  position: relative;
+  padding-left: .75rem;
+  /* `min-width` y no `flex-basis`: si un rótulo llegara a pasarse del ancho
+     de la columna, crece en vez de recortarse. */
+  flex: 0 1 auto;
+  min-width: var(--rank-criterio);
+  font-size: .76rem;
+  line-height: 1.3;
+  color: var(--text-muted);
+}
+
+/* La viñeta va dibujada y no con `list-style`, que la pondría afuera de la
+   subtarjeta en lugar de adentro, contra el rótulo. */
+.rank-label::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: .5em;
+  width: .3rem;
+  height: .3rem;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+/* Ocupa lo que sobra después de la columna del criterio, que mide igual en las
+   dos subtarjetas: por eso los días comparten centro en vez de arrancar cada
+   uno donde termine su rótulo.
+
+   `flex-basis` chico para que, cuando el criterio y el resultado no entren en
+   la misma línea —una tarjeta angosta en móvil, o un empate de varios días—,
+   el resultado baje solo y quede centrado a lo ancho en su renglón. */
+.rank-result {
+  margin: 0;
+  flex: 1 1 4rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.rank-day {
+  font-size: 1.05rem;
+  font-weight: 680;
+  line-height: 1.2;
+  letter-spacing: -.01em;
+}
+
+.rank-value {
+  font-size: .78rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.tile.tone-best  .rank-day { color: var(--done-strong); }
+.tile.tone-worst .rank-day { color: var(--missed-strong); }
 
 /* ---------------- Tabla ---------------- */
 

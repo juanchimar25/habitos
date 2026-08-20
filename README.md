@@ -136,13 +136,15 @@ clonado el repositorio. Cuando un cambio de markup es intencional, `npm run snap
 ### Casos de comportamiento
 
 Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue funcionando*. Son
-**504 comprobaciones** repartidas en dieciséis archivos, cada uno sobre una funcionalidad:
+**616 comprobaciones** repartidas en dieciocho archivos, cada uno sobre una funcionalidad:
 
 | Caso | Qué cubre |
 |---|---|
 | `plantillas` | Fecha obligatoria, mes destino, duplicados |
 | `tarea-fecha` | Alta y edición: valor por omisión, validación, no mudar de mes al editar |
 | `tope-100` | Ninguna tarea aporta más que su meta, y qué entra en el techo de cada día |
+| `periodos-parciales` | A un período partido por el borde del mes o de la vista se le pide solo la parte visible, y a un día que no transcurrió no se le pide nada |
+| `indicadores` | El mínimo de días de uso, los dos rankings de días productivos, las dos medidas del «Análisis diario» y la forma de las otras dos tarjetas |
 | `ir-a` | Los dos calendarios: el nombre del mes y «Ir a…» |
 | `zoom` | Los tres niveles, alto de fila y ancho de columna uniformes, ancho para el nombre |
 | `plegado` | «Análisis» en el encabezado, el armazón de alto fijo y el plegado de controles |
@@ -159,7 +161,7 @@ Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue f
 
 Corren en **procesos separados** a propósito: cada uno instala su propio jsdom con reloj,
 almacenamiento y globals sustituidos, y compartir proceso haría que un caso viera el entorno del
-anterior. El costo es arrancar Node dieciséis veces; a cambio cada archivo se ejecuta a mano —
+anterior. El costo es arrancar Node dieciocho veces; a cambio cada archivo se ejecuta a mano —
 `node test/casos/verificar-zoom.mjs`—, que es como se depuran.
 
 > `sincronizacion` monta además un **reloj de temporizadores propio**, para no esperar de verdad
@@ -291,8 +293,9 @@ se sube. Sin esa comparación, la lectura remota pisaba en silencio justo lo úl
 
 ### Lo que no se sincroniza
 
-El tema, el zoom, el plegado de controles, los paneles del análisis y el modo de la columna
-*Estatus* describen cómo se ve la app **en este aparato**, no qué hizo el usuario. Se guardan solo
+El tema, el zoom, el plegado de controles, los paneles del análisis, el modo de la columna
+*Estatus* y la medida del *Análisis diario* describen cómo se ve la app **en este aparato**, no
+qué hizo el usuario. Se guardan solo
 en `localStorage` —en `tareas-diarias/prefs`, y el tema además en `tareas-diarias/theme`, que es
 la que lee el script anti-parpadeo antes de que exista `app.js`— y quedan fuera del payload.
 
@@ -327,10 +330,12 @@ El nombre se guarda con la **primera letra en mayúscula**, sin importar qué ve
 |---|---|
 | Diaria | Un punto por día |
 | Lunes a viernes | Un punto por día hábil |
-| Semanal | Un punto por semana (de lunes a domingo): 4 a 6 según el mes |
+| Semanal | Un punto por semana entera (de lunes a domingo) que el mes contenga: **3 o 4** según el mes |
 | Quincenal | Un punto por quincena — del 1 al 15 y del 16 a fin de mes: 2 |
 | Mensual | Un punto en todo el mes: 1 |
 | Personalizado | Según el submodo, ver abajo |
+
+> **Semanas enteras, no calendarios tocados.** Un mes toca cinco o seis semanas, pero solo contiene tres o cuatro completas: el resto son tramos partidos que siguen en el mes vecino. La meta cuenta las enteras, y a los tramos les pide la parte proporcional — que casi nunca llega a pedir una vez. Marcar en un tramo partido igual te acredita. El detalle está en [Períodos partidos](#períodos-partidos).
 
 **Personalizado** tiene dos formas de medirse:
 
@@ -344,6 +349,8 @@ El nombre se guarda con la **primera letra en mayúscula**, sin importar qué ve
   Cuando la ventana es tan chica que ni siquiera llega a pedir una acción —el caso de la vista diaria—, **no hay obligación que incumplir**: ahí el cumplimiento lo fija lo que hiciste. Cumplido da 100%, parcial 50% y un día en blanco muestra `—`, no 0%. Un cero acusaría de incumplida a una tarea que ese día no debía nada.
 
   El reparto se hace sobre los **días del mes**, no sobre los que la tarea tiene disponibles. Es lo que hace que empezar tarde reduzca lo que se espera en vez de amontonarlo: una tarea de 8 al mes que arranca el día 31 no pide las 8 acciones ese día — pide una, y hacerla da 100%.
+
+  > Esta ya no es una regla propia de la meta mensual: es **la** regla, y la comparten todas las frecuencias — ver [Períodos partidos](#períodos-partidos). Lo único particular de este submodo es que su período es el mes entero y pide el número que cargaste, en vez de una vez.
 
 ### Fecha de inicio
 
@@ -475,13 +482,48 @@ Además del color, cada estado tiene un símbolo, así la planilla sigue siendo 
   | Entre 45% y 74% | ~ | Amarillo |
   | Menos de 45% | ✕ | Rojo |
 
-  La meta se cuenta **por período**, así que se ajusta a lo que estés mirando: una tarea semanal se mide contra 5 puntos en un mes de cinco semanas y contra 1 en la vista semanal.
+  La meta se cuenta **por período**, así que se ajusta a lo que estés mirando: una tarea semanal se mide contra 4 puntos en un mes de cuatro semanas y contra 1 en la vista semanal.
 
-  La meta es la del **período completo de la vista**, no la de la parte transcurrida. Una tarea de lunes, miércoles y viernes vista en la semana apunta a 3, esté la semana empezada o terminada, y hacerla dos veces da 67%. En la vista mensual, esas mismas dos veces se miden contra los 13 días L·X·V del mes: 15%.
+  **Lo que no transcurrió no se exige.** La meta cuenta los días del rango que ya vencieron; los que todavía no llegaron quedan afuera, porque en ellos no se incumplió nada. El 20 de agosto, una tarea diaria marcada los veinte días va **20 de 20 — 100%**, no 20 de 31.
 
-  > **El porcentaje es un avance, no un ritmo.** Un período recién empezado muestra números bajos aunque no falte nada: el 4 de agosto, una tarea diaria marcada los cuatro días va 4 de 31 en la vista mensual, o sea 13%, y con los umbrales de arriba eso se pinta en rojo. Para leer «cómo voy hoy» sirve la vista diaria o la semanal, donde el período es corto; la mensual dice cuánto del mes llevás hecho.
+  > **Antes el porcentaje medía el avance del mes, no el cumplimiento.** La meta era la del rango entero, así que el 4 de agosto esa misma tarea sin faltar un día marcaba 4 de 31: **13%**, pintado de rojo. La columna decía llamarse cumplimiento y estaba midiendo otra cosa.
+  >
+  > Lo que se perdió con el cambio es poder leer *cuánto del mes llevás hecho* de un vistazo: para eso ahora hay que mirar los números crudos del tooltip —*«20 sobre una meta de 20»*— en vez del porcentaje. A cambio, un mes al día se ve al día en cualquier momento.
 
-  Si la frecuencia no pide ningún día del rango —una *Lunes a viernes* en la vista diaria de un sábado— no hay nada que medir y muestra `—`.
+  **Lo hecho por adelantado sí suma.** Es el mismo criterio de la fila `Cumplimiento diario`: lo hecho es lo hecho; lo que no se cuenta es un incumplimiento que todavía no ocurrió. Un día futuro marcado entra con meta propia —cae en el redondeo a acciones enteras de [Períodos partidos](#períodos-partidos), donde la meta la fija lo que hiciste—, así que da *«31 sobre una meta de 31»* y no *«31 sobre 30»*, que insinuaría haberse pasado. Un ✕ adelantado, en cambio, no agrega nada: cero puntos y cero meta.
+
+  Dentro de un período ya vencido, la meta sigue siendo la del **período completo**: una tarea de lunes, miércoles y viernes vista en una semana terminada apunta a 3, y hacerla dos veces da 67%.
+
+  Si la frecuencia no pide ningún día del rango —una *Lunes a viernes* en la vista diaria de un sábado— no hay nada que medir y muestra `—`. Un mes entero por venir tampoco exige nada, así que sus filas abren en `—` en lugar de en rojo.
+
+#### Períodos partidos
+
+Los meses no terminan en domingo y las vistas no se alinean con las semanas, así que casi siempre hay períodos de los que solo se ve un pedazo. **A un período partido se le pide solo la parte que se ve**, prorrateada y redondeada hacia arriba a acciones enteras — la misma regla que las tareas de *meta mensual* (ver [Tareas](#tareas)).
+
+Agosto de 2026 arranca sábado, así que toca seis semanas:
+
+| Semana | Días en el mes | Le pide a una tarea semanal |
+|---|---|---|
+| 1–2 ago | 2 de 7 | `2/7 = 0,29` → nada |
+| 3–9 · 10–16 · 17–23 · 24–30 | 7 de 7 | 1 cada una |
+| 31 ago | 1 de 7 | `1/7 = 0,14` → nada |
+
+La meta del mes es **4**, que es la cantidad de semanas que el mes contiene de verdad. Hecha una vez por semana, da 100%.
+
+> **Antes bastaba con que un día del período estuviera a la vista para exigirlo entero**, y eso distorsionaba todos los bordes. Esa misma tarea marcaba **4 sobre 6 — 67%**, pintado de amarillo, habiéndola cumplido todas las semanas del mes. Hacia abajo era peor: en la vista semanal una tarea *Mensual* pedía su única vez en cada una de las seis semanas —0% en cinco de ellas—, y una *Quincenal* pedía **dos** en la semana que cruza el día 15.
+>
+> Las quincenas nunca tuvieron el problema en la vista mensual: se cortan por día del mes (1 al 15 y 16 a fin de mes), así que siempre son dos completas.
+
+Cuando la parte visible **ni llega a pedir una acción**, no hay obligación que incumplir: ahí la meta la fija lo que hiciste. Sin marcar muestra `—` y no un 0%, y marcando te acredita — una semanal hecha el 1 de agosto va 1 sobre 1, no queda invisible.
+
+Por eso el guion de la columna `Estatus` tiene ahora **dos motivos distintos**, y el tooltip dice cuál:
+
+| Guion | Cuándo |
+|---|---|
+| *La frecuencia no pide ningún día del rango* | Una *Lunes a viernes* mirada un sábado |
+| *El rango es solo una parte del período* | Una *Semanal* en el tramo del 1–2 de agosto |
+
+Empezar a mitad de período funciona igual: una tarea semanal que arranca el jueves 20 tiene 4 de los 7 días de esa semana, así que esa semana no le pide nada. Es la misma idea de siempre — empezar tarde reduce lo que se espera, no lo amontona.
 - **Por columna** (fila `Cumplimiento diario` al pie): cumplimiento de ese día, con el mismo símbolo y los mismos umbrales que la columna `Estatus` — el símbolo arriba y el porcentaje debajo.
 
   El día cuenta **lo que pedía, más lo que hiciste sin que lo pidiera**. Cada una suma uno al techo:
@@ -571,25 +613,100 @@ Son SVG dibujados a mano, sin librerías, para no romper la regla de cero depend
 | Gráfico | Qué responde |
 |---|---|
 | **Reparto de estados** (torta) | De lo que va del mes, cuánto marcaste y cómo. El centro indica qué proporción llegaste a registrar |
-| **Promedio por día de la semana** (barras) | Qué días rendís mejor. El mejor va en verde y el peor en rojo, con su valor rotulado; los demás quedan neutros |
+| **Análisis diario** (barras) | Qué días rendís mejor, con la medida que elijas — ver abajo. El mejor va en verde y el peor en rojo, con su valor rotulado; los demás quedan neutros. Respeta el [mínimo de siete días](#el-mínimo-de-siete-días) |
 | **Cumplimiento por tarea** (barras horizontales) | Qué tareas están flojas, ordenadas de mejor a peor |
 
 Notas de lectura:
 
 - Los colores son **los mismos estados del tablero**, para que una celda verde y su porción del gráfico se lean como lo mismo. Se usan pasos un punto más oscuros en modo claro para que todos superen 3:1 de contraste contra la tarjeta, y pasos propios —no un volteo automático— en modo oscuro.
 - Verde y amarillo **no se distinguen por tono** bajo protanopia. Por eso en la torta cada color viaja con su símbolo (✓ ~ ✕) y su palabra en la leyenda, y en el de tareas cada barra lleva su porcentaje al lado: la identidad nunca depende del color solo.
+- En *Análisis diario*, el botón de la **esquina superior derecha** alterna las dos medidas de un día — las mismas dos que muestran las tarjetas de productividad:
+
+  | Botón | Qué miden las barras |
+  |---|---|
+  | `123` | Cantidad de tareas hechas por día, en promedio |
+  | `%` | Porcentaje de cumplimiento de cada día |
+
+  El botón muestra la medida **activa**, no la siguiente, igual que el de zoom muestra el nivel puesto; el tooltip nombra las dos. La elección se guarda como [preferencia de pantalla](#lo-que-no-se-sincroniza), junto al zoom y al plegado: describe cómo mirás la app en este aparato, así que no viaja a la base.
+
+  Las dos medidas coronan días distintos y por eso conviene poder ver las dos: el lunes suele ganar por cantidad porque tiene más tareas asignadas, no porque rindas mejor. Con `%` un día puede quedar **sin barra** si ninguna tarea le pedía nada — ahí no hay nada que medir, y no es lo mismo que un cero.
 - En *Cumplimiento por tarea* la barra se topea en la meta. Si una tarea llega al 600%, escalar a ese máximo aplastaría a todas las demás y el rango que importa —45 a 100%— dejaría de leerse; el número al costado conserva el valor exacto y la barra que se pasa termina en escuadra contra el borde.
 
 #### Indicadores
 
+En el orden en que aparecen:
+
 | Indicador | Qué muestra |
 |---|---|
+| **Días más productivos** | El día de la semana que rinde mejor, medido de las dos maneras — ver abajo |
+| **Días menos productivos** | Lo mismo, en el otro extremo |
 | **Necesitan tu atención** | Cuántas tareas del mes están en rojo (cumplimiento menor al 45%), con sus nombres |
-| **Días más productivos** | El día de la semana con mayor promedio de puntos — *martes*, si todos los martes del mes promedian más alto que el resto |
-| **Días menos productivos** | Lo mismo, con el promedio más bajo |
-| **Mes actual vs mes pasado** | Diferencia en puntos porcentuales entre el cumplimiento del mes visible y el del mes anterior, en verde si subió y en rojo si bajó |
+| **Mes actual vs mes pasado** | Diferencia en puntos porcentuales entre el cumplimiento del mes visible y el del mes anterior, en verde si subió y en rojo si bajó. Los dos se miden sobre sus días vencidos, así que un mes a medio andar se compara por cómo viene y no pierde de entrada contra uno cerrado |
 
-Los promedios por día de la semana usan solo los días ya transcurridos: los futuros valen 0 y hundirían el promedio de su día. Si no hay datos suficientes, o si todos los días promedian igual, las dos tarjetas de productividad muestran `—`.
+##### Las dos medidas de un día productivo
+
+«Productivo» significa dos cosas distintas, y las dos tarjetas muestran las dos porque suelen coronar días **distintos**:
+
+| Medida | Qué promedia | A quién favorece |
+|---|---|---|
+| **Cantidad** | Puntos del día: cuántas tareas hiciste, sin mirar contra qué | Al lunes, que tiene más tareas asignadas |
+| **Completitud** | Qué proporción de lo que ese día pedía se cumplió | Al domingo, que cumple el 100% de las pocas que le tocan |
+
+La completitud se agrega sumando puntos y techos **antes** de dividir, igual que la comparación mensual: promediar los porcentajes de cada día le daría el mismo peso a un domingo que pedía una tarea que a un lunes que pedía veinte.
+
+Cada medida ocupa **su propia subtarjeta** dentro de la tarjeta, con el criterio a la izquierda y el resultado a la derecha:
+
+```
+DÍAS MÁS PRODUCTIVOS
+┌──────────────────────────────────────┐
+│  · Por cantidad:     Viernes · Sábado│
+│                          2,9 tareas  │
+└──────────────────────────────────────┘
+┌──────────────────────────────────────┐
+│  · Porcentualmente:         Domingo  │
+│                                 79%  │
+└──────────────────────────────────────┘
+```
+
+El día es el dato, así que se lleva el cuerpo grande y el color del extremo —verde el mejor, rojo el peor—; el criterio y la cifra lo acompañan en gris. Los empates dentro de una medida se listan separados por `·`.
+
+Encerrar cada medida separa las dos lecturas de un vistazo: en una lista corrida se leían como cuatro renglones sueltos. Las subtarjetas usan `--bg-sunken`, el token de superficie hundida, que queda apenas más gris que el blanco de la tarjeta en tema claro y apenas más negro en oscuro — la jerarquía se sostiene en los dos sin definir colores nuevos.
+
+Dos detalles de alineación que el diseño necesita:
+
+- **La columna del criterio mide lo mismo en las dos subtarjetas** (`--rank-criterio`), así los días quedan alineados entre sí en lugar de arrancar cada uno donde termine su rótulo — *Por cantidad* y *Porcentualmente* no miden igual. Es un ancho fijo y no `subgrid`, que lo resolvería sin número pero pide Chrome 117 cuando la app declara soporte desde el 105; es la misma razón por la que `.month-nav` lleva su propia rejilla.
+- **Las subtarjetas se centran en el alto sobrante**, como el contenido de cualquier tarjeta — ver abajo.
+
+Si el criterio y el resultado no entran en la misma línea —una tarjeta angosta en móvil, o un empate de varios días— el resultado baja solo y queda centrado a lo ancho, y los días siguen alineados entre sí.
+
+Los dos renglones aparecen **aunque las dos medidas coronen al mismo día**: ahí cada uno lo dice bajo un criterio distinto y con su propio número, así que no hay repetición que ahorrar. Lo que sí desaparece es el renglón de una medida que no distingue nada —todos los días empatados—; si ninguna de las dos distingue, la tarjeta muestra `—` y *«Todos los días parejos»*.
+
+##### El mínimo de siete días
+
+Las tarjetas y el gráfico de *Promedio por día de la semana* **no muestran nada hasta que el mes tenga 7 días de uso**; en su lugar va un aviso que dice cuántos van.
+
+Siete es el mínimo con sentido: es lo que tarda cada día de la semana en aparecer una vez. Con menos, el ranking no compara promedios sino qué días cayeron dentro del tramo — un mes recién empezado coronaría al lunes por haber tenido un lunes.
+
+Un **día de uso** es un día del mes visible que:
+
+- ya **transcurrió** — los futuros valen 0 y hundirían el promedio de su día;
+- y no es anterior a tu **primera marca cargada**, que es lo que la app toma como comienzo de uso. Esos días tampoco son días flojos: son días en los que la app no existía para vos, y contarlos como ceros pintaría de rojo al día de la semana que le tocó al arranque.
+
+> **El comienzo de uso es la primera marca, no la fecha de inicio de las tareas.** El `start` se declara y no se observa: dar de alta hoy un hábito con inicio en enero no significa que haya siete meses de datos. Con la primera marca, un alta retroactiva no adelanta nada.
+
+El aviso también aparece en un mes **anterior** a tu primer uso, y en una cuenta sin ninguna marca.
+
+##### Cómo se acomodan las tarjetas
+
+Las cuatro comparten tratamiento, así la fila se lee pareja:
+
+- **Todo va centrado horizontalmente**: el rótulo, el valor grande y el texto de abajo.
+- Las **listas cortas** —los dos meses de la comparación— se miden por su contenido y se centran **como bloque**, no ítem por ítem. Así las viñetas quedan alineadas entre sí en lugar de dejar los renglones en diagonal; es el mismo criterio que la leyenda del pie en móvil.
+- La **lista de nombres** de *Necesitan tu atención* es la excepción: ocupa el ancho entero. Puede tener veinte entradas y scrollear, y centrada como bloque la barra de scroll caía al final del texto —en el medio de la tarjeta, encima del nombre más largo— en vez de contra el borde derecho. Los nombres arrancan pegados al margen izquierdo y la barra queda a la derecha.
+- **El contenido se centra en el alto sobrante.** En la grilla del panel todas las tarjetas miden lo que la más alta, así que a casi todas les sobra alto; sin esto el contenido queda clavado bajo el rótulo y el hueco entero cae abajo. El rótulo se queda arriba y lo que sigue se reparte el resto — el valor lleva `margin-top: auto` y lo que va debajo `margin-bottom: auto`, de modo que el espacio libre se divide en partes iguales a los dos lados sin separar el valor de su explicación.
+- *Mes actual vs mes pasado* lleva su contenido dentro de **una caja hundida** (`.tile-box`), hermana de las subtarjetas de productividad: mismo fondo, mismo borde y mismo radio. Se estira hasta llenar el alto que queda bajo el rótulo, así la tarjeta se lee con el mismo lenguaje que sus vecinas en vez de como texto suelto. Vale para los tres estados de la tarjeta, incluido el de *«todavía no tiene meta»*.
+
+Los gráficos llevan el título y su bajada centrados con el mismo criterio.
 
 Los totales siempre se calculan sobre el **rango visible**, así que cambian al pasar de vista semanal a mensual.
 

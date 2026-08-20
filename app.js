@@ -227,6 +227,8 @@
     status: /** @type {Record<string, 'done'|'partial'|'missed'|'skip'>} */ ({}),
     /** Qué muestra la columna de estatus: 'glyph' | 'pct' | 'both' | 'none'. */
     complianceMode: 'glyph',
+    /** Qué miden las barras del análisis diario: 'tareas' | 'pct'. */
+    weekdayMode: 'tareas',
     /** Densidad de la planilla en móvil: 'normal' | 'compacto' | 'comodo'. */
     zoom: 'normal',
     /** Controles del período plegados (solo tiene efecto en móvil). */
@@ -639,15 +641,48 @@
    * Identificador del período al que pertenece un día para una tarea dada.
    * Para las no periódicas cada día es su propio período, así el cálculo de la
    * meta funciona sin ramificaciones.
+   *
+   * La de meta mensual también es periódica: su período es el mes entero, con
+   * la particularidad de que no pide una vez sino `target` — ver `periodTarget`.
    */
   function periodId(task, date) {
     const month = monthKey(date.getFullYear(), date.getMonth());
+    if (isCountMode(task)) return `${month}#m`;
     switch (FREQ[task.freq]?.period) {
       case 'semana':   return `${month}#w${weekIndexInMonth(date)}`;
       case 'quincena': return `${month}#q${date.getDate() <= 15 ? 0 : 1}`;
       case 'mes':      return `${month}#m`;
       default:         return dateKey(date);
     }
+  }
+
+  /**
+   * Cuántos días tiene, EN EL CALENDARIO, el período al que pertenece una fecha.
+   *
+   * Es el denominador con el que se mide qué parte del período está a la vista,
+   * y por eso cuenta los días completos aunque el rango solo muestre algunos: la
+   * semana del 1 de agosto de 2026 mide 7, no los 2 que caen dentro del mes.
+   * Justamente esa diferencia es la que hace que un tramo suelto no termine
+   * exigiendo lo mismo que la semana entera.
+   */
+  function periodLength(task, date) {
+    const delMes = () => monthDays(date.getFullYear(), date.getMonth()).length;
+    if (isCountMode(task)) return delMes();
+    switch (FREQ[task.freq]?.period) {
+      case 'semana':   return 7;
+      // Del 1 al 15, y del 16 a fin de mes: la segunda dura lo que sobre.
+      case 'quincena': return date.getDate() <= 15 ? 15 : delMes() - 15;
+      case 'mes':      return delMes();
+      default:         return 1;
+    }
+  }
+
+  /**
+   * Cuántas veces pide la tarea en un período COMPLETO. Uno para todas, salvo
+   * la de meta mensual, cuyo período es el mes y pide el número que se cargó.
+   */
+  function periodTarget(task) {
+    return isCountMode(task) ? task.target : 1;
   }
 
   function statusKey(taskId, date) {
@@ -774,7 +809,7 @@
      anti-parpadeo de `index.html`, antes de que exista `app.js`. */
 
   const PREFS_KEY = 'tareas-diarias/prefs';
-  const CAMPOS_PREF = ['complianceMode', 'zoom', 'controlsCollapsed', 'panels'];
+  const CAMPOS_PREF = ['complianceMode', 'weekdayMode', 'zoom', 'controlsCollapsed', 'panels'];
 
   /** Guarda una preferencia. No toca la red: no hay nada que sincronizar. */
   function savePrefs() {
@@ -797,6 +832,7 @@
     if (CP_MODES.some(m => m.id === prefs.complianceMode)) {
       state.complianceMode = prefs.complianceMode;
     }
+    if (MEDIDAS.some(m => m.campo === prefs.weekdayMode)) state.weekdayMode = prefs.weekdayMode;
     if (ZOOM_LEVELS.some(z => z.id === prefs.zoom)) state.zoom = prefs.zoom;
     if (typeof prefs.controlsCollapsed === 'boolean') {
       state.controlsCollapsed = prefs.controlsCollapsed;
@@ -1072,16 +1108,27 @@
   /** El diccionario, o uno vacío si no lo es. */
   const comoObjeto = valor => (esDiccionario(valor) ? valor : {});
 
-  /** Mes más antiguo (`YYYY-MM`) que aparece en los estados guardados. */
-  function earliestStatusMonth(status) {
+  /**
+   * Día más antiguo (`YYYY-MM-DD`) que aparece en los estados guardados.
+   *
+   * Es lo que la app usa como **comienzo de uso**: la primera marca es la
+   * primera evidencia de que alguien la usó. La fecha de inicio de las tareas
+   * no sirve para eso — se declara, no se observa: dar de alta hoy un hábito
+   * con inicio en enero no significa que haya siete meses de datos.
+   */
+  function earliestStatusDay(status) {
     let earliest = null;
     for (const key of Object.keys(comoObjeto(status))) {
       const iso = String(key).split('|')[1];
       if (!RE_DIA.test(iso || '')) continue;
-      const month = iso.slice(0, 7);
-      if (!earliest || month < earliest) earliest = month;
+      if (!earliest || iso < earliest) earliest = iso;
     }
     return earliest;
+  }
+
+  /** Mes más antiguo (`YYYY-MM`) que aparece en los estados guardados. */
+  function earliestStatusMonth(status) {
+    return earliestStatusDay(status)?.slice(0, 7) ?? null;
   }
 
   /** Valida y sanea datos que vienen de localStorage o de un archivo importado. */
@@ -1123,6 +1170,7 @@
       complianceMode: CP_MODES.some(m => m.id === data.complianceMode)
         ? data.complianceMode
         : 'glyph',
+      weekdayMode: MEDIDAS.some(m => m.campo === data.weekdayMode) ? data.weekdayMode : 'tareas',
       zoom: ZOOM_LEVELS.some(z => z.id === data.zoom) ? data.zoom : 'normal',
       controlsCollapsed: data.controlsCollapsed === true,
       panels: {
@@ -1139,64 +1187,86 @@
 
   /**
    * Puntos y meta de una tarea en el rango.
-   * Los puntos suman cualquier día marcado; la meta se cuenta por período, así
-   * una semanal apunta a 1 punto por semana visible. Los puntos pueden superar
-   * la meta: marcar de más es válido y el total lo muestra.
+   *
+   * Los puntos suman cualquier día marcado. La meta se arma período por período
+   * y a cada uno se le pide SOLO LA PARTE QUE SE ESTÁ VIENDO: una semana de la
+   * que el rango muestra dos días pide dos séptimos de vez, que redondeado a
+   * acciones enteras no llega a pedir nada — ver `metaEnAcciones`.
+   *
+   * Antes bastaba con que un día del período estuviera a la vista para exigirlo
+   * entero, y eso distorsionaba todos los bordes: agosto de 2026 toca seis
+   * semanas —dos días sueltos al principio, cuatro completas y el 31— así que
+   * una tarea semanal hecha las cuatro veces que el mes pedía marcaba 4 sobre
+   * 6, un 67%. Lo mismo, peor, hacia abajo: en la vista semanal una tarea
+   * mensual pedía su única vez en cada una de las seis semanas, y la quincenal
+   * pedía dos en la semana que cruza el día 15.
+   *
+   * Los puntos pueden superar la meta: marcar de más es válido y el total lo
+   * muestra.
    */
   function taskTotals(task, days) {
-    /* La meta es la del PERÍODO COMPLETO de la vista, no la de la parte
-       transcurrida. Una tarea de lunes, miércoles y viernes vista en la semana
-       apunta a 3, esté la semana empezada o terminada, y hacerla dos veces da
-       67%. Medir contra lo transcurrido daba otra cosa: el martes esa misma
-       semana solo llevaba un día exigible, así que dos marcas daban 200%. */
+    /* LO QUE NO TRANSCURRIÓ NO SE EXIGE. La meta cuenta los días vencidos del
+       rango; los que todavía no llegaron no entran, porque no se incumplió
+       nada en ellos. El 20 de agosto una tarea diaria marcada los veinte días
+       va 20 de 20 —100%—, y no 20 de 31.
+
+       Antes la meta era la del rango entero, con lo que el porcentaje decía
+       cuánto del mes llevabas hecho: al día 4, esa misma tarea sin faltar un
+       día marcaba 13% y se pintaba de rojo. Medía el avance del mes en vez del
+       cumplimiento, que es lo que la columna dice medir.
+
+       Lo hecho POR ADELANTADO sí suma —lo hecho es lo hecho, el mismo criterio
+       que la fila `Cumplimiento diario`—; lo que no se cuenta es un
+       incumplimiento que todavía no ocurrió. Por eso los puntos miran todos los
+       días y solo `dias` se recorta. El desbalance no puede pasarse de 100%:
+       `complianceOf` topea el porcentaje y `aporte` topea lo que la tarea
+       aporta a cualquier promedio.
+
+       Que el período esté partido por el borde del mes o por la ventana de la
+       vista recorta la meta igual, pero es cosa distinta: ahí no es que no haya
+       pasado todavía, es que no está a la vista. */
     let points = 0;
+
+    /** Por período: cuántos de sus días vencieron dentro del rango y qué se hizo. */
+    const periodos = new Map();
+
     for (const d of days) {
       const s = getStatus(task, d);
       if (s) points += POINTS[s];
+      if (!countsTowardGoal(task, d)) continue;
+
+      const id = periodId(task, d);
+      let p = periodos.get(id);
+      if (!p) periodos.set(id, (p = { dias: 0, puntos: 0, largo: periodLength(task, d) }));
+      if (d <= today) p.dias++;
+      if (s) p.puntos += POINTS[s];
     }
 
-    if (isCountMode(task)) return { points, max: countModeMax(task, days, points) };
-
-    const periods = new Set();
-    for (const d of days) {
-      if (countsTowardGoal(task, d)) periods.add(periodId(task, d));
+    const objetivo = periodTarget(task);
+    let max = 0;
+    let dias = 0;
+    for (const p of periodos.values()) {
+      max += metaEnAcciones(objetivo * (p.dias / p.largo), p.puntos);
+      dias += p.dias;
     }
 
-    return { points, max: periods.size };
-  }
-
-  /**
-   * Meta de una tarea con meta mensual: el número que cargó el usuario es para
-   * el mes entero, así que en una ventana más chica se reparte proporcionalmente.
-   * El mes completo siempre devuelve el número exacto.
-   *
-   * El reparto se hace sobre los días del MES, no sobre los que la tarea tiene
-   * disponibles. Dividir por los disponibles concentraba la meta entera en el
-   * tramo que quedara: una tarea de 8 al mes iniciada el día 31 terminaba
-   * pidiendo las 8 acciones en ese único día, y hacerla una vez daba 13%.
-   * «8 veces al mes» es un ritmo; empezar tarde reduce lo que se espera, no lo
-   * amontona.
-   */
-  function countModeMax(task, days, points) {
-    if (!days.length) return 0;
-
-    const first = days[0];
-    const share = task.target
-      / monthDays(first.getFullYear(), first.getMonth()).length;
-
-    const inRange = days.filter(d => countsTowardGoal(task, d));
-    return metaEnAcciones(share * inRange.length, points);
+    /* `dias` separa los dos motivos por los que una meta puede quedar en cero,
+       que la celda cuenta distinto: que la frecuencia no pida ningún día del
+       rango —una tarea de lunes a viernes mirada un sábado—, o que los pida
+       pero el tramo visible del período sea demasiado corto para pedir una vez. */
+    return { points, max, dias };
   }
 
   /**
    * Pasa una meta prorrateada a acciones enteras, que es la única unidad en la
    * que estas tareas se cumplen: «socializar» se hace o no se hace, no existe
-   * hacer 0,26 de socializar.
+   * hacer 0,26 de socializar, ni media vez por semana.
    *
-   * Cuando la ventana ni siquiera llega a pedir una acción, no hay obligación
-   * que incumplir: ahí la meta la fija lo que se hizo. Marcar cumplido da 100%
-   * y parcial da 50%, mientras que un día en blanco no muestra nada —un cero
-   * acusaría de incumplida a una tarea que ese día no debía nada—.
+   * Cuando la parte visible del período ni siquiera llega a pedir una acción,
+   * no hay obligación que incumplir: ahí la meta la fija lo que se hizo. Marcar
+   * cumplido da 100% y parcial da 50%, mientras que un tramo en blanco no
+   * muestra nada —un cero acusaría de incumplida a una tarea que ahí no debía
+   * nada—.
    */
   function metaEnAcciones(prorrateada, puntos) {
     return prorrateada >= 1 ? Math.ceil(prorrateada) : Math.ceil(puntos);
@@ -1216,16 +1286,21 @@
 
   /**
    * Meta de todo el rango. Se suma por filas y no por columnas: la de una tarea
-   * periódica es su cantidad de períodos, mientras que la de una columna solo
-   * dice cuánto se podría marcar ese día puntual.
+   * periódica es lo que le pide cada período que el rango alcanza a mostrar,
+   * mientras que la de una columna solo dice cuánto se podría marcar ese día
+   * puntual.
+   *
+   * `dias` se arrastra para que el guion del total general pueda explicarse con
+   * el mismo criterio que el de cada fila — ver `applyCompliance`.
    */
   function rangeTotals(days) {
     return currentTasks().reduce((acc, task) => {
       const t = taskTotals(task, days);
       acc.points += aporte(t.points, t.max);
       acc.max += t.max;
+      acc.dias += t.dias;
       return acc;
-    }, { points: 0, max: 0 });
+    }, { points: 0, max: 0, dias: 0 });
   }
 
   /**
@@ -1300,6 +1375,22 @@
       if (s) points += POINTS[s];
     }
     return { points, max };
+  }
+
+  /**
+   * Días del rango que pueden alimentar un promedio por día de la semana: los
+   * que ya transcurrieron y no son anteriores al comienzo de uso.
+   *
+   * Los futuros quedan afuera porque valen 0 y hundirían el promedio de su día.
+   * Los anteriores al comienzo de uso, porque tampoco son días flojos: son días
+   * en los que la app todavía no existía para quien la usa, y contarlos como
+   * ceros pintaría de rojo al día de la semana que le tocó al arranque.
+   */
+  function diasMedibles(days) {
+    const desde = earliestStatusDay(state.status);
+    // Sin una sola marca no hay comienzo de uso, y por lo tanto ningún día de uso.
+    if (!desde) return [];
+    return days.filter(d => d <= today && dateKey(d) >= desde);
   }
 
   // ---------------------------------------------------------
@@ -1854,11 +1945,17 @@
       return;
     }
 
-    // Sin meta no hay nada que medir: la frecuencia no pide nada en el rango.
-    // Un guion en cualquiera de los tres modos.
+    /* Sin meta no hay nada que medir: un guion en cualquiera de los tres modos.
+       Los dos motivos se nombran distinto porque son distintos, y el segundo
+       recién aparece con el prorrateo de `taskTotals`: la frecuencia sí pide
+       días del rango, pero el pedazo de período que se ve no alcanza para pedir
+       una vez —la semana del 1 de agosto de 2026, de la que el mes muestra dos
+       días—. Decir ahí que «no pide ningún día» sería falso. */
     glyph.textContent = '—';
     ratio.textContent = '—';
-    td.title = 'La frecuencia de la tarea no pide ningún día del rango visible';
+    td.title = totals.dias > 0
+      ? 'El rango visible es solo una parte del período, demasiado corta para pedir una vez'
+      : 'La frecuencia de la tarea no pide ningún día del rango visible';
   }
 
   /**
@@ -1899,8 +1996,8 @@
 
     el.summary.innerHTML = '';
     el.summary.append(
-      attentionTile(days),
       ...productivityTiles(days),
+      attentionTile(days),
       comparisonTile(),
     );
   }
@@ -1912,76 +2009,199 @@
       return complianceOf(t.points, t.max)?.status === 'missed';
     });
 
-    return tile(
+    const card = tile(
       'Necesitan tu atención',
       String(flagged.length),
       flagged.length ? flagged.map(t => t.name) : 'Ninguna tarea en rojo',
       flagged.length ? 'alert' : '',
     );
+
+    /* Esta lista es un listado de nombres y no un par de datos: puede tener
+       veinte entradas y scrollear. Se marca para que ocupe el ancho entero de
+       la tarjeta — si no, la barra de scroll queda contra el texto, en el
+       medio, en vez de contra el borde. Ver `.tile-list.is-nombres`. */
+    card.querySelector('.tile-list')?.classList.add('is-nombres');
+    return card;
   }
 
   /**
-   * Promedio de puntos por día de la semana, sobre los días ya transcurridos.
-   * Los días futuros quedan fuera: valen 0 y hundirían el promedio de su día.
+   * Las dos medidas de un día de la semana, promediadas sobre los días
+   * medibles del rango — ver `diasMedibles`.
+   *
+   * `tareas` es **cuánto se hizo**: el promedio de puntos del día, sin mirar
+   * contra qué. `pct` es **qué proporción de lo que ese día pedía se cumplió**,
+   * y se agrega sumando puntos y techos antes de dividir, igual que
+   * `monthCompliance`: promediar los porcentajes diarios le daría el mismo peso
+   * a un domingo que pedía una tarea que a un lunes que pedía veinte.
+   *
+   * Las dos coronan días distintos y por eso se muestran las dos: el lunes suele
+   * ganar por cantidad porque tiene más tareas asignadas, no porque se rinda
+   * mejor.
    */
   function weekdayAverages(days) {
     const buckets = new Map();
-    for (const d of days) {
-      if (d > today) continue;
-      const bucket = buckets.get(d.getDay()) || { sum: 0, count: 0 };
-      bucket.sum += dayPoints(d);
-      bucket.count += 1;
-      buckets.set(d.getDay(), bucket);
+    for (const d of diasMedibles(days)) {
+      const b = buckets.get(d.getDay()) || { suma: 0, dias: 0, points: 0, max: 0 };
+      b.suma += dayPoints(d);
+      b.dias += 1;
+      const c = dayCompliance(d);
+      b.points += c.points;
+      b.max += c.max;
+      buckets.set(d.getDay(), b);
     }
+
     // Se redondea para que comparar promedios iguales no falle por coma flotante.
-    return [...buckets].map(([js, b]) => ({ js, avg: Math.round(b.sum / b.count * 1e4) / 1e4 }));
+    const redondo = n => Math.round(n * 1e4) / 1e4;
+    return [...buckets].map(([js, b]) => ({
+      js,
+      tareas: redondo(b.suma / b.dias),
+      pct: b.max > 0 ? redondo((b.points / b.max) * 100) : null,
+    }));
+  }
+
+  /**
+   * Días de uso que hacen falta para comparar días de la semana.
+   *
+   * Siete es el mínimo con sentido: es lo que tarda cada día de la semana en
+   * aparecer una vez. Con menos, el ranking no compara promedios sino qué días
+   * cayeron dentro del tramo — un mes recién empezado coronaría al lunes por
+   * haber tenido un lunes.
+   */
+  const MINIMO_DIAS = 7;
+
+  /* Corto a propósito: `.tile-sub` muestra dos líneas y manda el resto al
+     `title`, y este texto es justamente el que no se puede quedar a medias. El
+     porqué de los siete días vive en la guía, no en la tarjeta. */
+  function avisoMinimoDias(cuantos) {
+    return cuantos
+      ? `Hacen falta ${MINIMO_DIAS} días de uso para comparar; van ${cuantos}.`
+      : 'Todavía no hay días de uso en este mes.';
   }
 
   function productivityTiles(days) {
-    const averages = weekdayAverages(days);
-    const values = averages.map(a => a.avg);
-    const top = Math.max(...values);
-    const bottom = Math.min(...values);
-
-    // Sin datos, o con todos los días parejos, no hay ranking que mostrar.
-    if (averages.length < 2 || top === 0 || top === bottom) {
-      const reason = averages.length < 2 || top === 0
-        ? 'Sin datos suficientes'
-        : 'Todos los días parejos';
+    const medibles = diasMedibles(days);
+    if (medibles.length < MINIMO_DIAS) {
+      const aviso = avisoMinimoDias(medibles.length);
       return [
-        tile('Días más productivos', '—', reason),
-        tile('Días menos productivos', '—', reason),
+        tile('Días más productivos', '—', aviso),
+        tile('Días menos productivos', '—', aviso),
       ];
     }
 
+    const averages = weekdayAverages(days);
     return [
-      weekdayTile('Días más productivos', averages.filter(a => a.avg === top), 'best'),
-      weekdayTile('Días menos productivos', averages.filter(a => a.avg === bottom), 'worst'),
+      productividadTile('Días más productivos', averages, 'best'),
+      productividadTile('Días menos productivos', averages, 'worst'),
     ];
   }
 
-  function weekdayTile(label, group, tone) {
-    // Se recorre WEEKDAYS para que los empates queden en orden cronológico
-    // (lunes → domingo), y no en el orden en que aparecieron en el mes.
-    const included = new Set(group.map(a => a.js));
-    const days = WEEKDAYS.filter(w => included.has(w.js));
+  /**
+   * Qué días alcanzan el extremo de una medida, y con qué valor.
+   *
+   * Devuelve `null` cuando la medida no distingue nada: sin valores, con todo
+   * en cero, o con todos los días iguales. Ahí no hay ranking — coronar a
+   * alguien sería inventar una diferencia que no existe.
+   *
+   * Los días salen recorriendo WEEKDAYS para que los empates queden en orden
+   * cronológico (lunes → domingo) y no en el que aparecieron en el mes.
+   */
+  function extremoDe(averages, campo, tone) {
+    const valores = averages.map(a => a[campo]).filter(v => v !== null);
+    if (valores.length < 2) return null;
 
-    const avg = group[0].avg;
-    const nombres = days.map(d => capitalizeFirstLetter(d.long));
+    const top = Math.max(...valores);
+    const bottom = Math.min(...valores);
+    if (top === 0 || top === bottom) return null;
 
-    return tile(
-      label,
-      nombres.length === 1 ? nombres[0] : nombres,   // varios: uno debajo del otro
-      `Realizás en promedio ${num(avg)} ${avg === 1 ? 'tarea' : 'tareas'}`,
-      tone,
-    );
+    const objetivo = tone === 'best' ? top : bottom;
+    const dias = WEEKDAYS.filter(w => averages.some(a => a.js === w.js && a[campo] === objetivo));
+    return { dias, valor: objetivo };
+  }
+
+  /**
+   * Las dos medidas de un día, en el orden en que se muestran y en que las
+   * cicla el botón del análisis diario.
+   *
+   * Una sola lista para las tarjetas de productividad y para el gráfico: los
+   * dos leen los mismos dos campos de `weekdayAverages`, y tenerlos declarados
+   * dos veces era la forma segura de que un día dijeran cosas distintas.
+   *
+   * `cifra` arma el número que acompaña al día; `icono` es lo que muestra el
+   * botón del gráfico, y `hint` la bajada de la tarjeta cuando esa medida está
+   * activa.
+   */
+  const MEDIDAS = [
+    {
+      campo: 'tareas',
+      rotulo: 'Por cantidad:',
+      cifra: v => `${num(v)} ${v === 1 ? 'tarea' : 'tareas'}`,
+      icono: '123',
+      nombre: 'cantidad de tareas',
+      hint: 'Tareas completadas por día, sobre los días de uso del mes',
+    },
+    {
+      campo: 'pct',
+      rotulo: 'Porcentualmente:',
+      cifra: v => pct(v),
+      icono: '%',
+      nombre: 'porcentaje de cumplimiento',
+      hint: 'Cumplimiento de cada día, sobre los días de uso del mes',
+    },
+  ];
+
+  /** La medida que el análisis diario está mostrando. */
+  function medidaDiaria() {
+    return MEDIDAS.find(m => m.campo === state.weekdayMode) ?? MEDIDAS[0];
+  }
+
+  /**
+   * Una tarjeta de productividad: cada medida en su propia subtarjeta, con el
+   * criterio a la izquierda y el resultado —día y cifra— a la derecha.
+   *
+   * El día es el dato y va grande y con el color del extremo; el criterio y la
+   * cifra lo acompañan en gris. Las dos medidas se muestran aunque coronen al
+   * mismo día: ahí cada subtarjeta lo dice bajo un criterio distinto y con su
+   * propio número, así que no hay repetición que ahorrar.
+   *
+   * Una medida que no distingue nada —todos los días empatados— no dibuja
+   * subtarjeta: ver `extremoDe`.
+   */
+  function productividadTile(label, averages, tone) {
+    const medidas = MEDIDAS
+      .map(m => ({ ...m, extremo: extremoDe(averages, m.campo, tone) }))
+      .filter(m => m.extremo);
+
+    if (!medidas.length) return tile(label, '—', 'Todos los días parejos');
+
+    const node = tileBase(label, tone);
+    const lista = elem('ul', 'tile-ranks');
+
+    for (const { rotulo, cifra, extremo } of medidas) {
+      const item = elem('li', 'rank');
+      item.appendChild(elem('p', 'rank-label', rotulo));
+
+      const resultado = elem('p', 'rank-result');
+      resultado.append(
+        elem('span', 'rank-day',
+          extremo.dias.map(d => capitalizeFirstLetter(d.long)).join(' · ')),
+        elem('span', 'rank-value', cifra(extremo.valor)),
+      );
+
+      item.appendChild(resultado);
+      lista.appendChild(item);
+    }
+
+    node.appendChild(lista);
+    return node;
   }
 
   /**
    * Cumplimiento (0-100) de un mes entero, con las tareas propias de ese mes.
-   * Contra la meta del mes completo, así que el mes en curso arranca bajo y
-   * sube: comparar un mes a medio andar con uno cerrado es comparar avances,
-   * no ritmos.
+   *
+   * La meta la recorta `taskTotals` a los días vencidos, así que el mes en
+   * curso se mide por lo que lleva transcurrido. Eso es lo que vuelve honesta
+   * la comparación: antes el mes a medio andar se medía contra su mes entero y
+   * siempre perdía contra uno cerrado, por bien que se estuviera yendo.
    */
   function monthCompliance(year, month) {
     const days = monthDays(year, month);
@@ -2005,18 +2225,20 @@
     const nameBefore = capitalizeFirstLetter(
       fmtMonthName.format(new Date(prev.year, prev.month, 1)));
 
-    if (current === null) return tile(label, '—', `${nameNow} todavía no tiene meta`);
-    if (before === null) return tile(label, pct(current), `${nameBefore} no tiene datos`);
+    if (current === null) return enCaja(tile(label, '—', `${nameNow} todavía no tiene meta`));
+    if (before === null) {
+      return enCaja(tile(label, pct(current), `${nameBefore} no tiene datos`));
+    }
 
     const delta = Math.round(current) - Math.round(before);
     const sign = delta > 0 ? '+' : '';
-    return tile(
+    return enCaja(tile(
       label,
       `${sign}${delta} pts`,
       [`${nameNow}: ${pct(current)}`,
        `${nameBefore}: ${pct(before)}`],
       delta > 0 ? 'up' : delta < 0 ? 'down' : '',
-    );
+    ));
   }
 
   // ---------------------------------------------------------
@@ -2173,19 +2395,49 @@
 
   // ---- Barras: promedio por día de la semana ---------------------------
 
+  /**
+   * El botón de la esquina del análisis diario. Muestra el ícono de la medida
+   * ACTIVA —`123` o `%`—, igual que el botón de zoom muestra el nivel puesto y
+   * no el siguiente, y su tooltip nombra las dos: qué se está viendo y a qué
+   * se pasa. Con dos medidas, ciclar y alternar son lo mismo.
+   */
+  function botonMedidaDiaria(medida) {
+    const otra = MEDIDAS[(MEDIDAS.indexOf(medida) + 1) % MEDIDAS.length];
+    return boton('chart-mode', {
+      text: medida.icono,
+      action: 'medida-diaria',
+      title: `Mostrando ${medida.nombre} — ver ${otra.nombre}`,
+      label: `Medida del análisis diario: ${medida.nombre}. Cambiar a ${otra.nombre}`,
+    });
+  }
+
   function weekdayChart(days) {
-    const card = chartCard('Promedio por día de la semana',
-      'Tareas completadas, sobre los días ya transcurridos');
+    const medida = medidaDiaria();
+    const card = chartCard('Análisis diario', medida.hint);
+    card.appendChild(botonMedidaDiaria(medida));
+
+    /* El mismo mínimo que las tarjetas de productividad, porque es la misma
+       cuenta: si la tarjeta dice que no alcanza, la barra de al lado no puede
+       estar coronando al lunes con un solo lunes medido. */
+    const medibles = diasMedibles(days);
+    if (medibles.length < MINIMO_DIAS) {
+      card.appendChild(emptyChart(avisoMinimoDias(medibles.length)));
+      return card;
+    }
 
     const averages = weekdayAverages(days);
-    if (!averages.length || averages.every(a => a.avg === 0)) {
+    const byJs = new Map(averages.map(a => [a.js, a[medida.campo]]));
+    const data = WEEKDAYS.map(w => ({ w, avg: byJs.get(w.js) ?? null }));
+    const values = data.filter(d => d.avg !== null).map(d => d.avg);
+
+    /* Con la medida porcentual un día puede no tener nada que medir —ninguna
+       tarea le pedía nada— y viene en `null`, así que el vacío se decide sobre
+       los valores que quedaron y no sobre la cantidad de días. */
+    if (!values.length || values.every(v => v === 0)) {
       card.appendChild(emptyChart('Todavía no hay datos cargados'));
       return card;
     }
 
-    const byJs = new Map(averages.map(a => [a.js, a.avg]));
-    const data = WEEKDAYS.map(w => ({ w, avg: byJs.get(w.js) ?? null }));
-    const values = data.filter(d => d.avg !== null).map(d => d.avg);
     const top = Math.max(...values);
     const bottom = Math.min(...values);
 
@@ -2199,7 +2451,7 @@
       viewBox: `0 0 ${W} ${H}`,
       class: 'bars',
       role: 'img',
-      'aria-label': 'Promedio de tareas completadas por día de la semana',
+      'aria-label': `Promedio de ${medida.nombre} por día de la semana`,
     });
 
     // Línea de base: hairline sólida, un paso por encima de la superficie.
@@ -2229,7 +2481,7 @@
         fill: esTope ? 'var(--chart-done)' : esPiso ? 'var(--chart-missed)' : 'var(--chart-neutral)',
       });
       bar.appendChild(svg('title')).textContent =
-        `${capitalizeFirstLetter(d.w.long)}: ${num(d.avg)} en promedio`;
+        `${capitalizeFirstLetter(d.w.long)}: ${medida.cifra(d.avg)} en promedio`;
       plot.appendChild(bar);
 
       // Solo se rotulan los extremos: un número sobre cada barra es ruido.
@@ -2237,7 +2489,8 @@
         const value = svg('text', {
           x: cx, y: y - 6, 'text-anchor': 'middle', class: 'bar-value',
         });
-        value.textContent = num(d.avg);
+        // Sin la unidad, que ya está en el tooltip: sobre la barra no entra.
+        value.textContent = medida.campo === 'pct' ? pct(d.avg) : num(d.avg);
         plot.appendChild(value);
       }
     });
@@ -2249,7 +2502,7 @@
   // ---- Barras horizontales: cumplimiento por tarea ---------------------
 
   function taskChart(days) {
-    const card = chartCard('Cumplimiento por tarea', 'Sobre la meta del mes completo');
+    const card = chartCard('Cumplimiento por tarea', 'Sobre lo que va del mes');
 
     const rows = currentTasks()
       .map(task => {
@@ -2302,23 +2555,42 @@
   }
 
   /**
+   * El armazón de una tarjeta: la caja, su tono y el rótulo de arriba. Lo que
+   * va debajo lo pone quien la arma — el par valor/subtítulo de `tile`, o los
+   * renglones por medida de `productividadTile`.
+   */
+  function tileBase(label, tone = '') {
+    const node = elem('div', tone ? `tile tone-${tone}` : 'tile');
+    node.appendChild(elem('p', 'tile-label', label));
+    return node;
+  }
+
+  /**
+   * Mete el contenido de una tarjeta —todo menos el rótulo— en una caja
+   * hundida, hermana de las subtarjetas de productividad. La caja se estira
+   * hasta llenar el alto que queda bajo el rótulo, así la tarjeta se lee con
+   * el mismo lenguaje que sus vecinas en lugar de como texto suelto.
+   *
+   * Se hace por fuera de `tile` y no con un parámetro más porque es una
+   * decisión de quien arma cada tarjeta, no del molde.
+   */
+  function enCaja(card) {
+    const caja = elem('div', 'tile-box');
+    // El rótulo es el primer hijo y se queda afuera; lo demás se muda.
+    while (card.children.length > 1) caja.appendChild(card.children[1]);
+    card.appendChild(caja);
+    return card;
+  }
+
+  /**
+   * Tarjeta de un solo dato: un valor grande y su explicación debajo.
+   *
    * @param sub texto suelto, o un arreglo que se lista con viñetas.
    *   Con un solo elemento se dibuja como texto: una viñeta sola queda rara.
    */
   function tile(label, value, sub, tone = '') {
-    const node = elem('div', tone ? `tile tone-${tone}` : 'tile');
-    node.innerHTML = '<p class="tile-label"></p><p class="tile-value"></p>';
-    node.querySelector('.tile-label').textContent = label;
-
-    // El valor también puede ser varios: van apilados y algo más chicos.
-    const values = Array.isArray(value) ? value : [value];
-    const valueEl = node.querySelector('.tile-value');
-    if (values.length > 1) {
-      valueEl.classList.add('is-stacked');
-      for (const v of values) valueEl.appendChild(elem('span', '', v));
-    } else {
-      valueEl.textContent = values[0];
-    }
+    const node = tileBase(label, tone);
+    node.appendChild(elem('p', 'tile-value', value));
 
     const items = (Array.isArray(sub) ? sub : [sub]).filter(Boolean);
 
@@ -2357,6 +2629,20 @@
     if (pick.checked) ui.selected.add(pick.dataset.taskId);
     else ui.selected.delete(pick.dataset.taskId);
     syncSelection();
+  });
+
+  /* Los gráficos se redibujan enteros en cada render, así que el botón que
+     cambia la medida no sobrevive a su propio clic: el listener va en el
+     contenedor, que sí es fijo. Después hay que devolver el foco al botón
+     nuevo, porque el que lo tenía dejó de existir. */
+  el.charts.addEventListener('click', e => {
+    if (!e.target.closest('[data-action="medida-diaria"]')) return;
+
+    const i = MEDIDAS.indexOf(medidaDiaria());
+    state.weekdayMode = MEDIDAS[(i + 1) % MEDIDAS.length].campo;
+    savePrefs();
+    renderCharts();
+    el.charts.querySelector('[data-action="medida-diaria"]')?.focus();
   });
 
   el.grid.addEventListener('click', e => {
