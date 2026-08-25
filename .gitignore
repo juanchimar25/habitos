@@ -4,5 +4,10 @@ node_modules/
 # Se copian una vez a los secretos de la Edge Function y el archivo se borra.
 vapid-secretos.txt
 
+# Estado local del CLI de Supabase: a qué proyecto está vinculada ESTA máquina
+# y qué versiones vio la última vez. Se regenera solo con `supabase link`, así
+# que versionarlo solo sirve para que cambie en cada commit.
+supabase/.temp/
+
 # Configuración local de Claude Code
 .claude/settings.local.json
