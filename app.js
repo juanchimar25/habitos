@@ -1810,13 +1810,12 @@
       tbody.appendChild(tr);
     });
 
-    tbody.appendChild(filaAgregar(days));
     frag.appendChild(tbody);
 
     // --- tfoot ---
     const tfoot = elem('tfoot');
     const frow = elem('tr');
-    frow.appendChild(th('Cumplimiento diario', 'col-task', 'row'));
+    frow.appendChild(celdaAlta());
 
     for (const d of days) {
       const td = elem('td', 'col-day');
@@ -1898,20 +1897,22 @@
   }
 
   /**
-   * Última fila del cuerpo: el alta, debajo de la última tarea.
+   * Esquina inferior izquierda: el alta, en el lugar que antes ocupaba el
+   * rótulo «Cumplimiento diario».
    *
    * Es el mismo alta que la entrada de «Opciones» —abren el mismo diálogo— y
    * ninguna reemplaza a la otra: esta queda al pie de la columna que va a
    * crecer, que es donde está la mano después de recorrer la lista.
    *
-   * No lleva `data-task-id`, así que todo lo que recorre las filas por tarea la
-   * saltea sola: el arrastre, la selección y el repintado de la columna de
-   * cumplimiento.
+   * El rótulo desaparece de la vista pero NO del árbol de accesibilidad: el
+   * `aria-label` sigue nombrando la fila, que es lo que un lector de pantalla
+   * anuncia antes de leer los porcentajes de cada día. Sin él, esa fila pasaría
+   * a llamarse «Agregar tarea», que es el botón y no la fila.
    */
-  function filaAgregar(days) {
-    const tr = elem('tr', 'add-row');
-
+  function celdaAlta() {
     const celda = th('', 'col-task', 'row');
+    celda.setAttribute('aria-label', 'Cumplimiento diario');
+
     /* `icon-btn` es la clase de las flechas que mueven el período: así el «+»
        mide exactamente lo mismo que ellas, sin repetir el número. */
     const btn = boton('btn btn-brand icon-btn add-task-btn', {
@@ -1920,16 +1921,9 @@
       label: 'Agregar tarea',
     });
     btn.addEventListener('click', () => openTaskDialog());
+
     celda.appendChild(btn);
-    tr.appendChild(celda);
-
-    /* Las celdas vacías mantienen la grilla. Sin ellas la fila tendría una sola
-       columna, y el ancho de la de tareas lo decidiría esta fila en vez del
-       encabezado. Es lo mismo que hace el pie. */
-    for (const _ of days) tr.appendChild(elem('td', 'col-day'));
-    tr.appendChild(elem('td', 'col-total'));
-
-    return tr;
+    return celda;
   }
 
   function th(text, className, scope) {
@@ -3607,7 +3601,7 @@
   /* Los accesos al alta que están en el HTML: la entrada de «Opciones» y el
      botón del estado vacío. El «+» del pie de la columna de tareas no entra
      acá —se dibuja en cada render y este listener corre una sola vez—: lo
-     conecta `filaAgregar`. */
+     conecta `celdaAlta`. */
   for (const btn of document.querySelectorAll('[data-add-task]')) {
     btn.addEventListener('click', () => openTaskDialog());
   }

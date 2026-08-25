@@ -1904,47 +1904,16 @@ tbody tr:hover .task-actions,
   border-top: 1px solid var(--border-strong);
   padding: .5rem .25rem;
 }
+/* Esquina inferior izquierda. Ya no lleva el rótulo «Cumplimiento diario»
+   —ahora vive en el `aria-label`, para los lectores de pantalla— sino el botón
+   de alta, al pie de la columna que va a crecer. */
 .grid tfoot .col-task {
   text-align: left;
-  padding-left: .85rem;
-  padding-right: .5rem;
-  font-size: .78rem;
-  font-weight: 620;
-  /* el rótulo es largo: puede caer a dos líneas en pantallas angostas */
-  line-height: 1.25;
-  color: var(--text-muted);
+  padding: .3rem .5rem .3rem .85rem;
   background: var(--bg-sunken);
 }
 .grid tfoot .col-total { background: var(--bg-sunken); }
 
-/* ---- fila del alta ----
-   Última del cuerpo, al pie de la columna que va a crecer. Es el mismo alta
-   que la entrada de «Opciones» y lleva su mismo relleno de marca, porque las
-   dos son la entrada a lo mismo.
-
-   No es una tarea: no se tiñe al pasar el mouse ni entra en las posturas de la
-   fila. */
-
-/* La fila se lee como UNA FRANJA y no como una hilera de celdas vacías: se le
-   sacan las líneas verticales —incluidas las dos gruesas que separan las
-   columnas fijas— y el fondo queda parejo de punta a punta. Las celdas de la
-   derecha están solo para sostener la grilla, y dibujarlas sería mostrar una
-   tabla donde no hay datos.
-
-   Se conservan los bordes de arriba y de abajo, que sí separan cosas
-   distintas: la última tarea y el pie de cumplimiento. */
-.grid tbody .add-row > * {
-  border-right: 0;
-  border-left: 0;
-  background: var(--bg-elev);
-}
-.grid tbody tr.add-row:hover > * { background: var(--bg-elev); }
-
-/* Mismo sangrado que `.task-cell`, para que el «+» arranque en la vertical de
-   los nombres de las tareas. */
-.grid tbody .add-row th.col-task {
-  padding: .35rem .5rem .35rem .85rem;
-}
 /* el cumplimiento global mantiene su color sobre el fondo del pie */
 .grid tfoot .compliance.cp-done    { background: var(--done-bg); }
 .grid tfoot .compliance.cp-partial { background: var(--partial-bg); }

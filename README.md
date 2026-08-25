@@ -258,7 +258,7 @@ clonado el repositorio. Cuando un cambio de markup es intencional, `npm run snap
 ### Casos de comportamiento
 
 Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue funcionando*. Son
-**725 comprobaciones** repartidas en veinte archivos, cada uno sobre una funcionalidad:
+**728 comprobaciones** repartidas en veinte archivos, cada uno sobre una funcionalidad:
 
 | Caso | Qué cubre |
 |---|---|
@@ -507,12 +507,14 @@ También se puede **arrastrar una tarea tomándola del nombre** para reordenarla
 | Dónde | Cuándo se usa |
 |---|---|
 | **+ Agregar tarea** | Primero del apartado *Tareas* del desplegable **Opciones** |
-| El **+** al pie de la columna *Tareas* | Última fila de la planilla, debajo de la última tarea: es donde está la mano después de recorrer la lista |
+| El **+** de la esquina inferior izquierda | Al pie de la columna *Tareas*: es donde está la mano después de recorrer la lista |
 | El botón de la pantalla de «sin tareas» | Cuando el mes está vacío y no hay planilla que dibujar |
 
 El **+** de la planilla lleva el mismo relleno de marca que *Opciones*, y mide lo mismo que las flechas que mueven el período porque comparte su clase `icon-btn` — no porque el número esté copiado. Va sangrado a la vertical de los nombres de las tareas.
 
-Su fila **se dibuja como una franja**: se le sacan las líneas verticales, incluidas las dos gruesas que separan las columnas fijas, y el fondo queda parejo de punta a punta. Las celdas de la derecha están solo para sostener la grilla, y dibujarlas sería mostrar una tabla donde no hay datos. Los bordes de arriba y de abajo se conservan, porque sí separan cosas distintas: la última tarea y el pie de cumplimiento. Su fila **no lleva `data-task-id`**, y eso es lo que hace que todo lo que recorre las filas por tarea la saltee solo: el arrastre, la selección múltiple y el repintado de la columna de cumplimiento. Las celdas de la derecha van vacías y solo sostienen la grilla — sin ellas el ancho de la columna de tareas lo decidiría esta fila en vez del encabezado.
+**No agrega ninguna fila:** ocupa la celda del pie que antes tenía el rótulo `Cumplimiento diario`. Así la planilla no crece y el botón queda igual de cerca de la última tarea.
+
+> Ese rótulo desaparece de la vista pero **no del árbol de accesibilidad**: sigue en el `aria-label` de la celda, que es lo que un lector de pantalla anuncia antes de leer los porcentajes de cada día. Sin él, esa fila pasaría a llamarse *«Agregar tarea»* — que es el botón, no la fila.
 
 ### Opciones del mes
 
@@ -533,7 +535,7 @@ Todo lo que se puede hacer sobre el mes vive en un botón **Opciones**, agrupado
 >
 > Es el mismo mecanismo que el desplegable de vista —cierra con `Esc`, con un clic afuera, y devuelve el foco al botón— y **abrir uno cierra al otro**.
 >
-> El relleno con el color de la marca pasó de *+ Agregar tarea* a **Opciones**: es la entrada a todas, y dejar el color adentro del menú lo escondía. El alta sigue siendo lo primero del primer apartado, y además tiene el **+** al pie de la columna de tareas y el botón de la pantalla de «sin tareas», así que dar de alta una tarea sigue estando a un clic — ver [Tareas](#tareas).
+> El relleno con el color de la marca pasó de *+ Agregar tarea* a **Opciones**: es la entrada a todas, y dejar el color adentro del menú lo escondía. El alta sigue siendo lo primero del primer apartado, y además tiene el **+** de la esquina inferior izquierda y el botón de la pantalla de «sin tareas», así que dar de alta una tarea sigue estando a un clic — ver [Tareas](#tareas).
 
 ### Posturas de la fila
 
@@ -602,7 +604,7 @@ Se ve con el mismo gris que los días que la frecuencia no pide, más un **guion
 
 Todas las celdas son clickeables, sin importar la frecuencia de la tarea. Los días que la frecuencia **no** pide llevan un tinte gris suave para distinguirlos de un vistazo: en una tarea *Lunes a viernes* son los fines de semana, en una *Personalizado* los días que no elegiste, y en las tareas *Semanal*, *Quincenal* y *Mensual* la fila entera —porque ningún día puntual es obligatorio, sirve cualquiera del período.
 
-El tinte de fin de semana se mantiene en el encabezado de días y en la fila `Cumplimiento diario`, como referencia de calendario.
+El tinte de fin de semana se mantiene en el encabezado de días y en la fila de cumplimiento del pie, como referencia de calendario.
 
 **El día de hoy se marca solo en el encabezado**, con la píldora del número. Antes su columna llevaba además un filete vertical del color de la marca a los dos lados, que competía con los colores de estado —que son los que hay que leer— y recortaba el verde o el rojo de cada celda. Saber qué día es hoy es contexto; qué se cumplió y qué no es el dato.
 
@@ -664,7 +666,7 @@ Por eso el guion de la columna `Estatus` tiene ahora **dos motivos distintos**, 
 | *El rango es solo una parte del período* | Una *Semanal* en el tramo del 1–2 de agosto |
 
 Empezar a mitad de período funciona igual: una tarea semanal que arranca el jueves 20 tiene 4 de los 7 días de esa semana, así que esa semana no le pide nada. Es la misma idea de siempre — empezar tarde reduce lo que se espera, no lo amontona.
-- **Por columna** (fila `Cumplimiento diario` al pie): cumplimiento de ese día, con el mismo símbolo y los mismos umbrales que la columna `Estatus` — el símbolo arriba y el porcentaje debajo.
+- **Por columna** (la fila del pie, cuya esquina izquierda ocupa el botón de alta): cumplimiento de ese día, con el mismo símbolo y los mismos umbrales que la columna `Estatus` — el símbolo arriba y el porcentaje debajo.
 
   El día cuenta **lo que pedía, más lo que hiciste sin que lo pidiera**. Cada una suma uno al techo:
 

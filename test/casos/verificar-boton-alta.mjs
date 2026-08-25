@@ -40,20 +40,34 @@ const ok = (n, cond, det = '') => {
     JSON.stringify(btn.textContent.trim()));
 }
 
-// --- 2. el «+» al pie de la columna de tareas -------------------------------
+// --- 2. el «+» en la esquina inferior izquierda -----------------------------
 {
-  /* Un segundo acceso al alta, al final de la columna que va a crecer. No
-     reemplaza al del desplegable: los dos abren el mismo diálogo. */
+  /* Un segundo acceso al alta, al pie de la columna que va a crecer. No
+     reemplaza al del desplegable: los dos abren el mismo diálogo.
+
+     Vive en la celda del pie que antes tenía el rótulo «Cumplimiento diario»,
+     así que no agrega ninguna fila a la planilla. */
   const { doc } = await montar(ESTADO_LLENO);
 
   const filas = [...doc.querySelectorAll('#grid tbody tr')];
   const conTarea = doc.querySelectorAll('#grid tbody tr[data-task-id]');
 
-  ok('hay una fila de alta', doc.querySelectorAll('#grid tbody .add-row').length === 1);
-  ok('y va última, debajo de todas las tareas',
-    filas.at(-1).classList.contains('add-row'), filas.at(-1).className);
-  ok('el resto son las tareas', filas.length === conTarea.length + 1,
+  ok('el cuerpo son solo las tareas', filas.length === conTarea.length,
     `${filas.length} filas · ${conTarea.length} con tarea`);
+
+  const celda = doc.querySelector('#grid tfoot .col-task');
+  ok('el botón va en la esquina del pie', Boolean(celda?.querySelector('.add-task-btn')));
+  ok('y ese es el único texto de la celda', celda.textContent.trim() === '+',
+    JSON.stringify(celda.textContent.trim()));
+
+  /* El rótulo desaparece de la vista pero no del árbol de accesibilidad: es lo
+     que un lector de pantalla anuncia antes de leer los porcentajes. Sin él, la
+     fila pasaría a llamarse «Agregar tarea», que es el botón y no la fila. */
+  ok('la fila conserva su nombre para lectores de pantalla',
+    celda.getAttribute('aria-label') === 'Cumplimiento diario',
+    celda.getAttribute('aria-label'));
+  ok('y sigue siendo el encabezado de su fila', celda.getAttribute('scope') === 'row',
+    celda.getAttribute('scope'));
 
   const btn = doc.querySelector('#grid .add-task-btn');
   ok('el botón dice «+»', btn?.textContent === '+', JSON.stringify(btn?.textContent));
@@ -72,14 +86,20 @@ const ok = (n, cond, det = '') => {
 
   /* La fila no lleva `data-task-id`: es lo que hace que todo lo que recorre las
      filas por tarea la saltee sola —el arrastre, la selección, el repintado. */
-  ok('la fila no se confunde con una tarea',
-    !filas.at(-1).hasAttribute('data-task-id'));
-
-  // La grilla no se descuadra: la fila tiene tantas celdas como las de arriba.
+  /* La grilla no se descuadra: el pie sigue teniendo tantas celdas como una
+     fila de tarea, porque la celda del rótulo se reusó en lugar de agregar
+     una. */
   const celdas = f => f.querySelectorAll('th, td').length;
-  ok('tiene la misma cantidad de celdas que una fila de tarea',
-    celdas(filas.at(-1)) === celdas(filas[0]),
-    `${celdas(filas.at(-1))} vs ${celdas(filas[0])}`);
+  const pie = doc.querySelector('#grid tfoot tr');
+  ok('el pie tiene tantas celdas como una fila de tarea',
+    celdas(pie) === celdas(filas[0]), `${celdas(pie)} vs ${celdas(filas[0])}`);
+
+  // Y la fila del pie conserva lo suyo: el porcentaje de cada día.
+  ok('los porcentajes por día siguen ahí',
+    doc.querySelectorAll('#grid tfoot .day-total').length > 0,
+    String(doc.querySelectorAll('#grid tfoot .day-total').length));
+  ok('y el total del rango en la otra esquina',
+    Boolean(doc.querySelector('#grid tfoot .grand-total')));
 
   doc.querySelector('#grid .add-task-btn').click();
   ok('y abre el alta', doc.querySelector('#task-dialog').hasAttribute('open'));
@@ -87,8 +107,8 @@ const ok = (n, cond, det = '') => {
 {
   // Sin tareas no hay tabla: ahí el acceso es el botón del estado vacío.
   const { doc } = await montar(ESTADO_VACIO);
-  ok('sin tareas no se dibuja la fila',
-    doc.querySelectorAll('#grid tbody .add-row').length === 0);
+  ok('sin tareas no se dibuja la planilla',
+    doc.querySelector('#table-wrap').hidden === true);
 }
 
 // --- 3. abre el diálogo -----------------------------------------------------
