@@ -120,6 +120,18 @@ supabase secrets set VAPID_SUBJECT="mailto:tu-correo@ejemplo.com"
 
 > **La ventana del disparo va hacia adelante, no a los dos lados.** El cron corre cada cinco minutos, así que una ventana simétrica mediría diez —el doble— y **dos disparos seguidos caerían adentro: el recordatorio llegaría repetido**. Con la ventana hacia adelante cae exactamente uno, sea cual sea el minuto elegido. `npm run check` lo comprueba simulando los 288 disparos de un día sobre cuatro combinaciones de hora y zona, incluida la que cruza la medianoche.
 
+### Cómo se ofrece
+
+La app lo **propone una vez por aparato**: una franja sobre la planilla que dice *«¿Te avisamos para completar el día?»* con dos botones. *Activar* pide el permiso, registra el dispositivo y lo deja andando a las 22 de un clic; *Ahora no* lo cierra y no vuelve a preguntar.
+
+Es una franja y no un diálogo a propósito: interrumpir la pantalla al abrir para pedir un permiso que nadie pidió es la forma más rápida de que lo rechacen **para siempre** —un permiso denegado no se puede volver a pedir desde la web—.
+
+Solo aparece cuando se puede aceptar: con soporte del navegador, con sesión, sin el permiso ya denegado y sin un recordatorio ya activo.
+
+> **Que se haya ofrecido se guarda por aparato**, junto al zoom y al tema, aunque parezca una decisión del usuario y no una preferencia de pantalla. Es a propósito: la suscripción al push también es por navegador, así que ofrecerlo de nuevo en el teléfono cuando se activó en la computadora es lo correcto — ahí todavía no está activo.
+
+**No se puede activar por todos desde la base.** Hace falta una suscripción en `push_subscriptions`, y esa solo la crea el navegador de cada persona al aceptar el permiso. Un `update ... set activo = true` dejaría a la función buscándolos todos los días para no mandarle nada a nadie, y en la base figurarían como activos. La hora sí se puede mover para quien nunca configuró nada — ver el final de [`db/notificaciones.sql`](db/notificaciones.sql).
+
 ### Lo que hay que saber antes de confiar en él
 
 - **El plan gratuito de Supabase pausa los proyectos inactivos.** Si el proyecto se pausa, el cron muere y los recordatorios **dejan de llegar sin avisar**, que es la peor forma de fallar para un recordatorio.
@@ -246,13 +258,13 @@ clonado el repositorio. Cuando un cambio de markup es intencional, `npm run snap
 ### Casos de comportamiento
 
 Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue funcionando*. Son
-**700 comprobaciones** repartidas en veinte archivos, cada uno sobre una funcionalidad:
+**725 comprobaciones** repartidas en veinte archivos, cada uno sobre una funcionalidad:
 
 | Caso | Qué cubre |
 |---|---|
 | `plantillas` | Fecha obligatoria, mes destino, duplicados |
 | `guardar-plantillas` | Guardar el mes como plantilla, borrarlas y el tope de cinco |
-| `recordatorio` | Cuándo se puede configurar el recordatorio diario, y qué se dice cuando no |
+| `recordatorio` | Cuándo se puede configurar el recordatorio, cuándo se ofrece solo, y qué se dice cuando no |
 | `tarea-fecha` | Alta y edición: valor por omisión, validación, no mudar de mes al editar |
 | `tope-100` | Ninguna tarea aporta más que su meta, y qué entra en el techo de cada día |
 | `periodos-parciales` | A un período partido por el borde del mes o de la vista se le pide solo la parte visible, y a un día que no transcurrió no se le pide nada |

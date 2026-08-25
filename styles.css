@@ -2102,6 +2102,59 @@ tbody tr:hover .task-actions,
   border-color: var(--missed-strong);
 }
 
+/* ---- ofrecimiento del recordatorio ----
+   Una franja sobre la planilla, no un diálogo: se ve, no tapa nada y se puede
+   ignorar. Aparece una sola vez por aparato.
+
+   Lleva el color de acento en el borde para separarse del resto sin gritar —
+   no informa un problema, ofrece algo. */
+.nudge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem 1rem;
+  margin-bottom: .7rem;
+  padding: .7rem .9rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Se lleva el espacio sobrante para que los botones queden a la derecha, y
+   `min-width` corta el crecimiento del flex: sin eso el texto largo empuja los
+   botones fuera de la caja en vez de envolver. */
+.nudge-texto { flex: 1 1 16rem; min-width: 0; }
+
+.nudge-titulo {
+  margin: 0;
+  font-size: .9rem;
+  font-weight: 620;
+  line-height: 1.3;
+}
+.nudge-detalle {
+  margin: .15rem 0 0;
+  font-size: .78rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.nudge-acciones {
+  display: flex;
+  gap: .4rem;
+  flex: none;
+}
+.nudge-acciones .btn { padding: .4rem .8rem; font-size: .82rem; }
+
+/* En pantallas angostas los botones pasan a ocupar el ancho: en un teléfono
+   son blancos que se apuntan con el dedo. */
+@media (max-width: 560px) {
+  .nudge-acciones { width: 100%; }
+  .nudge-acciones .btn { flex: 1; }
+}
+
 /* ---- recordatorio diario ----
    La hora, junto a la entrada del menú: se ve sin tener que abrir el diálogo,
    que es lo que uno va a chequear. `margin-left: auto` la manda al borde

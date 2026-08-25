@@ -536,7 +536,8 @@
               <li><strong>iPhone</strong>: en Safari, <em>Compartir</em> → <em>Agregar a inicio</em>.</li>
             </ul>
             <p>Sin conexión vas a poder ver y marcar todo: los cambios quedan guardados en el teléfono y se suben solos cuando vuelve internet. Lo único que necesita red es iniciar sesión la primera vez.</p>
-            <p>En el menú, <strong>🔔 Recordatorio diario</strong> programa una notificación a la hora que elijas para que no se te pase completar el día. Se activa por dispositivo: si lo querés en el teléfono y en la computadora, hay que activarlo en los dos. Desde ahí mismo se apaga.</p>
+            <p>El <strong>🔔 Recordatorio diario</strong> programa una notificación a la hora que elijas para que no se te pase completar el día. La primera vez, la app te lo ofrece con un aviso sobre la planilla; después queda en el menú, que es donde se cambia la hora o se apaga.</p>
+            <p>Se activa <strong>por dispositivo</strong>: si lo querés en el teléfono y en la computadora, hay que activarlo en los dos. La hora, en cambio, es una sola y vale para todos.</p>
           </div>
         </div>
 
@@ -556,6 +557,23 @@
         <p>El menú lateral también te permite navegar entre <strong>Diario</strong>, <strong>Análisis</strong> y esta guía.</p>
       </div>
     </section>
+
+    <!-- Se ofrece el recordatorio una sola vez por aparato. No es un diálogo:
+         interrumpir la pantalla al abrir para pedir algo que nadie pidió es la
+         forma más rápida de que el permiso se rechace para siempre. -->
+    <aside class="nudge" id="reminder-nudge" hidden>
+      <div class="nudge-texto">
+        <p class="nudge-titulo">¿Te avisamos para completar el día?</p>
+        <p class="nudge-detalle">
+          Una notificación a las 22, todos los días. Podés cambiar la hora
+          o apagarla cuando quieras.
+        </p>
+      </div>
+      <div class="nudge-acciones">
+        <button type="button" class="btn btn-brand" id="nudge-si">Activar</button>
+        <button type="button" class="btn btn-ghost" id="nudge-no">Ahora no</button>
+      </div>
+    </aside>
 
     <section class="board" id="board">
       <div class="table-wrap" id="table-wrap">
@@ -663,7 +681,7 @@
         <span class="field-label">Hora</span>
         <!-- De cinco en cinco: es cada cuánto corre el reloj del servidor.
              Ofrecer minutos sueltos prometería una precisión que no hay. -->
-        <input type="time" id="reminder-time" step="300" value="21:00" required>
+        <input type="time" id="reminder-time" step="300" value="22:00" required>
       </label>
 
       <p class="form-error" id="reminder-error" role="alert" hidden></p>

@@ -41,7 +41,7 @@ create table if not exists public.push_reminders (
   user_id     uuid primary key references auth.users (id) on delete cascade,
   activo      boolean not null default false,
   -- Hora LOCAL de quien lo configuró, no UTC: es lo que eligió en la app.
-  hora        time not null default '21:00',
+  hora        time not null default '22:00',
   -- Minutos que hay que sumarle a la hora local para llegar a UTC. Se guarda
   -- el desfase y no el nombre de la zona porque es lo que el navegador sabe
   -- decir sin ambigüedad (`getTimezoneOffset`), y alcanza para saber cuándo
@@ -180,6 +180,21 @@ union all
 select 'cron', jobname, active
   from cron.job
  where jobname = 'recordatorios-habitos';
+
+-- ---------- cambiar la hora que se propone -----------------------
+-- El `default` de la tabla solo alcanza a las filas NUEVAS. Para mover la hora
+-- de quienes ya tienen fila pero nunca activaron nada:
+--
+--    update public.push_reminders set hora = '22:00' where not activo;
+--
+-- El `where not activo` no está de adorno: a quien ya eligió su hora no se le
+-- toca. Cambiársela sería decidir por él algo que ya decidió.
+--
+-- Activar el recordatorio de otros por SQL no sirve: hace falta además una
+-- suscripción en `push_subscriptions`, y esa solo la crea el navegador de cada
+-- persona cuando acepta el permiso. Marcarlos activos sin suscripción deja a
+-- la función buscándolos todos los días para no mandarle nada a nadie. Por eso
+-- la app lo OFRECE —una vez por aparato— en vez de darlo por hecho.
 
 -- ---------- para cuando algo no llegue ---------------------------
 -- No hace falta ejecutarlo ahora. Es lo que conviene mirar, en este orden,

@@ -144,8 +144,8 @@ const ESTADO_VIEJO = {
   const g = guardado(window);
   ok('el guardado deja el estado completo',
     Object.keys(g).sort().join(',')
-      === 'complianceMode,controlsCollapsed,months,panels,removedTemplates,'
-        + 'status,templates,theme,weekdayMode,zoom',
+      === 'complianceMode,controlsCollapsed,months,panels,recordatorioOfrecido,'
+        + 'removedTemplates,status,templates,theme,weekdayMode,zoom',
     Object.keys(g).sort().join(','));
   ok('sin perder los meses', Object.keys(g.months).sort().join(',') === '2026-06,2026-07');
   ok('ni los estados previos', Object.keys(g.status).length >= 9,

@@ -253,6 +253,15 @@
     complianceMode: 'glyph',
     /** Qué miden las barras del análisis diario: 'tareas' | 'pct'. */
     weekdayMode: 'tareas',
+    /**
+     * Si ya se ofreció el recordatorio en ESTE aparato, se haya aceptado o no.
+     *
+     * Va con las preferencias de pantalla y no con los datos, aunque parezca
+     * una decisión del usuario: la suscripción al push es por navegador, así
+     * que ofrecerlo de nuevo en el teléfono cuando se activó en la computadora
+     * es lo correcto — ahí todavía no está activo.
+     */
+    recordatorioOfrecido: false,
     /** Densidad de la planilla en móvil: 'normal' | 'compacto' | 'comodo'. */
     zoom: 'normal',
     /** Controles del período plegados (solo tiene efecto en móvil). */
@@ -833,7 +842,8 @@
      anti-parpadeo de `index.html`, antes de que exista `app.js`. */
 
   const PREFS_KEY = 'tareas-diarias/prefs';
-  const CAMPOS_PREF = ['complianceMode', 'weekdayMode', 'zoom', 'controlsCollapsed', 'panels'];
+  const CAMPOS_PREF = ['complianceMode', 'weekdayMode', 'zoom', 'controlsCollapsed',
+    'panels', 'recordatorioOfrecido'];
 
   /** Guarda una preferencia. No toca la red: no hay nada que sincronizar. */
   function savePrefs() {
@@ -858,6 +868,9 @@
     }
     if (MEDIDAS.some(m => m.campo === prefs.weekdayMode)) state.weekdayMode = prefs.weekdayMode;
     if (ZOOM_LEVELS.some(z => z.id === prefs.zoom)) state.zoom = prefs.zoom;
+    if (typeof prefs.recordatorioOfrecido === 'boolean') {
+      state.recordatorioOfrecido = prefs.recordatorioOfrecido;
+    }
     if (typeof prefs.controlsCollapsed === 'boolean') {
       state.controlsCollapsed = prefs.controlsCollapsed;
     }
@@ -1258,6 +1271,7 @@
       weekdayMode: MEDIDAS.some(m => m.campo === data.weekdayMode) ? data.weekdayMode : 'tareas',
       zoom: ZOOM_LEVELS.some(z => z.id === data.zoom) ? data.zoom : 'normal',
       controlsCollapsed: data.controlsCollapsed === true,
+      recordatorioOfrecido: data.recordatorioOfrecido === true,
       panels: {
         tiles: data.panels?.tiles !== false,
         charts: data.panels?.charts !== false,
@@ -1583,6 +1597,9 @@
     charts: $('#charts'),
     templates: $('#btn-templates'),
     reminder: $('#btn-reminder'),
+    nudge: $('#reminder-nudge'),
+    nudgeSi: $('#nudge-si'),
+    nudgeNo: $('#nudge-no'),
     reminderBadge: $('#reminder-badge'),
     reminderDialog: $('#reminder-dialog'),
     reminderForm: $('#reminder-form'),
@@ -1649,6 +1666,7 @@
     el.controlsCenter.hidden = !onHome;
     el.monthBar.hidden = !onHome;
     el.board.hidden = !onHome;
+    renderNudge();
     el.legend.hidden = !onHome;
     el.analysis.hidden = onHome || onHelp;
     el.help.hidden = !onHelp;
@@ -4096,8 +4114,14 @@
   //  Acá vive la mitad del cliente: pedir permiso, suscribirse y guardar la
   //  preferencia. La otra mitad está en `supabase/functions/recordatorios/`.
 
+  /** A qué hora se propone avisar mientras nadie elija otra cosa. */
+  const HORA_POR_OMISION = '22:00';
+
   /** Preferencia tal como está en la base. `null` mientras no se leyó. */
   let recordatorio = null;
+
+  /** Ya se consultó la base. Evita repetir la lectura en cada render. */
+  let recordatorioLeido = false;
 
   const soportaPush = () => 'serviceWorker' in navigator
     && 'PushManager' in window
@@ -4147,7 +4171,7 @@
         .eq('user_id', currentUserId)
         .maybeSingle();
       if (error) throw error;
-      return data ?? { activo: false, hora: '21:00' };
+      return data ?? { activo: false, hora: HORA_POR_OMISION };
     } catch (err) {
       console.error('No se pudo leer el recordatorio', err);
       return null;
@@ -4237,7 +4261,7 @@
 
     el.reminderOn.checked = Boolean(recordatorio?.activo);
     // La hora viene de Postgres como `HH:MM:SS`; el campo quiere `HH:MM`.
-    el.reminderTime.value = String(recordatorio?.hora ?? '21:00').slice(0, 5);
+    el.reminderTime.value = String(recordatorio?.hora ?? HORA_POR_OMISION).slice(0, 5);
     syncRecordatorioForm();
 
     el.reminderDialog.showModal();
@@ -4286,6 +4310,93 @@
       el.reminderSave.textContent = rotulo;
     }
   });
+
+  // ---- El ofrecimiento, una sola vez por aparato -------------------------
+
+  /**
+   * Se ofrece cuando se puede aceptar y todavía no está resuelto: con soporte,
+   * con sesión, sin haberlo ofrecido antes acá, sin el permiso ya denegado y
+   * sin un recordatorio ya activo.
+   *
+   * Mientras `recordatorio` sea `null` no se muestra: es lo que se está
+   * leyendo de la base al arrancar, y ofrecer algo que quizás ya esté activo
+   * sería preguntar dos veces.
+   */
+  function puedeOfrecerRecordatorio() {
+    return !state.recordatorioOfrecido
+      && !motivoSinRecordatorio()
+      && recordatorio !== null
+      && !recordatorio.activo;
+  }
+
+  function renderNudge() {
+    /* Si todavía no se sabe qué hay guardado, se pide. El arranque ya lo
+       intenta, pero puede haber salido temprano —sin sesión resuelta, sin red—
+       y sin este reintento la insignia del menú quedaría vacía para siempre y
+       el recordatorio no se ofrecería nunca. Se intenta UNA vez: dispararlo en
+       cada render sería una consulta por cada clic de la planilla. */
+    if (!recordatorioLeido && !motivoSinRecordatorio()) void cargarRecordatorio();
+
+    el.nudge.hidden = !(ui.page === 'home' && puedeOfrecerRecordatorio());
+  }
+
+  /** Se ofreció y ya está: no se vuelve a preguntar en este aparato. */
+  function cerrarNudge() {
+    state.recordatorioOfrecido = true;
+    savePrefs();
+    renderNudge();
+  }
+
+  el.nudgeNo.addEventListener('click', cerrarNudge);
+
+  el.nudgeSi.addEventListener('click', async () => {
+    el.nudgeSi.disabled = true;
+    try {
+      /* El permiso se pide con el clic, que es el gesto que el navegador
+         exige y el momento en que la persona ya dijo que sí. */
+      const permiso = await Notification.requestPermission();
+      if (permiso !== 'granted') {
+        // Si lo rechaza, no se insiste: se cierra igual que con «Ahora no».
+        cerrarNudge();
+        toast('Sin permiso no se puede avisar. Se puede activar más tarde desde el menú.');
+        return;
+      }
+
+      await suscribirDispositivo();
+      await guardarRecordatorio(true, HORA_POR_OMISION);
+      cerrarNudge();
+      renderReminderBadge();
+      toast(`Listo: te avisamos a las ${HORA_POR_OMISION}`);
+    } catch (err) {
+      console.error('No se pudo activar el recordatorio', err);
+      toast('No se pudo activar. Probá desde el menú, en «Recordatorio diario».');
+    } finally {
+      el.nudgeSi.disabled = false;
+    }
+  });
+
+  /**
+   * Lee la preferencia al arrancar, sin bloquear nada.
+   *
+   * Sirve para dos cosas: decidir si ofrecer el recordatorio, y llenar la
+   * insignia del menú — que antes quedaba vacía hasta abrir el diálogo, aunque
+   * el recordatorio estuviera activo.
+   */
+  async function cargarRecordatorio() {
+    if (motivoSinRecordatorio() || recordatorioLeido) return;
+
+    // Se marca ANTES de la lectura: si no, los renders que ocurran durante el
+    // `await` dispararían una consulta cada uno.
+    recordatorioLeido = true;
+    recordatorio = await leerRecordatorio();
+
+    // Una lectura fallida no deja el intento hecho: se puede volver a probar
+    // en el próximo render, que es cuando la red pudo haber vuelto.
+    if (!recordatorio) recordatorioLeido = false;
+
+    renderReminderBadge();
+    renderNudge();
+  }
 
   /** La hora, junto a la entrada del menú, para no tener que abrir el diálogo. */
   function renderReminderBadge() {
@@ -4556,6 +4667,11 @@
       // Respeta la sección que pide la URL, así un enlace compartido abre donde
       // corresponde. `reemplazar` normaliza de paso el desvío de `404.html`.
       irA(pageDeUrl(), { reemplazar: true });
+
+      /* Sin `await`: la planilla ya está dibujada y esto solo decide si se
+         ofrece el recordatorio y qué dice la insignia del menú. Que tarde, o
+         que falle por falta de red, no puede demorar el arranque. */
+      void cargarRecordatorio();
     },
 
     /** Llamado al cerrar sesión: no queda nada del usuario anterior en memoria. */
