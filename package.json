@@ -7,8 +7,9 @@
     "test": "node test/snapshot.mjs comparar && node test/casos.mjs",
     "casos": "node test/casos.mjs",
     "snapshot": "node test/snapshot.mjs guardar",
-    "check": "node --check app.js && node --check auth.js && node --check config.js && node --check sw.js && node --check pwa.js && node test/codificacion.mjs && node test/csp.mjs && node test/pwa.mjs",
-    "iconos": "node tools/generar-iconos.mjs"
+    "check": "node --check app.js && node --check auth.js && node --check config.js && node --check sw.js && node --check pwa.js && node test/codificacion.mjs && node test/csp.mjs && node test/pwa.mjs && node test/vapid.mjs",
+    "iconos": "node tools/generar-iconos.mjs",
+    "vapid": "node tools/generar-vapid.mjs"
   },
   "devDependencies": {
     "jsdom": "^25.0.1"

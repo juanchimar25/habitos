@@ -128,5 +128,16 @@ ok('  ninguna deja el blanco fijo', conBlancoFijo.length === 0,
   }
 }
 
+/* --- y en el que se arma desde el JS -------------------------------------- */
+{
+  /* «Agregar» de cada ficha de plantilla no está en el HTML: lo dibuja
+     `templateCard`. Lleva el mismo relleno que «Opciones» porque las dos son
+     la entrada a lo mismo — sumar tareas al mes. */
+  const js = leer('app.js');
+  const clases = js.match(/boton\('([^']*tpl-add[^']*)'/)?.[1] ?? '';
+  ok('  Agregar de la plantilla lleva btn-brand', /\bbtn-brand\b/.test(clases), clases);
+  ok('  Agregar de la plantilla sin btn-primary', !/\bbtn-primary\b/.test(clases), clases);
+}
+
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');
 process.exit(fallos ? 1 : 0);

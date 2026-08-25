@@ -1,5 +1,9 @@
-/* El alta de tarea abre el apartado «Tareas» del desplegable de opciones, que
-   es lo primero que hay adentro. */
+/* Los tres accesos al alta de tarea, que abren el mismo diálogo:
+
+     · la entrada del apartado «Tareas» del desplegable de opciones, que es lo
+       primero que hay adentro;
+     · el «+» al pie de la columna de tareas, debajo de la última;
+     · el botón del estado vacío, cuando no hay ninguna. */
 import { montar } from '../harness.mjs';
 import { ESTADO_LLENO, ESTADO_VACIO } from '../escenarios.mjs';
 
@@ -36,18 +40,55 @@ const ok = (n, cond, det = '') => {
     JSON.stringify(btn.textContent.trim()));
 }
 
-// --- 2. ya no está dentro de la tabla ---------------------------------------
+// --- 2. el «+» al pie de la columna de tareas -------------------------------
 {
+  /* Un segundo acceso al alta, al final de la columna que va a crecer. No
+     reemplaza al del desplegable: los dos abren el mismo diálogo. */
   const { doc } = await montar(ESTADO_LLENO);
-  ok('no queda fila de alta en la grilla', doc.querySelectorAll('#grid .add-row').length === 0);
-  ok('ni ningún botón de alta en la grilla',
-    doc.querySelectorAll('#grid [data-add-task]').length === 0);
 
-  // El tbody debe tener exactamente una fila por tarea, sin la de relleno.
-  const filas = doc.querySelectorAll('#grid tbody tr');
+  const filas = [...doc.querySelectorAll('#grid tbody tr')];
   const conTarea = doc.querySelectorAll('#grid tbody tr[data-task-id]');
-  ok('el tbody solo tiene filas de tarea', filas.length === conTarea.length,
+
+  ok('hay una fila de alta', doc.querySelectorAll('#grid tbody .add-row').length === 1);
+  ok('y va última, debajo de todas las tareas',
+    filas.at(-1).classList.contains('add-row'), filas.at(-1).className);
+  ok('el resto son las tareas', filas.length === conTarea.length + 1,
     `${filas.length} filas · ${conTarea.length} con tarea`);
+
+  const btn = doc.querySelector('#grid .add-task-btn');
+  ok('el botón dice «+»', btn?.textContent === '+', JSON.stringify(btn?.textContent));
+  ok('con el mismo relleno que «Opciones»', btn?.classList.contains('btn-brand'),
+    btn?.className);
+
+  /* Mide lo mismo que las flechas que mueven el período porque comparte su
+     clase, no porque alguien haya copiado el número a mano. */
+  const flecha = doc.querySelector('#prev-range');
+  const medidas = n => [...n.classList].filter(c => c !== 'btn-brand' && c !== 'add-task-btn');
+  ok('y el ancho de las flechas de período',
+    medidas(btn).join(' ') === medidas(flecha).join(' '),
+    `${medidas(btn).join(' ')} vs ${medidas(flecha).join(' ')}`);
+  ok('y con nombre accesible, que el «+» solo no dice nada',
+    btn?.getAttribute('aria-label') === 'Agregar tarea', btn?.getAttribute('aria-label'));
+
+  /* La fila no lleva `data-task-id`: es lo que hace que todo lo que recorre las
+     filas por tarea la saltee sola —el arrastre, la selección, el repintado. */
+  ok('la fila no se confunde con una tarea',
+    !filas.at(-1).hasAttribute('data-task-id'));
+
+  // La grilla no se descuadra: la fila tiene tantas celdas como las de arriba.
+  const celdas = f => f.querySelectorAll('th, td').length;
+  ok('tiene la misma cantidad de celdas que una fila de tarea',
+    celdas(filas.at(-1)) === celdas(filas[0]),
+    `${celdas(filas.at(-1))} vs ${celdas(filas[0])}`);
+
+  doc.querySelector('#grid .add-task-btn').click();
+  ok('y abre el alta', doc.querySelector('#task-dialog').hasAttribute('open'));
+}
+{
+  // Sin tareas no hay tabla: ahí el acceso es el botón del estado vacío.
+  const { doc } = await montar(ESTADO_VACIO);
+  ok('sin tareas no se dibuja la fila',
+    doc.querySelectorAll('#grid tbody .add-row').length === 0);
 }
 
 // --- 3. abre el diálogo -----------------------------------------------------

@@ -583,7 +583,8 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .btn-danger:hover { filter: brightness(1.08); background: var(--danger); border-color: var(--danger); }
 
 /* Relleno con el color de la marca, para la acción principal de cada pantalla:
-   entrar y dar de alta una tarea.
+   entrar, abrir «Opciones» y agregar una plantilla al mes. Las dos últimas son
+   la entrada a lo mismo —sumar tareas—, así que se ven igual.
 
    Va acá, junto al resto de los modificadores, y NO en la sección de cada
    pantalla. `.btn` y un modificador tienen la misma especificidad —una clase—,
@@ -1915,6 +1916,35 @@ tbody tr:hover .task-actions,
   background: var(--bg-sunken);
 }
 .grid tfoot .col-total { background: var(--bg-sunken); }
+
+/* ---- fila del alta ----
+   Última del cuerpo, al pie de la columna que va a crecer. Es el mismo alta
+   que la entrada de «Opciones» y lleva su mismo relleno de marca, porque las
+   dos son la entrada a lo mismo.
+
+   No es una tarea: no se tiñe al pasar el mouse ni entra en las posturas de la
+   fila. */
+
+/* La fila se lee como UNA FRANJA y no como una hilera de celdas vacías: se le
+   sacan las líneas verticales —incluidas las dos gruesas que separan las
+   columnas fijas— y el fondo queda parejo de punta a punta. Las celdas de la
+   derecha están solo para sostener la grilla, y dibujarlas sería mostrar una
+   tabla donde no hay datos.
+
+   Se conservan los bordes de arriba y de abajo, que sí separan cosas
+   distintas: la última tarea y el pie de cumplimiento. */
+.grid tbody .add-row > * {
+  border-right: 0;
+  border-left: 0;
+  background: var(--bg-elev);
+}
+.grid tbody tr.add-row:hover > * { background: var(--bg-elev); }
+
+/* Mismo sangrado que `.task-cell`, para que el «+» arranque en la vertical de
+   los nombres de las tareas. */
+.grid tbody .add-row th.col-task {
+  padding: .35rem .5rem .35rem .85rem;
+}
 /* el cumplimiento global mantiene su color sobre el fondo del pie */
 .grid tfoot .compliance.cp-done    { background: var(--done-bg); }
 .grid tfoot .compliance.cp-partial { background: var(--partial-bg); }
@@ -2041,8 +2071,71 @@ tbody tr:hover .task-actions,
   justify-content: space-between;
   gap: .75rem;
 }
-.tpl-name { margin: 0; font-size: .95rem; font-weight: 650; }
-.tpl-add { padding: .35rem .8rem; font-size: .8rem; }
+/* El nombre se lleva el espacio sobrante y empuja los dos botones al borde,
+   así quedan alineados entre fichas por más que los nombres midan distinto. */
+.tpl-name { margin: 0; margin-right: auto; font-size: .95rem; font-weight: 650; }
+
+/* Los dos botones de la ficha comparten cuerpo, interlínea y padding vertical
+   para que midan LO MISMO DE ALTO. El ✕ heredaba las medidas de `.icon-btn`,
+   que está pensado para la barra de controles —34px de ancho y cuerpo 1rem— y
+   quedaba más alto que «Agregar». Las medidas van juntas a propósito: separarlas
+   es cómo se vuelven a desalinear. */
+.tpl-add,
+.tpl-del {
+  padding-block: .35rem;
+  font-size: .8rem;
+  line-height: 1.25;
+}
+.tpl-add { padding-inline: .8rem; }
+
+/* Borrar la plantilla. En gris y sin relleno: convive con «Agregar», que es
+   la acción de la ficha, y no puede competirle. El rojo aparece al apuntarlo
+   —y otra vez en el botón del diálogo que lo confirma. */
+.tpl-del {
+  flex: none;
+  width: 2rem;
+  padding-inline: 0;
+  color: var(--text-faint);
+}
+.tpl-del:hover {
+  color: var(--missed-strong);
+  border-color: var(--missed-strong);
+}
+
+/* ---- recordatorio diario ----
+   La hora, junto a la entrada del menú: se ve sin tener que abrir el diálogo,
+   que es lo que uno va a chequear. `margin-left: auto` la manda al borde
+   derecho sin tocar el `gap` del ícono y el rótulo. */
+.drawer-badge {
+  margin-left: auto;
+  padding: .1rem .4rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: .72rem;
+  font-weight: 620;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Casilla y rótulo en una línea, que es como se lee un interruptor. El resto
+   de los `.field` apila el rótulo sobre el control. */
+.field-check {
+  flex-direction: row;
+  align-items: center;
+  gap: .55rem;
+  cursor: pointer;
+}
+.field-check input { width: 1.05rem; height: 1.05rem; accent-color: var(--accent); }
+.field-check .field-label { cursor: pointer; }
+
+/* Aclaración al pie del encabezado de un diálogo: qué va a pasar, antes de
+   los campos. */
+.dialog-note {
+  margin: -.2rem 0 .2rem;
+  font-size: .8rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
 
 .tpl-desc {
   margin: .15rem 0 .6rem;

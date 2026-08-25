@@ -14,7 +14,7 @@ tareas-diarias/
 ├── auth.js      ← la sesión (Supabase Auth)
 ├── config.js    ← ⚠ acá van tus credenciales
 ├── manifest.webmanifest  ← se instala como app — ver «En el teléfono»
-├── sw.js                 ← el service worker: abre sin conexión
+├── sw.js                 ← el service worker: sin conexión y el recordatorio
 ├── pwa.js                ← lo registra
 ├── iconos/               ← PNG del launcher, generados por tools/
 ├── db/
@@ -65,6 +65,68 @@ tiene que devolver `index.html` en todas.
 
 Si `config.js` sigue con los valores de ejemplo, la pantalla de login lo dice en lugar de fallar
 en silencio.
+
+## Recordatorio diario
+
+Una **notificación del sistema** a la hora que elijas, todos los días: *«Recordá completar tu día»*. Se configura desde el menú lateral, en **🔔 Recordatorio diario**, y se apaga desde el mismo lugar.
+
+> **Por qué esto necesita un servidor.** Una web —aunque esté instalada como app— **no puede despertarse sola a una hora fija**. La API que servía para eso, *Notification Triggers*, fue un experimento de Chrome que se retiró y nunca se lanzó. Un `setTimeout` solo corre mientras la página está viva, así que con la app cerrada no hay nada que dispare.
+>
+> Por eso el aviso lo manda un servidor: una **Edge Function** que `pg_cron` dispara cada cinco minutos y que le manda un **Web Push** a quien le toque. Es la única forma de que suene con la app cerrada.
+
+La app es la única parte que **no** decide cuándo avisar: solo registra el dispositivo y guarda la hora.
+
+### Puesta en marcha
+
+Son cuatro pasos y **hay que hacerlos a mano**, en tu proyecto de Supabase.
+
+**1. Generar el par de claves VAPID.** Identifican a este servidor ante los servicios de push:
+
+```sh
+npm run vapid
+```
+
+Imprime dos claves. La **pública** va en [`config.js`](config.js) —es pública por diseño, como la anon key— y la **privada nunca al repositorio**: va como secreto de la Edge Function. Se generan **una sola vez**: regenerarlas invalida todas las suscripciones activas y cada persona tendría que volver a activar el recordatorio.
+
+**2. Crear las tablas y el reloj.** Copiar [`db/notificaciones.sql`](db/notificaciones.sql) entero en el *SQL Editor*. Antes de ejecutarlo hay que reemplazar `<PROYECTO>` y `<SERVICE_KEY>` en la definición del cron. Termina con una consulta que tiene que devolver **tres filas**; si devuelve menos, algo no quedó creado — y como con `app_state`, sin RLS la base rechaza todo.
+
+**3. Publicar la Edge Function** con sus secretos:
+
+```sh
+supabase functions deploy recordatorios
+supabase secrets set VAPID_PRIVATE_KEY="…"   # la privada del paso 1
+supabase secrets set VAPID_PUBLIC_KEY="…"    # la pública, la misma de config.js
+supabase secrets set VAPID_SUBJECT="mailto:tu-correo@ejemplo.com"
+```
+
+**4. Probar.** Activar el recordatorio en la app con una hora a cinco minutos de ahora, y mirar los logs de la función. Si algo falla, el diálogo de la app dice qué falta antes de dejar activarlo: navegador sin soporte, clave VAPID sin configurar, sesión cerrada o permiso bloqueado.
+
+### Cómo está armado
+
+| Pieza | Dónde |
+|---|---|
+| Genera el par VAPID | [`tools/generar-vapid.mjs`](tools/generar-vapid.mjs) — se autoverifica antes de imprimir |
+| Tablas, RLS y el cron | [`db/notificaciones.sql`](db/notificaciones.sql) |
+| Quién recibe el aviso y cuándo | [`supabase/functions/recordatorios/index.ts`](supabase/functions/recordatorios/index.ts) |
+| La firma y el cálculo de la hora | [`supabase/functions/recordatorios/vapid.mjs`](supabase/functions/recordatorios/vapid.mjs) |
+| Mostrar la notificación | `push` y `notificationclick` en [`sw.js`](sw.js) |
+| Permiso, suscripción y preferencia | Sección *Recordatorio diario* de [`app.js`](app.js) |
+
+**Son dos tablas porque son dos cosas distintas.** `push_subscriptions` es **por dispositivo** —cada navegador donde actives el recordatorio deja su endpoint, y podés tener el teléfono y la computadora—; `push_reminders` es **por usuario**: a qué hora querés que te avisen. Guardar la hora por dispositivo obligaría a configurarla en cada uno.
+
+**El push va sin contenido.** Mandar texto obliga a cifrar el cuerpo con la clave del navegador —ECDH, HKDF y AES-GCM—, y acá el texto es siempre el mismo. Sin payload, todo lo que hace falta es la firma VAPID, que son unas pocas líneas de `crypto.subtle`. El texto lo pone el service worker al recibirlo. Las claves de cifrado se guardan igual, para que mandar texto variable más adelante no obligue a que todos vuelvan a suscribirse.
+
+**La hora se guarda en local, con el desfase aparte.** Es la que ves en tu reloj; el servidor la lleva a UTC con `utc_offset`. Ese desfase **se reescribe en cada guardado**, así que si viajás o entra el horario de verano, el aviso sigue llegando a la hora que elegiste.
+
+> **La ventana del disparo va hacia adelante, no a los dos lados.** El cron corre cada cinco minutos, así que una ventana simétrica mediría diez —el doble— y **dos disparos seguidos caerían adentro: el recordatorio llegaría repetido**. Con la ventana hacia adelante cae exactamente uno, sea cual sea el minuto elegido. `npm run check` lo comprueba simulando los 288 disparos de un día sobre cuatro combinaciones de hora y zona, incluida la que cruza la medianoche.
+
+### Lo que hay que saber antes de confiar en él
+
+- **El plan gratuito de Supabase pausa los proyectos inactivos.** Si el proyecto se pausa, el cron muere y los recordatorios **dejan de llegar sin avisar**, que es la peor forma de fallar para un recordatorio.
+- **La suscripción es por dispositivo.** Activarlo en el teléfono no lo activa en la computadora.
+- **En iPhone hay que instalar la app primero.** Safari solo admite notificaciones en webs agregadas a la pantalla de inicio.
+- **Desactivarlo no borra la suscripción del dispositivo**, a propósito: volver a activarlo no vuelve a pedir permiso, y un permiso que se pide dos veces es un permiso que se niega.
+- El permiso se pide **recién al activar**, nunca al abrir la app. Pedirlo de entrada es la forma más rápida de que lo rechacen para siempre.
 
 ## En el teléfono
 
@@ -146,7 +208,7 @@ para las pruebas, y nada de `node_modules` llega al navegador.
 
 ```sh
 npm ci            # instala exactamente lo del package-lock.json
-npm run check     # sintaxis, codificación, CSP y PWA al día
+npm run check     # sintaxis, codificación, CSP, PWA y firma del push
 npm test          # snapshots del DOM + casos de comportamiento
 npm run casos     # solo los casos; acepta filtros: npm run casos -- zoom plegado
 npm run snapshot  # regraba la referencia (solo si el cambio es intencional)
@@ -184,11 +246,13 @@ clonado el repositorio. Cuando un cambio de markup es intencional, `npm run snap
 ### Casos de comportamiento
 
 Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue funcionando*. Son
-**623 comprobaciones** repartidas en dieciocho archivos, cada uno sobre una funcionalidad:
+**700 comprobaciones** repartidas en veinte archivos, cada uno sobre una funcionalidad:
 
 | Caso | Qué cubre |
 |---|---|
 | `plantillas` | Fecha obligatoria, mes destino, duplicados |
+| `guardar-plantillas` | Guardar el mes como plantilla, borrarlas y el tope de cinco |
+| `recordatorio` | Cuándo se puede configurar el recordatorio diario, y qué se dice cuando no |
 | `tarea-fecha` | Alta y edición: valor por omisión, validación, no mudar de mes al editar |
 | `tope-100` | Ninguna tarea aporta más que su meta, y qué entra en el techo de cada día |
 | `periodos-parciales` | A un período partido por el borde del mes o de la vista se le pide solo la parte visible, y a un día que no transcurrió no se le pide nada |
@@ -196,7 +260,7 @@ Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue f
 | `ir-a` | Los dos calendarios: el nombre del mes y «Ir a…» |
 | `zoom` | Los tres niveles, alto de fila y ancho de columna uniformes, ancho para el nombre |
 | `plegado` | «Análisis» en el encabezado, el armazón de alto fijo y el plegado de controles |
-| `boton-alta` | El alta dentro del desplegable de opciones |
+| `boton-alta` | Los tres accesos al alta: el desplegable, el + de la planilla y el estado vacío |
 | `color-marca` | Los rellenos con el color de la marca y su contraste AA en ambos temas |
 | `vendor` | La app arranca con el cliente local y su `integrity` |
 | `red` | Qué primitivas de red toca el cliente real: ningún WebSocket |
@@ -209,7 +273,7 @@ Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue f
 
 Corren en **procesos separados** a propósito: cada uno instala su propio jsdom con reloj,
 almacenamiento y globals sustituidos, y compartir proceso haría que un caso viera el entorno del
-anterior. El costo es arrancar Node dieciocho veces; a cambio cada archivo se ejecuta a mano —
+anterior. El costo es arrancar Node veinte veces; a cambio cada archivo se ejecuta a mano —
 `node test/casos/verificar-zoom.mjs`—, que es como se depuran.
 
 > `sincronizacion` monta además un **reloj de temporizadores propio**, para no esperar de verdad
@@ -424,7 +488,19 @@ El tope no es solo de presentación: **cada tarea aporta como mucho su propia me
 
 **En reposo cada fila muestra solo el nombre, la frecuencia y ✎ para editarla.** Los casilleros y los chevrones **▲ ▼** aparecen recién al pedirlos, desde *Opciones* — ver [Posturas de la fila](#posturas-de-la-fila). El orden se guarda junto con los datos.
 
-También se puede **arrastrar una tarea tomándola del nombre** para reordenarla. Una línea de acento marca dónde va a caer según de qué lado del medio de la fila esté el puntero. La fila solo se vuelve arrastrable mientras el puntero apoya sobre el nombre: si no, arrastrar desde una celda de estado movería la tarea sin querer. Los chevrones siguen ahí porque el arrastre no funciona en pantallas táctiles. El alta vive en **+ Agregar tarea**, primero del apartado *Tareas* del desplegable **Opciones** (ver abajo). Para borrar se usa el casillero (ver abajo).
+También se puede **arrastrar una tarea tomándola del nombre** para reordenarla. Una línea de acento marca dónde va a caer según de qué lado del medio de la fila esté el puntero. La fila solo se vuelve arrastrable mientras el puntero apoya sobre el nombre: si no, arrastrar desde una celda de estado movería la tarea sin querer. Los chevrones siguen ahí porque el arrastre no funciona en pantallas táctiles. Para borrar se usa el casillero (ver abajo).
+
+**El alta tiene tres accesos**, que abren el mismo diálogo:
+
+| Dónde | Cuándo se usa |
+|---|---|
+| **+ Agregar tarea** | Primero del apartado *Tareas* del desplegable **Opciones** |
+| El **+** al pie de la columna *Tareas* | Última fila de la planilla, debajo de la última tarea: es donde está la mano después de recorrer la lista |
+| El botón de la pantalla de «sin tareas» | Cuando el mes está vacío y no hay planilla que dibujar |
+
+El **+** de la planilla lleva el mismo relleno de marca que *Opciones*, y mide lo mismo que las flechas que mueven el período porque comparte su clase `icon-btn` — no porque el número esté copiado. Va sangrado a la vertical de los nombres de las tareas.
+
+Su fila **se dibuja como una franja**: se le sacan las líneas verticales, incluidas las dos gruesas que separan las columnas fijas, y el fondo queda parejo de punta a punta. Las celdas de la derecha están solo para sostener la grilla, y dibujarlas sería mostrar una tabla donde no hay datos. Los bordes de arriba y de abajo se conservan, porque sí separan cosas distintas: la última tarea y el pie de cumplimiento. Su fila **no lleva `data-task-id`**, y eso es lo que hace que todo lo que recorre las filas por tarea la saltee solo: el arrastre, la selección múltiple y el repintado de la columna de cumplimiento. Las celdas de la derecha van vacías y solo sostienen la grilla — sin ellas el ancho de la columna de tareas lo decidiría esta fila en vez del encabezado.
 
 ### Opciones del mes
 
@@ -432,10 +508,12 @@ Todo lo que se puede hacer sobre el mes vive en un botón **Opciones**, agrupado
 
 | Apartado | Qué hay |
 |---|---|
-| **Tareas** | *+ Agregar tarea*, *Copiar tareas del mes anterior*, y las tres posturas: *Eliminar tareas*, *Resetear estados* y *Reordenar tareas* |
+| **Tareas** | *+ Agregar tarea*; las tres posturas —*Eliminar tareas*, *Reordenar tareas* y *Resetear estados*—; y al final *Copiar tareas del mes anterior* y *Guardar como plantilla* |
 | **Visualización** | El zoom de la planilla. Solo en móvil: en escritorio la planilla entra y el apartado entero no existe |
 
 > **Antes eran seis botones sueltos en una fila.** Agruparlos muestra una distinción que la fila plana no podía: ahí *Resetear estados* y *Copiar tareas del mes anterior* se leían como vecinos del mismo rango, cuando uno borra marcas y el otro reemplaza la lista entera.
+>
+> **El orden dentro del apartado también dice algo.** Arriba, el alta y las tres posturas: lo que se usa a diario y opera sobre las tareas que elegís. Abajo, separadas, las dos que trabajan sobre la **lista completa** del mes — una la reemplaza y la otra la guarda.
 >
 > Los íconos van en una **ranura de ancho fijo**: los glifos no miden lo mismo —un emoji es bastante más ancho que una flecha—, así que sin ranura cada renglón arrancaba su texto en un lugar distinto. Con ella quedan centrados en una columna y los siete rótulos empiezan en la misma vertical. El `+` del alta pasó a ser un ícono más, en vez de vivir dentro del texto.
 >
@@ -443,7 +521,7 @@ Todo lo que se puede hacer sobre el mes vive en un botón **Opciones**, agrupado
 >
 > Es el mismo mecanismo que el desplegable de vista —cierra con `Esc`, con un clic afuera, y devuelve el foco al botón— y **abrir uno cierra al otro**.
 >
-> El relleno con el color de la marca pasó de *+ Agregar tarea* a **Opciones**: es la entrada a todas, y dejar el color adentro del menú lo escondía. El alta sigue siendo lo primero del primer apartado, y la pantalla de «sin tareas» conserva su propio botón, así que dar de alta la primera tarea sigue estando a un clic.
+> El relleno con el color de la marca pasó de *+ Agregar tarea* a **Opciones**: es la entrada a todas, y dejar el color adentro del menú lo escondía. El alta sigue siendo lo primero del primer apartado, y además tiene el **+** al pie de la columna de tareas y el botón de la pantalla de «sin tareas», así que dar de alta una tarea sigue estando a un clic — ver [Tareas](#tareas).
 
 ### Posturas de la fila
 
@@ -647,6 +725,33 @@ El campo **no recuerda el valor anterior**: vuelve a hoy en cada apertura, así 
 Los nombres duplicados también se comparan contra el mes destino, no contra el visible.
 
 Las tareas de una plantilla se crean con ids nuevos, así que no arrastran estados de ningún lado.
+
+#### Guardar y borrar plantillas
+
+Además de las cuatro que trae la app, se pueden **guardar las tareas de un mes como plantilla propia**, desde *Opciones → 🔖 Guardar como plantilla*. Pide un nombre y guarda cada tarea con su frecuencia.
+
+Lo que **no** se guarda importa tanto como lo que sí:
+
+- El **id**, porque la plantilla crea tareas nuevas cada vez que se aplica. Si viajara, dos meses compartirían id y con él sus estados.
+- La **fecha de inicio**, porque la elige quien la aplica, en el campo del diálogo — igual que en las de fábrica.
+
+La **descripción se arma sola** (*«Guardada desde julio 2026»*): pedirla sería un campo más para algo que la app ya sabe, y de dónde salió una plantilla es justo lo que se olvida.
+
+**Para borrar**, cada ficha del diálogo de *Plantillas* tiene su **✕**. Pide confirmación nombrando la plantilla.
+
+##### El tope de cinco
+
+Se pueden tener **cinco plantillas en total, contando las de fábrica**. Con los cinco lugares tomados, la entrada de *Opciones* queda apagada y el tooltip dice por qué — igual que cuando el mes no tiene tareas que guardar, que es la otra razón para no poder.
+
+**Las de fábrica también se borran**, y eso es lo que le da sentido al límite: sin poder sacarlas, cuatro de los cinco lugares estarían tomados de entrada y guardar una propia sería casi siempre reemplazar la anterior. Borrás las que no usás y las reemplazás por las tuyas.
+
+> De una plantilla de fábrica borrada se guarda **su ausencia** —el id en `removedTemplates`— y no la lista completa. Copiar las cuatro al payload las congelaría en la versión que tuvieran el día que alguien tocó cualquier cosa, y dejarían de mejorar con la app. Un id que ya no exista en `TEMPLATES` se descarta al leer: si mañana se renombra o se quita una, su id no puede quedar marcado como borrado para siempre.
+>
+> **No hay vuelta atrás para las de fábrica.** Borrar las cuatro es definitivo; se recuperan creándolas a mano. El diálogo lo avisa antes de confirmar.
+
+Las plantillas propias son **datos tuyos**, no una preferencia de pantalla: van en el payload junto a las tareas y los estados, así que están en la computadora y en el teléfono, y entran en *Exportar* e *Importar*. Un estado guardado por la versión anterior abre igual — sin la clave, arranca con las cuatro de fábrica.
+
+Lo que llega de afuera se sanea con las mismas reglas: una plantilla sin tareas no describe nada y se descarta entera, los nombres repetidos se descartan sin distinguir mayúsculas, las frecuencias inventadas caen en *Diaria*, y un archivo con veinte plantillas se recorta al tope en vez de dejar la app en un estado que su propia interfaz no permite crear.
 
 Se cierra con el botón **✕**, con `Esc` o haciendo clic fuera. El selector de mes sigue visible en la sección de Análisis, porque las tarjetas son mensuales; el selector de vista y la navegación por semana/día solo aparecen en el Diario.
 

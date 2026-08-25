@@ -248,6 +248,14 @@
     </div>
 
     <div class="drawer-group">
+      <p class="drawer-label">Recordatorio</p>
+      <button type="button" id="btn-reminder" class="drawer-item">
+        <span class="drawer-icon" aria-hidden="true">🔔</span> Recordatorio diario
+        <span class="drawer-badge" id="reminder-badge" hidden></span>
+      </button>
+    </div>
+
+    <div class="drawer-group">
       <p class="drawer-label">Datos</p>
       <button type="button" id="btn-export" class="drawer-item">
         <span class="drawer-icon" aria-hidden="true">↓</span> Exportar
@@ -373,26 +381,37 @@
               <button type="button" class="view-opt" role="menuitem"
                       id="btn-add-task" data-add-task><span class="opt-icon"
                       aria-hidden="true">+</span> Agregar tarea</button>
-              <button type="button" class="view-opt" role="menuitem" id="btn-copy-prev">
-                <span class="opt-icon" aria-hidden="true">⧉</span> Copiar tareas del mes anterior
-              </button>
 
-              <!-- Los dos ponen la planilla en una postura: hacen aparecer en
+              <!-- Las tres ponen la planilla en una postura: hacen aparecer en
                    cada fila los controles de esa tarea —casilleros o chevrones—
-                   y se apagan solos al elegir el otro. Son `menuitemcheckbox`
-                   porque quedan marcados mientras la postura dura; en reposo
-                   las filas van limpias. -->
+                   y se apagan solas al elegir otra. Son `menuitemcheckbox`
+                   porque quedan marcadas mientras la postura dura; en reposo
+                   las filas van limpias.
+
+                   Van juntas y arriba de las dos que trabajan sobre la lista
+                   entera: son las que se usan a diario. -->
               <button type="button" class="view-opt" role="menuitemcheckbox"
                       aria-checked="false" id="btn-mode-delete">
                 <span class="opt-icon" aria-hidden="true">🗑</span> Eliminar tareas
               </button>
               <button type="button" class="view-opt" role="menuitemcheckbox"
+                      aria-checked="false" id="btn-mode-reorder">
+                <span class="opt-icon" aria-hidden="true">⇅</span> Reordenar tareas
+              </button>
+              <button type="button" class="view-opt" role="menuitemcheckbox"
                       aria-checked="false" id="btn-mode-reset">
                 <span class="opt-icon" aria-hidden="true">↺</span> Resetear estados
               </button>
-              <button type="button" class="view-opt" role="menuitemcheckbox"
-                      aria-checked="false" id="btn-mode-reorder">
-                <span class="opt-icon" aria-hidden="true">⇅</span> Reordenar tareas
+
+              <!-- Las dos de abajo operan sobre la lista COMPLETA del mes: una
+                   la reemplaza y la otra la guarda. -->
+              <button type="button" class="view-opt" role="menuitem" id="btn-copy-prev">
+                <span class="opt-icon" aria-hidden="true">⧉</span> Copiar tareas del mes anterior
+              </button>
+              <!-- Se apaga sin tareas que guardar y con los cinco lugares
+                   ocupados; el título dice cuál de las dos cosas pasa. -->
+              <button type="button" class="view-opt" role="menuitem" id="btn-save-template">
+                <span class="opt-icon" aria-hidden="true">🔖</span> Guardar como plantilla
               </button>
 
               <!-- La confirmación no vive acá: son los botones ✓ y ✕ de la
@@ -455,8 +474,10 @@
           <div>
             <h3>Administrar tareas</h3>
             <ul>
-              <li>Usá el botón <strong>+ Agregar tarea</strong> para crear nuevas tareas. La <strong>fecha de inicio</strong> viene con el día de hoy y define a qué mes va la tarea, sin importar en qué mes estés parado.</li>
+              <li>Para crear tareas usá el <strong>+</strong> que está al final de la columna <em>Tareas</em>, debajo de la última, o <strong>+ Agregar tarea</strong> dentro de <em>Opciones</em>: los dos abren lo mismo. La <strong>fecha de inicio</strong> viene con el día de hoy y define a qué mes va la tarea, sin importar en qué mes estés parado.</li>
               <li>La opción <strong>Plantillas</strong> dentro del menú permite agregar listas de tareas prediseñadas. Hay que indicar una <strong>fecha de inicio</strong>: las tareas arrancan ese día y se agregan al mes de esa fecha, sin importar en qué mes estés parado.</li>
+              <li>Con <strong>Guardar como plantilla</strong>, dentro de <em>Opciones</em>, las tareas del mes quedan guardadas como plantilla propia con su frecuencia. La fecha de inicio no se guarda: la elegís al aplicarla.</li>
+              <li>Para borrar una plantilla usá el <strong>✕</strong> de su ficha, en el diálogo de <em>Plantillas</em>. Se pueden tener <strong>hasta 5 en total</strong>, contando las que trae la app — y esas también se borran, así hacés lugar para las tuyas.</li>
               <li>Podés seleccionar varias tareas y luego <strong>Eliminar</strong> o <strong>Resetear estados</strong> en bloque.</li>
             </ul>
           </div>
@@ -515,6 +536,7 @@
               <li><strong>iPhone</strong>: en Safari, <em>Compartir</em> → <em>Agregar a inicio</em>.</li>
             </ul>
             <p>Sin conexión vas a poder ver y marcar todo: los cambios quedan guardados en el teléfono y se suben solos cuando vuelve internet. Lo único que necesita red es iniciar sesión la primera vez.</p>
+            <p>En el menú, <strong>🔔 Recordatorio diario</strong> programa una notificación a la hora que elijas para que no se te pase completar el día. Se activa por dispositivo: si lo querés en el teléfono y en la computadora, hay que activarlo en los dos. Desde ahí mismo se apaga.</p>
           </div>
         </div>
 
@@ -619,6 +641,58 @@
       <div class="dialog-actions">
         <button type="button" class="btn" data-close-dialog>Cancelar</button>
         <button type="submit" class="btn btn-primary" id="task-submit">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Recordatorio diario por notificación del sistema -->
+  <dialog id="reminder-dialog" class="dialog">
+    <form id="reminder-form" class="dialog-form" novalidate>
+      <h2>Recordatorio diario</h2>
+      <p class="dialog-note">
+        Una notificación del sistema, todos los días a la hora que elijas,
+        para que no se te pase completar el día.
+      </p>
+
+      <label class="field field-check">
+        <input type="checkbox" id="reminder-on">
+        <span class="field-label">Activar el recordatorio</span>
+      </label>
+
+      <label class="field" id="reminder-time-field">
+        <span class="field-label">Hora</span>
+        <!-- De cinco en cinco: es cada cuánto corre el reloj del servidor.
+             Ofrecer minutos sueltos prometería una precisión que no hay. -->
+        <input type="time" id="reminder-time" step="300" value="21:00" required>
+      </label>
+
+      <p class="form-error" id="reminder-error" role="alert" hidden></p>
+      <p class="field-hint" id="reminder-hint" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close-dialog>Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="reminder-save">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Guardar las tareas del mes como plantilla -->
+  <dialog id="save-template-dialog" class="dialog">
+    <form id="save-template-form" class="dialog-form" novalidate>
+      <h2 id="save-template-title">Guardar como plantilla</h2>
+      <p class="dialog-note" id="save-template-note"></p>
+
+      <label class="field">
+        <span class="field-label">Nombre</span>
+        <input type="text" id="save-template-name" maxlength="40" autocomplete="off"
+               placeholder="Ej: Mi rutina" required>
+      </label>
+
+      <p class="form-error" id="save-template-error" role="alert" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close-dialog>Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar</button>
       </div>
     </form>
   </dialog>

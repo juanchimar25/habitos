@@ -1,4 +1,8 @@
 node_modules/
 
+# Los comandos que imprime `npm run vapid`, con la clave privada del push.
+# Se copian una vez a los secretos de la Edge Function y el archivo se borra.
+vapid-secretos.txt
+
 # Configuración local de Claude Code
 .claude/settings.local.json

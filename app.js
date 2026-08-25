@@ -167,6 +167,16 @@
   ];
 
   /**
+   * Cuántas plantillas se pueden tener a la vez, contando las de fábrica.
+   *
+   * El tope es sobre el TOTAL y las de fábrica se pueden borrar: es lo que le
+   * da sentido al límite. Sin poder borrarlas, cuatro de los cinco lugares
+   * estarían tomados de entrada y guardar una propia sería casi siempre
+   * reemplazar la anterior.
+   */
+  const MAX_PLANTILLAS = 5;
+
+  /**
    * Niveles de zoom de la planilla, en el orden en que los cicla su botón.
    * Solo tienen efecto en móvil: el CSS los aplica dentro del breakpoint
    * angosto, que es donde el ancho escasea. `normal` es el punto de partida.
@@ -225,6 +235,20 @@
     months: /** @type {Record<string, Task[]>} */ ({}),
     /** Estados indexados por `taskId|YYYY-MM-DD`. */
     status: /** @type {Record<string, 'done'|'partial'|'missed'|'skip'>} */ ({}),
+    /**
+     * Plantillas guardadas por el usuario, con la misma forma que las de
+     * `TEMPLATES`. Son datos suyos —una lista de tareas que armó—, no una
+     * preferencia de pantalla, así que viajan a la base y salen en el archivo
+     * que exporta la app.
+     */
+    templates: /** @type {{id:string,name:string,description:string,tasks:object[]}[]} */ ([]),
+    /**
+     * Ids de las plantillas de fábrica que se borraron. Se guarda la ausencia y
+     * no la lista completa: copiar las cuatro de `TEMPLATES` al payload las
+     * congelaría en la versión que tenían el día que alguien tocó cualquier
+     * cosa, y dejarían de mejorar con la app.
+     */
+    removedTemplates: /** @type {string[]} */ ([]),
     /** Qué muestra la columna de estatus: 'glyph' | 'pct' | 'both' | 'none'. */
     complianceMode: 'glyph',
     /** Qué miden las barras del análisis diario: 'tareas' | 'pct'. */
@@ -1131,6 +1155,53 @@
     return earliestStatusDay(status)?.slice(0, 7) ?? null;
   }
 
+  /**
+   * Valida y sanea las plantillas guardadas por el usuario.
+   *
+   * Vienen del mismo lugar que todo lo demás —localStorage o un archivo
+   * importado—, así que pueden ser cualquier cosa. Una plantilla sin tareas no
+   * describe nada y se descarta entera.
+   *
+   * @param ocupadas cuántos lugares se llevan ya las de fábrica que siguen a la
+   *   vista. El tope de `MAX_PLANTILLAS` es sobre el total, así que un archivo
+   *   importado con veinte propias se recorta acá en vez de dejar la app en un
+   *   estado que su propia interfaz no permite crear.
+   */
+  function cleanTemplates(lista, ocupadas) {
+    const limpias = [];
+    const nombres = new Set();
+
+    for (const tpl of Array.isArray(lista) ? lista : []) {
+      if (limpias.length >= MAX_PLANTILLAS - ocupadas) break;
+      if (!tpl || typeof tpl.name !== 'string' || !tpl.name.trim()) continue;
+
+      const nombre = capitalizeFirstLetter(tpl.name.trim().slice(0, 40));
+      if (nombres.has(nombre.toLowerCase())) continue;
+
+      /* Las tareas se sanean con la misma función que las del mes y después se
+         devuelven a la forma de plantilla: sin id, sin fecha de inicio y sin
+         los campos que no aporten nada. Así una plantilla no puede traer una
+         frecuencia inventada ni una meta fuera de rango. */
+      const tasks = cleanTaskList(tpl.tasks).map(t => ({
+        name: t.name,
+        freq: t.freq,
+        ...(t.freq === 'custom' && t.customMode === 'count'
+          ? { target: t.target }
+          : t.freq === 'custom' ? { weekdays: t.weekdays } : {}),
+      }));
+      if (!tasks.length) continue;
+
+      nombres.add(nombre.toLowerCase());
+      limpias.push({
+        id: typeof tpl.id === 'string' && tpl.id ? tpl.id : newId(),
+        name: nombre,
+        description: typeof tpl.description === 'string' ? tpl.description.slice(0, 80) : '',
+        tasks,
+      });
+    }
+    return limpias;
+  }
+
   /** Valida y sanea datos que vienen de localStorage o de un archivo importado. */
   function normalize(data) {
     if (!data || typeof data !== 'object') throw new Error('Formato inválido');
@@ -1164,9 +1235,23 @@
     }
 
     const theme = data.theme === 'light' || data.theme === 'dark' ? data.theme : null;
+
+    /* Las de fábrica que no existen se descartan: si mañana se renombra o se
+       quita una de `TEMPLATES`, su id quedaría marcado como borrado para
+       siempre y nadie entendería por qué la plantilla nueva no aparece. */
+    const deFabrica = new Set(TEMPLATES.map(t => t.id));
+    /* El `Set` va ANTES de contar, no después: con el id repetido, la cuenta
+       de lugares libres daba de más y entraba una plantilla extra. */
+    const removedTemplates = [...new Set(
+      (Array.isArray(data.removedTemplates) ? data.removedTemplates : [])
+        .filter(id => deFabrica.has(id)),
+    )];
+
     return {
       months,
       status,
+      templates: cleanTemplates(data.templates, deFabrica.size - removedTemplates.length),
+      removedTemplates,
       complianceMode: CP_MODES.some(m => m.id === data.complianceMode)
         ? data.complianceMode
         : 'glyph',
@@ -1497,6 +1582,22 @@
     help: $('#help'),
     charts: $('#charts'),
     templates: $('#btn-templates'),
+    reminder: $('#btn-reminder'),
+    reminderBadge: $('#reminder-badge'),
+    reminderDialog: $('#reminder-dialog'),
+    reminderForm: $('#reminder-form'),
+    reminderOn: $('#reminder-on'),
+    reminderTime: $('#reminder-time'),
+    reminderTimeField: $('#reminder-time-field'),
+    reminderError: $('#reminder-error'),
+    reminderHint: $('#reminder-hint'),
+    reminderSave: $('#reminder-save'),
+    saveTemplate: $('#btn-save-template'),
+    saveTemplateDialog: $('#save-template-dialog'),
+    saveTemplateForm: $('#save-template-form'),
+    saveTemplateName: $('#save-template-name'),
+    saveTemplateNote: $('#save-template-note'),
+    saveTemplateError: $('#save-template-error'),
     templatesDialog: $('#templates-dialog'),
     templatesList: $('#templates-list'),
     templatesStart: $('#templates-start'),
@@ -1612,6 +1713,14 @@
       ? `${prevName} no tiene tareas para copiar`
       : `Reemplaza las tareas de este mes por las ${prevTasks.length} de ${prevName}`;
 
+    /* Dos razones distintas para no poder guardar, y el tooltip dice cuál: sin
+       tareas no hay qué guardar, y con los cinco lugares tomados hay que hacer
+       lugar antes. Un botón apagado sin decir por qué manda a adivinar. */
+    const motivo = motivoSinGuardar();
+    el.saveTemplate.disabled = Boolean(motivo);
+    el.saveTemplate.title = motivo
+      || `Guardar las ${currentTasks().length} tareas de ${labelDeMes()} como plantilla`;
+
     const sinTareas = currentTasks().length === 0;
 
     for (const [btn, modo, verbo] of [
@@ -1683,6 +1792,7 @@
       tbody.appendChild(tr);
     });
 
+    tbody.appendChild(filaAgregar(days));
     frag.appendChild(tbody);
 
     // --- tfoot ---
@@ -1767,6 +1877,41 @@
     el.modeOk.setAttribute('aria-label', rotulos[0]);
     el.modeCancel.title = rotulos[1];
     el.modeCancel.setAttribute('aria-label', rotulos[1]);
+  }
+
+  /**
+   * Última fila del cuerpo: el alta, debajo de la última tarea.
+   *
+   * Es el mismo alta que la entrada de «Opciones» —abren el mismo diálogo— y
+   * ninguna reemplaza a la otra: esta queda al pie de la columna que va a
+   * crecer, que es donde está la mano después de recorrer la lista.
+   *
+   * No lleva `data-task-id`, así que todo lo que recorre las filas por tarea la
+   * saltea sola: el arrastre, la selección y el repintado de la columna de
+   * cumplimiento.
+   */
+  function filaAgregar(days) {
+    const tr = elem('tr', 'add-row');
+
+    const celda = th('', 'col-task', 'row');
+    /* `icon-btn` es la clase de las flechas que mueven el período: así el «+»
+       mide exactamente lo mismo que ellas, sin repetir el número. */
+    const btn = boton('btn btn-brand icon-btn add-task-btn', {
+      text: '+',
+      title: 'Crear una tarea nueva (atajo: N)',
+      label: 'Agregar tarea',
+    });
+    btn.addEventListener('click', () => openTaskDialog());
+    celda.appendChild(btn);
+    tr.appendChild(celda);
+
+    /* Las celdas vacías mantienen la grilla. Sin ellas la fila tendría una sola
+       columna, y el ancho de la de tareas lo decidiría esta fila en vez del
+       encabezado. Es lo mismo que hace el pie. */
+    for (const _ of days) tr.appendChild(elem('td', 'col-day'));
+    tr.appendChild(elem('td', 'col-total'));
+
+    return tr;
   }
 
   function th(text, className, scope) {
@@ -3441,7 +3586,10 @@
     btn.addEventListener('click', () => btn.closest('dialog').close());
   }
 
-  // Los dos accesos al alta: el de la barra del mes y el del estado vacío.
+  /* Los accesos al alta que están en el HTML: la entrada de «Opciones» y el
+     botón del estado vacío. El «+» del pie de la columna de tareas no entra
+     acá —se dibuja en cada render y este listener corre una sola vez—: lo
+     conecta `filaAgregar`. */
   for (const btn of document.querySelectorAll('[data-add-task]')) {
     btn.addEventListener('click', () => openTaskDialog());
   }
@@ -3449,6 +3597,42 @@
   // ---------------------------------------------------------
   // Plantillas
   // ---------------------------------------------------------
+
+  /**
+   * Las plantillas a la vista: las de fábrica que siguen en pie, más las
+   * propias. Las de fábrica van primero porque son las que estaban desde el
+   * principio; las guardadas se agregan al final, en el orden en que se
+   * guardaron.
+   */
+  function plantillasVisibles() {
+    const borradas = new Set(state.removedTemplates);
+    return [
+      ...TEMPLATES.filter(t => !borradas.has(t.id)).map(t => ({ ...t, propia: false })),
+      ...state.templates.map(t => ({ ...t, propia: true })),
+    ];
+  }
+
+  function hayLugarParaPlantilla() {
+    return plantillasVisibles().length < MAX_PLANTILLAS;
+  }
+
+  /**
+   * Pasa las tareas de un mes a la forma de plantilla: nombre y frecuencia, y
+   * solo el campo que esa frecuencia usa.
+   *
+   * Lo que se descarta importa tanto como lo que se guarda. El `id` no va
+   * porque la plantilla crea tareas nuevas cada vez que se aplica —si viajara,
+   * dos meses compartirían id y sus estados—, y la fecha de inicio tampoco: la
+   * elige quien la aplica, en el campo del diálogo.
+   */
+  function tareasComoPlantilla(tasks) {
+    return tasks.map(t => ({
+      name: t.name,
+      freq: t.freq,
+      ...(isCountMode(t) ? { target: t.target }
+        : t.freq === 'custom' ? { weekdays: [...t.weekdays] } : {}),
+    }));
+  }
 
   function openTemplates() {
     /* Cada apertura vuelve a hoy. No recuerda la fecha anterior a propósito:
@@ -3461,7 +3645,7 @@
     el.templatesStart.value = dateKey(today);
 
     el.templatesList.innerHTML = '';
-    for (const tpl of TEMPLATES) el.templatesList.appendChild(templateCard(tpl));
+    for (const tpl of plantillasVisibles()) el.templatesList.appendChild(templateCard(tpl));
 
     syncTemplatesTarget();
     el.templatesDialog.showModal();
@@ -3539,16 +3723,131 @@
     return RE_DIA.test(valor) ? valor : null;
   }
 
+  /**
+   * Borra una plantilla. Las de fábrica no se pueden tocar —viven en una
+   * constante—, así que de esas se guarda el id en `removedTemplates` y se las
+   * saltea al listar; las propias se sacan de la lista.
+   */
+  function borrarPlantilla(tpl) {
+    confirmAction(
+      `Se va a borrar la plantilla «${tpl.name}».`,
+      () => {
+        if (tpl.propia) {
+          state.templates = state.templates.filter(t => t.id !== tpl.id);
+        } else if (!state.removedTemplates.includes(tpl.id)) {
+          state.removedTemplates = [...state.removedTemplates, tpl.id];
+        }
+        save();
+        // Borrar libera un lugar: la entrada de «Opciones» vuelve a encenderse.
+        render();
+
+        // El diálogo sigue abierto: se redibuja la lista sin cerrarlo.
+        el.templatesList.innerHTML = '';
+        for (const t of plantillasVisibles()) el.templatesList.appendChild(templateCard(t));
+        syncTemplatesTarget();
+        toast(`Plantilla «${tpl.name}» borrada`);
+      },
+      {
+        note: tpl.propia
+          ? 'Las tareas que ya agregaste desde ella no se tocan.'
+          : 'Es una de las que trae la app. Se puede volver a tener creándola a mano.',
+      },
+    );
+  }
+
+  // ---- Guardar el mes como plantilla -----------------------------------
+
+  /** Por qué no se puede guardar el mes visible, o `''` si sí se puede. */
+  function motivoSinGuardar() {
+    if (!currentTasks().length) return 'Este mes no tiene tareas para guardar';
+    if (!hayLugarParaPlantilla()) {
+      return `Ya hay ${MAX_PLANTILLAS} plantillas: borrá una para guardar otra`;
+    }
+    return '';
+  }
+
+  function openSaveTemplate() {
+    const cuantas = currentTasks().length;
+    el.saveTemplateNote.textContent =
+      `Se guardan las ${cuantas} tareas de ${labelDeMes()}, con su frecuencia. `
+      + 'La fecha de inicio no: la elegís al aplicarla.';
+
+    el.saveTemplateName.value = '';
+    mostrarErrorPlantilla('');
+    el.saveTemplateDialog.showModal();
+    el.saveTemplateName.focus();
+  }
+
+  function mostrarErrorPlantilla(texto) {
+    el.saveTemplateError.textContent = texto;
+    el.saveTemplateError.hidden = !texto;
+  }
+
+  el.saveTemplateForm.addEventListener('submit', e => {
+    e.preventDefault();
+
+    const nombre = capitalizeFirstLetter(el.saveTemplateName.value.trim().slice(0, 40));
+    if (!nombre) return mostrarErrorPlantilla('Poné un nombre para la plantilla.');
+
+    /* Se vuelve a mirar el lugar y las tareas: entre abrir el diálogo y
+       confirmar puede haber pasado cualquier cosa, y el que sobra es el caso
+       raro que deja el estado en algo que la interfaz no permite crear. */
+    const motivo = motivoSinGuardar();
+    if (motivo) return mostrarErrorPlantilla(`${motivo}.`);
+
+    const repetido = plantillasVisibles()
+      .some(t => t.name.toLowerCase() === nombre.toLowerCase());
+    if (repetido) return mostrarErrorPlantilla('Ya hay una plantilla con ese nombre.');
+
+    state.templates = [...state.templates, {
+      id: newId(),
+      name: nombre,
+      // La descripción se arma sola: pedirla sería un campo más para algo que
+      // la app sabe. Dice de dónde salió, que es lo que se olvida.
+      description: `Guardada desde ${labelDeMes()}`,
+      tasks: tareasComoPlantilla(currentTasks()),
+    }];
+    save();
+    // Redibuja para que «Guardar como plantilla» refleje el lugar que queda:
+    // con los cinco tomados tiene que quedar apagado.
+    render();
+
+    el.saveTemplateDialog.close();
+    toast(`Plantilla «${nombre}» guardada`);
+  });
+
+  // El desplegable se cierra solo al elegir: lo hace el listener de
+  // `#actions-options`, que cubre todo lo que abre un diálogo.
+  el.saveTemplate.addEventListener('click', openSaveTemplate);
+
   function templateCard(tpl) {
     const card = elem('article', 'tpl');
 
-    const add = boton('btn btn-primary tpl-add', { text: 'Agregar' });
+    /* Con el relleno de la marca, igual que «Opciones»: es la acción principal
+       de la ficha, y las dos son la entrada a lo mismo — sumar tareas al mes. */
+    const add = boton('btn btn-brand tpl-add', { text: 'Agregar' });
     add.addEventListener('click', () => applyTemplate(tpl));
 
-    const head = elem('header', 'tpl-head');
-    head.append(elem('h3', 'tpl-name', tpl.name), add);
+    /* Borrar vale para TODAS, también para las de fábrica: el tope es sobre el
+       total, así que sin poder sacarlas los cinco lugares estarían casi llenos
+       de entrada. Lo que se guarda de una de fábrica es su ausencia — ver
+       `removedTemplates`. */
+    const borrar = boton('btn icon-btn tpl-del', {
+      text: '✕',
+      title: `Borrar la plantilla «${tpl.name}»`,
+      label: `Borrar la plantilla ${tpl.name}`,
+    });
+    borrar.addEventListener('click', () => borrarPlantilla(tpl));
 
-    const desc = elem('p', 'tpl-desc', `${tpl.tasks.length} tareas · ${tpl.description}`);
+    const head = elem('header', 'tpl-head');
+    head.append(elem('h3', 'tpl-name', tpl.name), add, borrar);
+
+    // Una plantilla propia puede no traer descripción: ahí el renglón queda
+    // solo con la cuenta de tareas, en vez de terminar en un « · » suelto.
+    const desc = elem('p', 'tpl-desc', [
+      `${tpl.tasks.length} ${tpl.tasks.length === 1 ? 'tarea' : 'tareas'}`,
+      tpl.description,
+    ].filter(Boolean).join(' · '));
 
     const list = elem('ul', 'tpl-tasks');
     for (const item of tpl.tasks) {
@@ -3782,6 +4081,225 @@
   el.modeOk.addEventListener('click', confirmarPostura);
   el.modeCancel.addEventListener('click', cancelarPostura);
 
+
+  // ---------------------------------------------------------
+  // Recordatorio diario
+  // ---------------------------------------------------------
+  //  Una notificación del sistema a la hora elegida, todos los días.
+  //
+  //  El aviso lo manda un servidor —una Edge Function que dispara `pg_cron`
+  //  cada cinco minutos— y no la app: una página web, aunque esté instalada,
+  //  NO PUEDE DESPERTARSE SOLA a una hora fija. La API que servía para eso
+  //  (Notification Triggers) fue un experimento de Chrome que se retiró. Por
+  //  eso todo esto es una suscripción de Web Push y no un temporizador.
+  //
+  //  Acá vive la mitad del cliente: pedir permiso, suscribirse y guardar la
+  //  preferencia. La otra mitad está en `supabase/functions/recordatorios/`.
+
+  /** Preferencia tal como está en la base. `null` mientras no se leyó. */
+  let recordatorio = null;
+
+  const soportaPush = () => 'serviceWorker' in navigator
+    && 'PushManager' in window
+    && 'Notification' in window;
+
+  const clavePublica = () => {
+    const v = window.VAPID_PUBLIC_KEY;
+    return typeof v === 'string' && v && !v.startsWith('PEGAR') ? v : null;
+  };
+
+  /** base64url → Uint8Array, que es lo que pide `applicationServerKey`. */
+  function claveComoBytes(b64) {
+    const normal = b64.replace(/-/g, '+').replace(/_/g, '/');
+    const crudo = atob(normal.padEnd(normal.length + ((4 - (normal.length % 4)) % 4), '='));
+    return Uint8Array.from(crudo, c => c.charCodeAt(0));
+  }
+
+  /**
+   * Por qué no se puede usar el recordatorio, o `''` si sí se puede.
+   * Cada motivo se dice entero: «no disponible» a secas manda a adivinar.
+   */
+  function motivoSinRecordatorio() {
+    if (!soportaPush()) {
+      return 'Este navegador no admite notificaciones. En iPhone hay que '
+        + 'instalar la app desde Safari («Compartir → Agregar a inicio»).';
+    }
+    if (!clavePublica()) {
+      return 'Falta configurar la clave VAPID en config.js. '
+        + 'Se genera con «npm run vapid».';
+    }
+    if (!window.supabaseClient || !currentUserId) {
+      return 'Hay que iniciar sesión para programar el recordatorio.';
+    }
+    if (Notification.permission === 'denied') {
+      return 'Bloqueaste las notificaciones para este sitio. Hay que '
+        + 'habilitarlas desde los ajustes del navegador.';
+    }
+    return '';
+  }
+
+  async function leerRecordatorio() {
+    if (!window.supabaseClient || !currentUserId) return null;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('push_reminders')
+        .select('activo, hora')
+        .eq('user_id', currentUserId)
+        .maybeSingle();
+      if (error) throw error;
+      return data ?? { activo: false, hora: '21:00' };
+    } catch (err) {
+      console.error('No se pudo leer el recordatorio', err);
+      return null;
+    }
+  }
+
+  /**
+   * Registra este dispositivo para recibir push.
+   *
+   * La suscripción es POR NAVEGADOR: activar el recordatorio en el teléfono no
+   * lo activa en la computadora, y por eso la tabla guarda un endpoint por
+   * dispositivo mientras que la hora es una sola, del usuario.
+   */
+  async function suscribirDispositivo() {
+    const reg = await navigator.serviceWorker.ready;
+
+    /* `userVisibleOnly` es obligatorio en Chrome: promete que cada push va a
+       mostrar algo. Es también la razón por la que el service worker SIEMPRE
+       llama a `showNotification`. */
+    const sub = await reg.pushManager.getSubscription()
+      ?? await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: claveComoBytes(clavePublica()),
+      });
+
+    const json = sub.toJSON();
+    const { error } = await window.supabaseClient
+      .from('push_subscriptions')
+      .upsert({
+        user_id: currentUserId,
+        endpoint: sub.endpoint,
+        p256dh: json.keys?.p256dh ?? '',
+        auth: json.keys?.auth ?? '',
+      }, { onConflict: 'endpoint' });
+
+    if (error) throw error;
+  }
+
+  /**
+   * Guarda la preferencia. El desfase horario se reescribe SIEMPRE, no solo al
+   * activar: si la persona viaja o entra el horario de verano, la hora que ve
+   * en su reloj tiene que seguir siendo la que recibe.
+   */
+  async function guardarRecordatorio(activo, hora) {
+    const { error } = await window.supabaseClient
+      .from('push_reminders')
+      .upsert({
+        user_id: currentUserId,
+        activo,
+        hora,
+        utc_offset: new Date().getTimezoneOffset(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+
+    if (error) throw error;
+    recordatorio = { activo, hora };
+  }
+
+  function mostrarErrorRecordatorio(texto) {
+    el.reminderError.textContent = texto;
+    el.reminderError.hidden = !texto;
+  }
+
+  /** El campo de hora solo tiene sentido con el recordatorio activo. */
+  function syncRecordatorioForm() {
+    el.reminderTimeField.hidden = !el.reminderOn.checked;
+  }
+
+  el.reminderOn.addEventListener('change', syncRecordatorioForm);
+
+  async function openReminder() {
+    mostrarErrorRecordatorio('');
+    el.reminderHint.hidden = true;
+
+    const motivo = motivoSinRecordatorio();
+    el.reminderOn.disabled = Boolean(motivo);
+    el.reminderSave.disabled = Boolean(motivo);
+    if (motivo) mostrarErrorRecordatorio(motivo);
+
+    if (!motivo) {
+      recordatorio = await leerRecordatorio();
+      if (!recordatorio) {
+        mostrarErrorRecordatorio('No se pudo leer la configuración. Revisá la conexión.');
+        el.reminderSave.disabled = true;
+      }
+    }
+
+    el.reminderOn.checked = Boolean(recordatorio?.activo);
+    // La hora viene de Postgres como `HH:MM:SS`; el campo quiere `HH:MM`.
+    el.reminderTime.value = String(recordatorio?.hora ?? '21:00').slice(0, 5);
+    syncRecordatorioForm();
+
+    el.reminderDialog.showModal();
+  }
+
+  el.reminderForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    mostrarErrorRecordatorio('');
+
+    const activo = el.reminderOn.checked;
+    const hora = el.reminderTime.value;
+    if (activo && !/^\d{2}:\d{2}/.test(hora)) {
+      return mostrarErrorRecordatorio('Elegí una hora.');
+    }
+
+    el.reminderSave.disabled = true;
+    const rotulo = el.reminderSave.textContent;
+    el.reminderSave.textContent = 'Un momento…';
+
+    try {
+      if (activo) {
+        /* El permiso se pide RECIÉN ACÁ, cuando ya se sabe que la persona lo
+           quiere. Pedirlo al abrir la app es la forma más rápida de que lo
+           rechacen para siempre. */
+        const permiso = await Notification.requestPermission();
+        if (permiso !== 'granted') {
+          mostrarErrorRecordatorio(permiso === 'denied'
+            ? 'Bloqueaste las notificaciones. Hay que habilitarlas desde los ajustes del navegador.'
+            : 'Hace falta permitir las notificaciones para activar el recordatorio.');
+          return;
+        }
+        await suscribirDispositivo();
+      }
+
+      await guardarRecordatorio(activo, hora.slice(0, 5));
+      el.reminderDialog.close();
+      renderReminderBadge();
+      toast(activo
+        ? `Te vamos a recordar completar el día a las ${hora.slice(0, 5)}`
+        : 'Recordatorio desactivado');
+    } catch (err) {
+      console.error('No se pudo guardar el recordatorio', err);
+      mostrarErrorRecordatorio('No se pudo guardar. Revisá la conexión y probá de nuevo.');
+    } finally {
+      el.reminderSave.disabled = false;
+      el.reminderSave.textContent = rotulo;
+    }
+  });
+
+  /** La hora, junto a la entrada del menú, para no tener que abrir el diálogo. */
+  function renderReminderBadge() {
+    const activo = Boolean(recordatorio?.activo);
+    el.reminderBadge.textContent = activo
+      ? String(recordatorio.hora).slice(0, 5)
+      : '';
+    el.reminderBadge.hidden = !activo;
+  }
+
+  el.reminder.addEventListener('click', () => {
+    setDrawer(false);
+    void openReminder();
+  });
 
   // ---------------------------------------------------------
   // Exportar / importar

@@ -15,7 +15,7 @@
 
 /* Subir la versión invalida el caché entero. Hay que tocarla cuando cambie
    cualquiera de los archivos de abajo; `test/pwa.mjs` avisa si se olvidó. */
-const VERSION = 'habitos-v1';
+const VERSION = 'habitos-v3';
 
 /**
  * El armazón: lo mínimo para que la app dibuje algo estando sin red.
@@ -58,6 +58,50 @@ self.addEventListener('activate', evento => {
     const viejos = (await caches.keys()).filter(k => k !== VERSION);
     await Promise.all(viejos.map(k => caches.delete(k)));
     await self.clients.claim();
+  })());
+});
+
+/* ---- El recordatorio diario ------------------------------------------
+   El push llega SIN CONTENIDO: el texto es siempre el mismo y mandarlo
+   obligaría a cifrar el cuerpo con la clave del navegador. Lo pone acá.
+
+   `showNotification` no es opcional: la suscripción se pidió con
+   `userVisibleOnly`, y un push que no muestra nada hace que el navegador
+   revoque el permiso después de unas cuantas veces. */
+const AVISO = 'Recordá completar tu día';
+
+self.addEventListener('push', evento => {
+  evento.waitUntil(self.registration.showNotification('Hábitos', {
+    body: AVISO,
+    icon: 'iconos/icon-192.png',
+    badge: 'iconos/icon-192.png',
+    lang: 'es-AR',
+    // Reemplaza al aviso anterior en vez de apilarse: son el mismo recordatorio
+    // y despertarse con cinco notificaciones iguales no ayuda a nadie.
+    tag: 'recordatorio-diario',
+    renotify: true,
+  }));
+});
+
+self.addEventListener('notificationclick', evento => {
+  evento.notification.close();
+
+  evento.waitUntil((async () => {
+    const destino = new URL('diario', self.location.href).href;
+
+    /* Si la app ya está abierta se la trae al frente en vez de abrir otra
+       ventana: dos copias de la misma planilla se pisarían al guardar. */
+    const abiertas = await self.clients.matchAll({
+      type: 'window', includeUncontrolled: true,
+    });
+    for (const cliente of abiertas) {
+      if (cliente.url.startsWith(self.registration.scope)) {
+        await cliente.focus();
+        if ('navigate' in cliente) await cliente.navigate(destino);
+        return;
+      }
+    }
+    await self.clients.openWindow(destino);
   })());
 });
 

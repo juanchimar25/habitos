@@ -7,6 +7,10 @@
 # Scripts de base de datos: se ejecutan a mano en el SQL Editor de Supabase.
 db/
 
+# La Edge Function del recordatorio: corre en Supabase, no en el dominio.
+# Publicarla acá dejaría su código servido como archivo estático.
+supabase/
+
 # Pruebas: corren en local con `npm test`, el navegador no las necesita.
 test/
 

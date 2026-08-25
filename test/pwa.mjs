@@ -14,6 +14,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -137,7 +138,45 @@ if (!armazon) {
   }
 }
 
-// --- 4. la CSP deja pasar el manifest y el worker -------------------------
+// --- 4. la VERSION acompaña a los cambios del armazón --------------------
+//  El olvido clásico: se publica una versión nueva de la app y los navegadores
+//  que ya la tienen instalada siguen sirviendo el armazón viejo desde el caché,
+//  porque `VERSION` no cambió. No falla nada: simplemente la actualización no
+//  llega, y el síntoma aparece días después.
+//
+//  Esto lo compara contra el último commit: si cambió cualquier archivo que el
+//  service worker precachea, `VERSION` tiene que haber cambiado también.
+
+const git = (...args) => {
+  const r = spawnSync('git', args, { cwd: RAIZ, encoding: 'utf8' });
+  return r.status === 0 ? r.stdout.trim() : null;
+};
+
+// Sin git —un zip descargado, por ejemplo— no hay con qué comparar.
+if (git('rev-parse', 'HEAD')) {
+  const tocados = (git('diff', 'HEAD', '--name-only') ?? '')
+    .split('\n').map(l => l.trim()).filter(Boolean);
+
+  /* `./` no es un archivo; el resto del armazón sí, y `sw.js` entra aunque no
+     esté en su propia lista: cambiarlo también cambia lo que se sirve. */
+  const delArmazon = armazon
+    ? [...armazon.matchAll(/'([^']+)'/g)].map(m => m[1]).filter(r => r !== './')
+    : [];
+  const cambiados = tocados.filter(f => delArmazon.includes(f) || f === 'sw.js');
+
+  if (cambiados.length) {
+    const publicada = (git('show', 'HEAD:sw.js') ?? '').match(/const VERSION = '([^']+)'/)?.[1];
+    const actual = sw.match(/const VERSION = '([^']+)'/)?.[1];
+
+    if (publicada && publicada === actual) {
+      problemas.push(`cambió el armazón (${cambiados.join(', ')}) y VERSION sigue en`
+        + ` '${actual}'\n      los navegadores con la app instalada seguirían`
+        + ' sirviendo la copia vieja');
+    }
+  }
+}
+
+// --- 5. la CSP deja pasar el manifest y el worker -------------------------
 //  Con `default-src 'none'`, lo que no se nombra queda bloqueado: sin estas
 //  dos directivas el navegador rechaza el manifest y el registro, y la app
 //  deja de ser instalable sin que nada falle a la vista.
