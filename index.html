@@ -259,6 +259,20 @@
       </button>
     </div>
 
+    <!-- Lo de Pendientes: lo que se guardó y lo que se borró. Las dos son
+         listas aparte de la principal, que se visitan de vez en cuando. -->
+    <div class="drawer-group" id="grupo-pendientes" hidden>
+      <p class="drawer-label">Pendientes</p>
+
+      <button type="button" id="btn-pend-archivo" class="drawer-item">
+        <span class="drawer-icon" aria-hidden="true">🗄</span> Archivo
+      </button>
+
+      <button type="button" id="btn-pend-papelera" class="drawer-item">
+        <span class="drawer-icon" aria-hidden="true">🗑</span> Papelera
+      </button>
+    </div>
+
     <div class="drawer-group" id="grupo-tareas">
       <p class="drawer-label">Tareas</p>
 
@@ -277,7 +291,7 @@
            eligió, así que es donde se la busca. -->
       <details class="drawer-sub" id="grupo-masiva">
         <summary class="drawer-item" id="btn-masiva">
-          <span class="drawer-icon" aria-hidden="true">☑</span> Selección masiva
+          <span class="drawer-icon" aria-hidden="true">☑</span> Selección múltiple
         </summary>
 
         <button type="button" id="btn-mode-delete" class="drawer-item is-sub" aria-pressed="false">
@@ -510,7 +524,7 @@
             </ul>
             <p>Si dejaste de hacer algo pero no querés perder el historial, <strong>archivala</strong> en vez de eliminarla.</p>
             <p>Las archivadas se ven en <strong>☰ → Archivo</strong>, con la fecha desde la que lo están y un botón para <em>Desarchivar</em>.</p>
-            <p>Para hacerle lo mismo a varias tareas de una vez está <strong>☰ → Selección masiva</strong>: elegís <em>Eliminar</em>, <em>Archivar</em> o <em>Reordenar</em>, tildás en la lista y volvés al menú a tocar el <strong>✓</strong> (o el <strong>✕</strong> para salir sin hacer nada).</p>
+            <p>Para hacerle lo mismo a varias tareas de una vez está <strong>☰ → Selección múltiple</strong>: elegís <em>Eliminar</em>, <em>Archivar</em> o <em>Reordenar</em>, tildás en la lista y volvés al menú a tocar el <strong>✓</strong> (o el <strong>✕</strong> para salir sin hacer nada).</p>
           </div>
         </div>
 
@@ -518,7 +532,8 @@
           <span class="help-icon" aria-hidden="true">📈</span>
           <div>
             <h3>Análisis</h3>
-            <p>Arriba de todo, el <strong>Cumplimiento mensual</strong>: cuánto llevás hecho sobre lo que el mes te pide. Una cumplida suma un punto y una cumplida a medias, medio — la misma cuenta que el cumplimiento de cada día.</p>
+            <p>Arriba de todo, el <strong>Cumplimiento mensual</strong>: cuánto llevás hecho sobre lo que el mes te pide. Una cumplida suma un punto y una cumplida a medias, medio.</p>
+            <p>Suma <strong>todos</strong> los puntos del mes, sin topear cada tarea en su meta: si hacés de más en una, eso compensa lo que falta en otra. La barra de cada tarea, en cambio, sí topea en 100%, porque ahí la pregunta es si <em>esa</em> tarea se cumplió. El porcentaje del mes tampoco pasa de 100%.</p>
             <p>La sección de análisis tiene tres gráficos del mes que estés mirando. Se ve <strong>uno por vez</strong>: cuál, se elige en el <strong>☰</strong> de la línea del mes.</p>
             <ul>
               <li><strong>Puntos</strong>: una fila por tarea y un punto por día, del color de su estado. Sirve para ver rachas — dónde se cortó y cuántos días seguidos duró.</li>
@@ -526,8 +541,22 @@
               <li><strong>Barras</strong>: qué días de la semana rendís mejor, medido en <strong>cumplimiento</strong> —qué proporción de lo que ese día pedía se cumplió—. Cada columna va del color de su nivel, con una <strong>corona</strong> sobre el mejor día y una <strong>cruz</strong> sobre el peor.</li>
             </ul>
             <p>En <strong>Puntos</strong> y en <strong>Porcentajes</strong>, el botón que está a la derecha del mes abre un desplegable para cambiar el orden de las tareas: el predeterminado, de mayor a menor o de menor a mayor.</p>
+            <p>Cada uno se ordena por el número que muestra: <strong>Puntos</strong> por puntos —una cumplida vale uno y una a medias, medio— y <strong>Porcentajes</strong> por porcentaje. Si dos tareas tienen los mismos puntos, va primero la que con eso cumplió más de lo suyo.</p>
             <p>Se mide por cumplimiento y no por cantidad de tareas: contar tareas premiaría al día con más asignadas —el lunes gana por tener veinte, no por rendir mejor—; así, el domingo puede encabezar cumpliendo el 100% de las pocas que le tocan.</p>
             <p><strong>Barras</strong> necesita <strong>al menos 7 días de uso</strong> en el mes: es lo que tarda cada día de la semana en presentarse una vez. Con menos, no compararía promedios sino qué días cayeron dentro del tramo. Cuentan los días ya transcurridos desde tu primera marca cargada, así que un mes recién empezado muestra un aviso hasta llegar a siete.</p>
+          </div>
+        </div>
+
+        <div class="help-step">
+          <span class="help-icon" aria-hidden="true">⚙</span>
+          <div>
+            <h3>Tu cuenta</h3>
+            <p>En <strong>Ajustes</strong> están tu email y las dos maneras de salir:</p>
+            <ul>
+              <li><strong>Cerrar sesión</strong>: no borra nada, volvés a entrar cuando quieras.</li>
+              <li><strong>Eliminar cuenta</strong>: borra la cuenta y <strong>todo</strong> lo que cargaste —tareas de todos los meses, pendientes, plantillas y el recordatorio—. No se puede deshacer, así que te lo pregunta antes.</li>
+            </ul>
+            <p>Si querés guardar una copia por las dudas, <strong>☰ → Exportar</strong> baja un archivo con todo.</p>
           </div>
         </div>
 
@@ -535,15 +564,22 @@
           <span class="help-icon" aria-hidden="true">📓</span>
           <div>
             <h3>Pendientes</h3>
-            <p>Lo que hay que hacer <strong>una vez</strong>: sin frecuencia, sin puntaje y sin entrar en ningún cálculo. El <strong>+</strong> de la esquina agrega uno.</p>
+            <p><strong>Tareas pendientes</strong>: lo que hay que hacer <strong>una vez</strong>, sin frecuencia, sin puntaje y sin entrar en ningún cálculo. El <strong>+</strong> de la esquina agrega lo que la vista muestra —una tarea pendiente en <em>Lista</em> y en <em>Calendario</em>, una categoría en <em>Categorías</em>—.</p>
             <ul>
-              <li>Cada pendiente tiene <strong>tres estados</strong>: el botón de la derecha dice en cuál está —<em>Sin iniciar</em>, <em>En proceso</em>, <em>Finalizada</em>— y tocarlo pasa al siguiente.</li>
-              <li>La <strong>fecha de completado</strong> es opcional. Los que la tienen aparecen en el calendario; los que no, viven solo en la lista.</li>
-              <li>Con <strong>Nueva categoría</strong> armás dónde ordenarlos. Una categoría puede ir <em>dentro de</em> otra: hasta ahí llega el anidado.</li>
+              <li>Cada tarea pendiente tiene <strong>tres estados</strong>: el botón de la derecha dice en cuál está —<em>Sin iniciar</em>, <em>En proceso</em>, <em>Finalizada</em>— y tocarlo pasa al siguiente.</li>
+              <li>El <strong>lápiz</strong> de cada fila abre su edición y sus tres acciones —<strong>Eliminar</strong>, <strong>Reordenar</strong> y <strong>Archivar</strong>—, las mismas que las de una tarea o una categoría. Es el único lugar desde donde se edita.</li>
+              <li><strong>Reordenar</strong> lo sube o lo baja entre los de su misma categoría; el orden se ve en <strong>Categorías</strong>, porque <strong>Lista</strong> ordena por fecha. <strong>Archivar</strong> lo guarda en <strong>☰ → Archivo</strong>, junto a las categorías guardadas.</li>
+              <li>La <strong>fecha de completado</strong> es opcional. Las que la tienen aparecen en el calendario; las que no, viven solo en la lista.</li>
+              <li>Para armar <strong>categorías</strong>, el <strong>+</strong> desde la vista <em>Categorías</em>. Una categoría puede quedar suelta o ir <em>dentro de</em> otra —ahí es una subcategoría—, y hasta ahí llega el anidado.</li>
+              <li>El <strong>lápiz</strong> de cada categoría abre sus tres acciones, las mismas que las de una tarea: <strong>Eliminar</strong>, <strong>Reordenar</strong> —dos flechas que la suben o la bajan entre sus hermanas— y <strong>Archivar</strong>.</li>
+              <li><strong>Archivar</strong> guarda la categoría con todo lo suyo. Sale de la lista y del calendario, y queda en <strong>☰ → Archivo</strong>, de donde vuelve entera cuando quieras.</li>
+              <li>Lo que borres queda <strong>7 días</strong> en <strong>☰ → Papelera</strong>: restaurarlo lo devuelve a su lugar, y una categoría vuelve con su subcategoría y sus pendientes.</li>
               <li>Borrar una categoría <strong>no borra lo que tiene adentro</strong>: los pendientes quedan sin categoría y las subcategorías pasan a primer nivel.</li>
             </ul>
-            <p>Arriba del todo cambiás entre <strong>Lista</strong> —por categoría— y <strong>Calendario</strong> —por fecha—: son la misma lista mirada de dos maneras. Justo debajo aparece lo que le toca a cada vista: <strong>Nueva categoría</strong> en la lista, y el <strong>mes</strong> en el calendario —el mismo selector que usa Hábitos—.</p>
-            <p>En el calendario, <strong>tocar un día</strong> agrega un pendiente con esa fecha ya puesta, y <strong>arrastrar uno de un día a otro</strong> le cambia la fecha. Si preferís, la fecha también se cambia abriéndolo y editando el campo.</p>
+            <p>El <strong>☰</strong> de esta pantalla, a la izquierda del par de botones, guarda las dos listas aparte: el <strong>Archivo</strong> y la <strong>Papelera</strong>.</p>
+            <p>El botón de la <strong>derecha</strong> cambia el orden de lo que estás mirando: en <strong>Lista</strong>, entre <em>personalizado</em>, <em>por fecha</em> y <em>alfabético</em> —dentro de cada tarjeta de estado—; en <strong>Categorías</strong>, entre <em>personalizado</em>, alfabético y por cantidad de tareas. <em>Personalizado</em> es el orden que arman las flechas de <strong>Reordenar</strong>, y mover algo a mano lo elige solo. En el calendario no aparece: ahí el orden lo pone el almanaque.</p>
+            <p>Arriba del todo elegís cómo mirar lo mismo: <strong>Lista</strong> —tres tarjetas plegables, una por estado: <em>Sin iniciar</em>, <em>En proceso</em> y <em>Finalizada</em>—, <strong>Categorías</strong> —cada una con lo suyo adentro— y <strong>Calendario</strong> —el mes, con cada tarea en su día—. En el calendario aparece debajo el <strong>mes</strong>, el mismo selector que usa Hábitos.</p>
+            <p>En el calendario, <strong>tocar un día</strong> agrega una tarea con esa fecha ya puesta, y <strong>arrastrar una de un día a otro</strong> le cambia la fecha. Si preferís, la fecha también se cambia abriéndolo y editando el campo.</p>
           </div>
         </div>
 
@@ -587,16 +623,30 @@
          vista es un par de botones acá arriba y no dos secciones distintas. -->
     <section class="todos" id="todos" aria-label="Pendientes" hidden>
       <div class="pend-barra" id="pend-barra">
+        <!-- El ☰ de esta pantalla. Abre el MISMO cajón que el de Hábitos, con
+             lo suyo adentro: acá no hay línea de mes donde ponerlo —solo
+             aparece en el calendario—, así que vive en esta fila. -->
+        <button type="button" id="btn-pend-menu" class="btn icon-btn menu-btn"
+                aria-label="Abrir menú" title="Menú" aria-controls="drawer">☰</button>
+
         <div class="pend-vistas" role="group" aria-label="Cómo se ven los pendientes">
           <button type="button" class="pend-vista is-activa" id="btn-pend-lista"
                   data-vista="lista" aria-pressed="true">Lista</button>
+          <button type="button" class="pend-vista" id="btn-pend-categorias"
+                  data-vista="categorias" aria-pressed="false">Categorías</button>
           <button type="button" class="pend-vista" id="btn-pend-calendario"
                   data-vista="calendario" aria-pressed="false">Calendario</button>
         </div>
-        <!-- Las categorías se crean acá y no con el «+»: el «+» agrega lo que la
-             lista contiene, y una categoría es dónde va, no qué hay que hacer. -->
-        <button type="button" class="btn pend-nueva-cat" id="btn-pend-categoria">
-          Nueva categoría
+
+        <!-- Cambia el orden de lo que se está mirando. Solo en las dos vistas
+             que son listas: el calendario lo ordena el almanaque. -->
+        <button type="button" id="btn-pend-orden" class="btn icon-btn pend-orden"
+                aria-haspopup="dialog" hidden>
+          <!-- El mismo dibujo y la misma clase que el orden de Análisis: es el
+               mismo control en otra pantalla. -->
+          <svg class="orden-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M5 7.5h13M5 12h9M5 16.5h5"/>
+          </svg>
         </button>
       </div>
 
@@ -604,8 +654,8 @@
       <div class="pend-calendario" id="pend-calendario" hidden></div>
 
       <p class="pend-vacio" id="pend-vacio" hidden>
-        Todavía no hay nada anotado. El <strong>+</strong> de la esquina agrega el
-        primer pendiente, y <strong>Nueva categoría</strong> arma dónde ordenarlo.
+        Todavía no hay nada anotado. El <strong>+</strong> de la esquina agrega la
+        primera tarea pendiente, y en <strong>Categorías</strong> arma dónde ordenarla.
       </p>
     </section>
 
@@ -622,12 +672,19 @@
           <span class="settings-value" id="session-since">—</span>
         </div>
 
-        <!-- Contorno y no relleno rojo: cerrar sesión no destruye nada, se
-             vuelve a entrar. El color alcanza para que no se confunda con el
-             resto. -->
-        <button type="button" id="btn-sign-out" class="btn session-out">
-          Cerrar sesión
-        </button>
+        <!-- Las dos salidas, una al lado de la otra y bien distintas: cerrar
+             sesión no destruye nada y va en el color del texto; eliminar la
+             cuenta no tiene vuelta y se queda con el rojo. Las dos de contorno:
+             el relleno haría parecer principal a una acción que casi nunca se
+             usa. -->
+        <div class="session-acciones">
+          <button type="button" id="btn-sign-out" class="btn session-out">
+            Cerrar sesión
+          </button>
+          <button type="button" id="btn-delete-account" class="btn session-delete">
+            Eliminar cuenta
+          </button>
+        </div>
       </div>
 
       <div class="settings-card">
@@ -950,7 +1007,7 @@
 
       <label class="field">
         <span class="field-label">Nombre de la tarea</span>
-        <input type="text" id="task-name" maxlength="80" autocomplete="off" placeholder="Ej: Leer 20 minutos" required>
+        <input type="text" id="task-name" maxlength="35" autocomplete="off" placeholder="Ej: Leer 20 minutos" required>
       </label>
 
       <fieldset class="field">
@@ -1041,11 +1098,71 @@
   <!-- Recordatorio diario por notificación del sistema -->
   <!-- Alta y edición de un pendiente. Mismo formulario para las dos cosas: lo
        que cambia es el título, el rótulo del tilde y si aparece «Eliminar». -->
+  <!-- Lo guardado de Pendientes: las categorías con todo lo suyo y las tareas
+       sueltas. Mismo armado que el Archivo de Hábitos: tildar lo que vuelve y
+       un botón que lo devuelve a la lista. -->
+  <dialog id="pend-archivo-dialog" class="dialog dialog-wide">
+    <div class="dialog-form">
+      <button type="button" class="dialog-close" data-close-dialog
+              aria-label="Cerrar" title="Cerrar">✕</button>
+      <h2 id="pend-archivo-title" tabindex="-1">Archivo</h2>
+
+      <div class="arch-list" id="pend-archivo-list"></div>
+      <p class="arch-empty" id="pend-archivo-empty" hidden>
+        Ya no queda nada guardado.
+      </p>
+
+      <div class="dialog-actions archived-actions">
+        <button type="button" class="btn" id="pend-archivo-all">Seleccionar todas</button>
+        <button type="button" class="btn btn-brand" id="pend-archivo-undo" disabled>
+          Desarchivar
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Lo borrado de Pendientes, siete días. Igual que la papelera de las
+       tareas: se elige qué vuelve y vuelve como estaba. -->
+  <dialog id="pend-papelera-dialog" class="dialog dialog-wide">
+    <div class="dialog-form">
+      <button type="button" class="dialog-close" data-close-dialog
+              aria-label="Cerrar" title="Cerrar">✕</button>
+      <h2 id="pend-papelera-title" tabindex="-1">Papelera</h2>
+      <p class="dialog-note">
+        Lo que borraste en los últimos 7 días. Restaurar lo devuelve a su lugar,
+        y una categoría vuelve con lo que tenía adentro.
+      </p>
+
+      <div class="arch-list" id="pend-papelera-list"></div>
+      <p class="arch-empty" id="pend-papelera-empty" hidden>
+        Ya no queda nada por restaurar.
+      </p>
+
+      <div class="dialog-actions archived-actions">
+        <button type="button" class="btn" id="pend-papelera-all">Seleccionar todas</button>
+        <button type="button" class="btn btn-brand" id="pend-papelera-restore" disabled>
+          Restaurar
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Las opciones las pone `renderOrdenPendientes`: cambian según la vista, y
+       tenerlas en el marcado obligaría a esconder la mitad cada vez. -->
+  <dialog id="pend-orden-dialog" class="dialog">
+    <div class="dialog-form">
+      <button type="button" class="dialog-close" data-close-dialog
+              aria-label="Cerrar" title="Cerrar">✕</button>
+      <h2 id="pend-orden-title" tabindex="-1">Ordenar</h2>
+      <div class="orden-opciones" id="pend-orden-opciones"></div>
+    </div>
+  </dialog>
+
   <dialog id="pendiente-dialog" class="dialog">
     <form id="pendiente-form" class="dialog-form" novalidate>
       <button type="button" class="dialog-close" data-close-dialog
               aria-label="Cerrar" title="Cerrar">✕</button>
-      <h2 id="pendiente-dialog-title">Nuevo pendiente</h2>
+      <h2 id="pendiente-dialog-title">Nueva tarea pendiente</h2>
 
       <label class="field">
         <span class="field-label">Qué hay que hacer</span>
@@ -1076,13 +1193,28 @@
 
       <p class="form-error" id="pendiente-error" role="alert" hidden></p>
 
+      <!-- Las mismas tres acciones que en «Editar tarea» y en una categoría, en
+           el mismo orden: son las mismas tres decisiones. -->
       <div class="task-tools" id="pendiente-tools" hidden>
         <button type="button" class="btn task-tool" id="pendiente-delete">Eliminar</button>
+        <button type="button" class="btn task-tool" id="pendiente-reorder"
+                aria-pressed="false" aria-controls="pendiente-move">Reordenar</button>
+        <button type="button" class="btn task-tool" id="pendiente-archive">Archivar</button>
+      </div>
+
+      <!-- Lo sube o lo baja un lugar entre los de su misma categoría. Se aplica
+           en el acto, como en las tareas y en las categorías. -->
+      <div class="task-move" id="pendiente-move" hidden>
+        <button type="button" class="btn icon-btn" id="pendiente-move-up"
+                aria-label="Subir un lugar" title="Subir un lugar">▲</button>
+        <span class="task-move-pos" id="pendiente-move-pos" aria-live="polite"></span>
+        <button type="button" class="btn icon-btn" id="pendiente-move-down"
+                aria-label="Bajar un lugar" title="Bajar un lugar">▼</button>
       </div>
 
       <div class="dialog-actions">
         <button type="submit" class="btn btn-brand btn-ok" id="pendiente-submit"
-                title="Crear pendiente" aria-label="Crear pendiente">
+                title="Crear tarea pendiente" aria-label="Crear tarea pendiente">
           <svg class="ok-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M5 12.5l4.5 4.5L19 7"/>
           </svg>
@@ -1105,15 +1237,35 @@
                placeholder="Ej: Casa" required>
       </label>
 
+      <!-- Acá se decide si es una categoría suelta o una subcategoría: la
+           opción vacía la deja de primer nivel y elegir una la mete adentro. -->
       <label class="field">
         <span class="field-label">Dentro de</span>
         <select class="field-select" id="categoria-padre"></select>
+        <span class="field-hint">Sin elegir nada queda como categoría suelta.</span>
       </label>
 
       <p class="form-error" id="categoria-error" role="alert" hidden></p>
 
+      <!-- Las tres cosas que se le pueden hacer a una categoría, con el mismo
+           marcado y el mismo orden que «Editar tarea»: son las mismas tres
+           decisiones, y conviene que se busquen en el mismo lugar. -->
       <div class="task-tools" id="categoria-tools" hidden>
         <button type="button" class="btn task-tool" id="categoria-delete">Eliminar</button>
+        <button type="button" class="btn task-tool" id="categoria-reorder"
+                aria-pressed="false" aria-controls="categoria-move">Reordenar</button>
+        <button type="button" class="btn task-tool" id="categoria-archive">Archivar</button>
+      </div>
+
+      <!-- Sube o baja la categoría un lugar entre sus hermanas: las de primer
+           nivel entre las de primer nivel, y una subcategoría adentro de su
+           madre. Se aplica en el acto, como en las tareas. -->
+      <div class="task-move" id="categoria-move" hidden>
+        <button type="button" class="btn icon-btn" id="categoria-move-up"
+                aria-label="Subir un lugar" title="Subir un lugar">▲</button>
+        <span class="task-move-pos" id="categoria-move-pos" aria-live="polite"></span>
+        <button type="button" class="btn icon-btn" id="categoria-move-down"
+                aria-label="Bajar un lugar" title="Bajar un lugar">▼</button>
       </div>
 
       <div class="dialog-actions">

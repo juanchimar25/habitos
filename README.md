@@ -37,6 +37,15 @@ guarda tus tareas. El script termina con una consulta de comprobación que tiene
 **una fila**; si devuelve cero, la política de Row Level Security no quedó creada y la base va a
 rechazar todo, incluso al dueño de los datos.
 
+**2b. Habilitar la baja de cuenta.** Copiar [`db/eliminar-cuenta.sql`](db/eliminar-cuenta.sql) en el
+*SQL Editor* y ejecutarlo. Crea `eliminar_cuenta()`, la función que usa el botón **Eliminar cuenta**
+de Ajustes. Es opcional: sin ella la app funciona igual y el botón avisa que falta instalarla.
+
+**2c. Habilitar la sincronización incremental.** Copiar
+[`db/sincronizacion-incremental.sql`](db/sincronizacion-incremental.sql) en el *SQL Editor* y
+ejecutarlo. Crea `merge_app_state`, que mezcla los parches del lado de la base. También es
+opcional: sin ella la app sube el estado entero, como hacía antes.
+
 [`db/schema.sql`](db/schema.sql) es otra cosa: el esquema normalizado por tablas de la
 **etapa 3** de [`db/MIGRACION.md`](db/MIGRACION.md), que la app todavía no usa. No hace falta
 cargarlo para que funcione.
@@ -222,10 +231,11 @@ para las pruebas, y nada de `node_modules` llega al navegador.
 
 ```sh
 npm ci            # instala exactamente lo del package-lock.json
-npm run check     # sintaxis, codificación, CSP, PWA y firma del push
+npm run check     # sintaxis, nombres repetidos, codificación, CSP, PWA y firma del push
 npm test          # snapshots del DOM + casos de comportamiento
 npm run casos     # solo los casos; acepta filtros: npm run casos -- zoom plegado
 npm run snapshot  # regraba la referencia (solo si el cambio es intencional)
+npm run medir     # cronometra la app con distintos volúmenes de datos
 ```
 
 `npm ci` y no `npm install`: instala exactamente lo que fija el `package-lock.json`, sin volver a
@@ -297,6 +307,20 @@ anterior. El costo es arrancar Node veinte veces; a cambio cada archivo se ejecu
 Cuando un caso falla, el runner imprime su salida completa al final, después del resumen: no hay
 que buscarla entre la de los que pasaron.
 
+### Nombres repetidos
+
+[`test/declaraciones.mjs`](test/declaraciones.mjs) falla si un archivo declara **dos veces el mismo
+nombre en el mismo ámbito**. Para el lenguaje eso es legal —la segunda gana, en silencio—; en un
+archivo de miles de líneas es demoledor.
+
+No es un chequeo teórico: `moverPendiente(delta)`, escrita para las flechas de reordenar, pisó a
+`moverPendiente(id, fecha)`, que movía una tarea de día en el calendario. Arrastrar dejó de
+funcionar y `node --check` no dijo nada, porque no hay error de sintaxis. Lo agarraron las pruebas
+de comportamiento; esta guarda lo agarra antes y dice exactamente qué línea pisa a cuál.
+
+Es lo que un ámbito por archivo daría gratis, y está puesta justamente porque `app.js` todavía es
+uno solo.
+
 ## Código de terceros y CSP
 
 El cliente de Supabase se sirve **desde este mismo dominio**, en
@@ -366,7 +390,24 @@ contraseña nueva—, y en cada uno se muestran solo los campos que hacen falta.
 Para que el enlace vuelva a la app, su dirección tiene que estar declarada en Supabase →
 *Authentication → URL Configuration*. Si no está, el correo redirige al *Site URL* del proyecto.
 
-Al pie del menú lateral aparecen el **email de la sesión** y **Cerrar sesión**.
+En **Ajustes** aparecen el **email de la sesión**, desde cuándo sos miembro y las dos salidas:
+
+- **Cerrar sesión** — no destruye nada, se vuelve a entrar. Por eso va de contorno y no rellena.
+- **Eliminar cuenta** — borra al usuario y, con él, todo lo suyo. Va en rojo relleno, que en esta
+  app se guarda para lo que no tiene vuelta.
+
+La baja la hace `eliminar_cuenta()` en Supabase —ver [Puesta en marcha](#puesta-en-marcha)— y no el
+navegador: la clave anónima no puede tocar `auth.users`, y darle ese permiso al cliente sería darle
+el poder de borrar **cualquier** cuenta. La función es `security definer` con `search_path` fijo y
+adentro solo puede borrar una fila, la de `auth.uid()`. Todo lo demás se va con ella por
+`on delete cascade`: `app_state`, `push_subscriptions` y `push_reminders`.
+
+Del lado del navegador se borra también la copia local —incluida la copia **sin dueño**, que es la
+que adopta el próximo que inicie sesión en ese mismo navegador— y se recarga la página: con el
+usuario borrado, el cliente tiene en mano un token de alguien que ya no existe.
+
+Antes de borrar nada se pide confirmación, con el email a la vista y un recordatorio de que
+**☰ → Exportar** guarda una copia.
 
 Si ya tenías un diario cargado de antes de que existiera el login, la primera cuenta que entre
 lo adopta en lugar de empezar vacía.
@@ -406,6 +447,53 @@ En `localStorage` se escribe en el acto, en cada cambio. A la base **no**:
   recuperar la conexión y al volver a la pestaña. Antes el aviso quedaba en pantalla y no se
   volvía a intentar hasta recargar.
 - **Al irse de la pestaña se sube en el acto**, sin esperar el temporizador.
+- **Viaja solo lo que cambió.** Ver abajo.
+
+### Qué viaja en cada escritura
+
+Hasta acá cada escritura llevaba **el estado entero**. Con 24 tareas eso son unos 40 KB, y crece con
+el historial: cerca de 1 MB a los tres años, por cada tanda de clics. El tamaño no dependía de lo
+que hubieras cambiado sino de cuánto llevabas acumulado, que es exactamente al revés de lo que
+conviene.
+
+Ahora el cliente manda **un parche**: la diferencia entre el estado actual y lo último que la base
+confirmó tener. Marcar una celda son **34 bytes**, y siguen siendo 34 bytes con diez años de
+historial encima.
+
+El formato es [JSON Merge Patch (RFC 7386)](https://www.rfc-editor.org/rfc/rfc7386): las claves que
+cambian traen su valor nuevo, las que se borran traen `null`, y lo que no cambió no viaja. Del otro
+lado lo mezcla `merge_app_state`, una función SQL que hay que instalar una vez
+—[`db/sincronizacion-incremental.sql`](db/sincronizacion-incremental.sql)—.
+
+```js
+// desmarcar una celda y renombrar una tarea, en la misma tanda
+{ "status": { "t1|2026-08-05": null },
+  "months": { "2026-08": [ /* el mes entero: un arreglo se reemplaza, no se mezcla */ ] } }
+```
+
+> **La fila y el formato del payload no cambian.** Sigue siendo el mismo `jsonb` en `app_state`, así
+> que un cliente que todavía no se actualizó lo lee y lo escribe como siempre. Es lo que permite
+> hacer este cambio sin coordinar todos los dispositivos a la vez.
+
+Tres cosas que sostienen que el parche sea correcto:
+
+- **La sombra.** El cliente guarda en memoria lo último que la base confirmó tener y calcula contra
+  eso. Se llena al leer al abrir la app y en cada escritura exitosa.
+- **Sin sombra, va todo.** La primera escritura de una cuenta vacía, y cualquiera después de un
+  error, mandan el estado completo: tras un fallo no se sabe qué quedó del otro lado, y el volcado
+  entero es el camino que no depende de saberlo.
+- **Sin la función instalada, va todo.** Si `merge_app_state` no está, el cliente lo detecta en el
+  primer intento, vuelve al `upsert` de siempre y no insiste. Instalarla es un paso de puesta en
+  marcha, no un requisito.
+
+Un efecto lateral útil: como el parche se calcula contra lo que la base tiene *tal cual*, la primera
+escritura contra una fila vieja **la normaliza** —borra con `null` las claves de versiones
+anteriores— sin necesidad de una migración aparte.
+
+> **Lo que esto no resuelve.** Entre dos dispositivos sigue ganando el último que escribe, solo que
+> ahora pisa lo que tocó y no el estado entero: dos aparatos editando meses distintos ya no se
+> borran mutuamente. La mezcla fina por celda necesita una fila por marca, que es la
+> [etapa 3 de la migración](db/MIGRACION.md).
 
 Agrupar abre una ventana de hasta 800 ms con cambios guardados acá y todavía no en la base. Si la
 pestaña muere justo ahí —un cierre forzado, quedarse sin batería—, esos cambios quedan anotados en
@@ -498,7 +586,9 @@ La fecha de inicio no se escribe en la fila de la tarea para no alargarla; se ve
 
 Como marcar de más está permitido, **los puntos pueden superar la meta**: una tarea semanal marcada tres veces en una semana suma 3 contra una meta de 1. Pero **el cumplimiento topea en 100%** — cumplir es cumplir, y de ahí no se sube. Los números crudos siguen a la vista en el tooltip de la celda (*«3 sobre una meta de 1»*), así que hacer de más se ve igual sin inflar la medida.
 
-El tope no es solo de presentación: **cada tarea aporta como mucho su propia meta** a los promedios. Sin eso, hacer una tarea de lunes a viernes también el sábado compensaba el incumplimiento de otra tarea, y el total del rango subía sin que nada se hubiera cumplido mejor. Vale para el total del rango, para el gráfico de cumplimiento por tarea y para la comparación mensual.
+El tope no es solo de presentación: **cada tarea aporta como mucho su propia meta** al cumplimiento de un día. Sin eso, una tarea marcada de más levantaba sola la columna del día.
+
+> **El cumplimiento del MES no lleva ese tope.** Ahí se suman los puntos enteros: lo hecho de más en una tarea compensa lo que falta en otra, que es lo que se pidió expresamente. La pregunta que contesta ese número es cuánto se hizo en el mes contra cuánto se pedía, no si cada tarea por separado se cumplió — eso lo contesta la barra de cada una, que sí topea en 100%. El porcentaje del mes tampoco pasa de 100%: un cumplimiento del 130% no querría decir nada.
 
 **En reposo cada fila muestra solo el nombre, la frecuencia y ✎ para editarla.** Los casilleros y los chevrones **▲ ▼** aparecen recién al pedirlos, desde *Opciones* — ver [Posturas de la fila](#posturas-de-la-fila). El orden se guarda junto con los datos.
 
@@ -996,7 +1086,7 @@ En escritorio el botón **no existe**: ahí la planilla entra y no hay nada que 
 
 ## Pendientes
 
-Lo que hay que hacer **una vez**. No tiene frecuencia ni puntaje y **no entra en ningún cálculo**:
+**Tareas pendientes**: lo que hay que hacer **una vez**. No tiene frecuencia ni puntaje y **no entra en ningún cálculo**:
 ni en el cumplimiento del día, ni en el del mes, ni en los gráficos. Es la otra mitad de lo que se
 anota —lo que se repite va en Hábitos— y por eso vive en su propia sección y en su propia rama del
 estado (`state.pendientes`), no entre las tareas.
@@ -1009,6 +1099,13 @@ estado (`state.pendientes`), no entre las tareas.
 | Categoría | Dónde va, o ninguna |
 | Estado | `sin-iniciar`, `en-proceso` o `finalizada` |
 | Fecha de completado | Cuándo hay que hacerlo, o ninguna |
+
+El **lápiz** de cada fila es la única puerta a su edición —nombre, categoría, fecha— y a sus tres
+acciones, las mismas que las de una tarea o una categoría: **Eliminar**, **Reordenar** —entre los de
+su misma categoría; ese orden se ve en *Categorías*, porque *Lista* ordena por fecha— y
+**Archivar**, que lo guarda en ☰ → Archivo junto a las categorías guardadas. El nombre es el rótulo de la fila y no
+abre nada; en el **calendario** los pendientes son etiquetas que se arrastran, y editarlos sale de
+la lista.
 
 El **estado** se cambia tocando el botón del extremo derecho de la fila —donde la lista del día de
 Hábitos lleva el suyo—, que cicla los tres en orden y vuelve al
@@ -1031,6 +1128,22 @@ una que ya tiene subcategorías no puede mudarse adentro de otra.
 Lo que no está en ninguna categoría cae al final, bajo **Sin categoría** — un encabezado que no se
 edita ni se borra, porque no es una categoría más: es su ausencia.
 
+### Qué se le puede hacer a una categoría
+
+El **lápiz** de su encabezado es la única puerta, como en las tarjetas de Hábitos, y adentro están
+las mismas tres acciones que las de una tarea:
+
+- **Eliminar** — ver más abajo.
+- **Reordenar** — dos flechas que la mueven un lugar **entre sus hermanas**: las de primer nivel
+  entre las de primer nivel, y una subcategoría adentro de su madre. Cambiar de nivel es otra cosa,
+  y eso lo hace *Dentro de*. Se aplica en el acto, sin nada que confirmar después.
+- **Archivar** — la guarda con todo lo suyo. Sale de la lista y **del calendario** —archivar es
+  dejar de verlo, y verlo igual ahí sería archivar a medias— y pasa a **☰ → Archivo**. No pregunta
+  nada porque no pierde nada, y vuelve entera desde ahí o desde el mismo botón.
+
+> Una subcategoría guardada **con su madre** no se desarchiva sola: primero vuelve la madre. Si no,
+> quedaría suelta adentro de un bloque guardado.
+
 > **Borrar una categoría no borra lo que tiene adentro.** Los pendientes quedan sueltos y las
 > subcategorías pasan a primer nivel. Perder trabajo anotado por reordenar carpetas sería un precio
 > absurdo, y el aviso de confirmación lo dice antes de que pase.
@@ -1040,20 +1153,59 @@ una categoría cuyo padre no existe, o cuyo padre ya es subcategoría, **queda d
 vez de descartarse, y un pendiente que apunta a una categoría que no está queda suelto. Solo se
 tira lo que no se puede leer: sin nombre, sin id o con el id repetido.
 
-### Las dos vistas
+### El orden de cada vista
 
-Son la **misma lista** mirada de dos maneras, y por eso el cambio es un par de botones y no dos
+El botón de la derecha de la fila cambia el orden de lo que se está mirando, con las opciones que le
+tocan a cada vista —ordenan cosas distintas—. En el calendario no aparece: ahí ordena el almanaque.
+
+| Vista | Qué ofrece |
+|---|---|
+| **Lista** | *Personalizado*, *por fecha* o *alfabético*. El **estado manda siempre**, en el orden del avance: primero lo que no arrancó, después lo que está en curso y al final lo terminado, que ya no pide nada. Lo que se elige es cómo se desempata adentro de cada grupo. |
+| **Categorías** | *Personalizado*, *alfabético* o *por cantidad de tareas*, de la más cargada a la más vacía. |
+
+**Personalizado** es el orden del arreglo, que es el que mueven las flechas de *Reordenar*. Mover
+algo a mano **lo elige solo**: con un orden automático puesto, la flecha guardaba el cambio y la
+pantalla no se movía, que se lee como que el botón está roto.
+
+Cada vista se acuerda de lo suyo, y no se persiste: es una postura de pantalla, como el orden de
+Análisis.
+
+### El ☰ de Pendientes
+
+A la izquierda del par de vistas, y abre el **mismo cajón** que el de Hábitos con lo suyo adentro:
+acá no hay línea de mes donde ponerlo —solo aparece en el calendario—, así que vive en esa fila.
+
+| Entrada | Qué hay adentro |
+|---|---|
+| **Archivo** | Lo guardado: las categorías —con sus subcategorías y sus pendientes— y los pendientes sueltos. Se tilda lo que vuelve y un botón lo devuelve a la lista. De las categorías solo se listan las de primer nivel: una subcategoría se guardó *con* su madre y vuelve con ella. |
+| **Papelera** | Lo borrado en los últimos 7 días, lo último arriba. |
+
+Las dos se apagan cuando no hay nada que mostrar, y el título dice cuánto hay.
+
+La papelera guarda **el cambio y no solo la cosa**: de un pendiente, el lugar que ocupaba; de una
+categoría, además, qué subcategorías quedaron de primer nivel por su culpa y qué pendientes quedaron
+sueltos. Restaurarla deshace las tres cosas. Lo que ya no exista al restaurar no revive por esa
+puerta: un pendiente cuya categoría se borró después vuelve suelto en vez de perderse.
+
+### Las tres vistas
+
+Son la **misma lista** mirada de tres maneras, y por eso el cambio son tres botones y no tres
 secciones distintas. Van arriba, centrados y del mismo ancho —son alternativas de la misma
-pregunta, y una más ancha parecería la principal—, y **debajo** aparece el único control que le toca
-a la vista puesta: **Nueva categoría** en la lista, contra la izquierda; la **línea del mes** en el
-calendario, centrada.
+pregunta, y una más ancha parecería la principal—, con el **☰** de la sección a su izquierda. En el
+calendario aparece **debajo** la línea del mes.
 
 > Esa línea del mes es la misma de Hábitos: en el calendario el nodo se **muda** adentro de la
 > sección, debajo del par de vistas, y vuelve a su lugar al salir. Un segundo botón de mes sería un
 > segundo lugar donde arreglar lo mismo.
 
-- **Lista** — por categoría. Cada encabezado se pliega y deja a la vista la cuenta de lo que tiene
-  adentro, contando lo de sus subcategorías.
+- **Lista** — sin categorías, en **tres tarjetas plegables**: *Sin iniciar*, *En proceso* y
+  *Finalizada*, siempre las tres y en el orden del avance. Contesta «qué sigue», que es otra
+  pregunta que «dónde está»: el estado deja de ser algo que hay que leer fila por fila y pasa a ser
+  el encabezado del bloque, y lo que no interesa hoy —lo terminado, casi siempre— se pliega entero.
+  Adentro de cada tarjeta manda el orden elegido; por fecha, lo que no tiene fecha va al final.
+- **Categorías** — el árbol: cada categoría es una tarjeta con sus pendientes y sus subcategorías
+  adentro. Cada encabezado se pliega y deja a la vista la cuenta de lo que tiene, contando lo de sus
+  subcategorías.
 - **Calendario** — por fecha. La rejilla del mes con lo que cae cada día. Los que no tienen fecha no
   entran en la rejilla, así que se los **cuenta al pie**: si no, cambiar de vista parecería haberlos
   perdido.
@@ -1073,8 +1225,10 @@ la misma app serían dos cosas que aprender para lo mismo.
 
 ### El «+»
 
-El botón redondo de la esquina crea **lo que la sección contiene**: una tarea en Hábitos, un
-pendiente en Pendientes. Es un solo botón porque es un solo gesto para la misma intención.
+El botón redondo de la esquina crea **lo que la vista muestra**: una tarea en Hábitos, una **tarea
+pendiente** en *Lista* y en *Calendario*, y una **categoría** en *Categorías*. Sin paso intermedio:
+la pantalla ya está contestando cuál de las dos cosas se quiere, y preguntarlo de nuevo era un paso
+de más. El rótulo del botón lo dice en cada vista.
 
 ## Atajos de teclado
 
@@ -1084,6 +1238,33 @@ pendiente en Pendientes. Es un solo botón porque es un solo gesto para la misma
 | `T` | Ir a hoy |
 | `N` | Nueva tarea (solo en el Diario) |
 | `Esc` | Cerrar el menú o el diálogo abierto |
+
+## Rendimiento
+
+Medido con [`tools/medir.mjs`](tools/medir.mjs), que corre la app real dentro del arnés con
+distintos volúmenes de datos. Son tiempos de **jsdom**, entre 3 y 10 veces más lento que un
+navegador: sirven para comparar escenarios y para ver si un cambio empeoró algo, no como el número
+que ve alguien usando la app.
+
+| Escenario | Peso | Marcar una celda | Cambiar de mes | Abrir Análisis |
+|---|--:|--:|--:|--:|
+| Hoy (24 tareas, 4 meses) | 77 KB | 3 ms | 12 ms | 14 ms |
+| A 3 años (24 tareas, 40 meses) | 770 KB | 13 ms | 24 ms | 86 ms |
+| A 3 años con 100 tareas | 3,2 MB | 34 ms | 26 ms | 149 ms |
+
+Lo que importa de esa tabla no son los valores sino **qué crece con el historial**:
+
+- **Marcar una celda ya es puntual**: no redibuja la lista, repinta la celda y su fila y recalcula
+  el total del día. Lo único que crece ahí es `JSON.stringify(state)` para guardar en
+  `localStorage` — a 3 años son 13 de esos 13 ms, o sea **casi todo**.
+- **Cambiar de mes y abrir Análisis** redibujan la sección entera, y eso está bien: son cambios
+  estructurales, no gestos que se repitan diez veces por minuto.
+
+> **Cuándo volver al tema.** Si marcar una celda pasa de unos 5 ms en el navegador —hoy está muy
+> por debajo—, el paso siguiente es **agrupar la escritura local** como ya se agrupa la de red: un
+> temporizador corto y un volcado inmediato al ocultar la pestaña. No está hecho porque hoy no se
+> nota, y porque cambiar «lo local se escribe en el acto» tiene un costo real: es la garantía de
+> que un cierre forzado no pierde el último clic.
 
 ## Independencia por mes
 

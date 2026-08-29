@@ -31,6 +31,12 @@
   --weekend-bg:    #e9edf7;
   --danger:        #dc2626;
 
+  /* La fila del día que hoy no cuenta. Tiene token propio porque en oscuro no
+     alcanza con hundir el fondo: `--bg-sunken` queda a un pelo de `--bg-elev`
+     y las dos filas se ven iguales. */
+  --fila-apagada:  var(--bg-sunken);
+  --fila-apagada-borde: var(--border);
+
   /* colores del logo */
   --brand-top:     #8158a4;
   --brand-bottom:  #3d4a7b;
@@ -125,6 +131,11 @@
 
   --weekend-bg:    #101728;
   --danger:        #ef4444;
+
+  /* Más oscura que el fondo de la página, no apenas más que la tarjeta: la
+     apagada se lee como un hueco y la encendida como algo que sobresale. */
+  --fila-apagada:  #080d18;
+  --fila-apagada-borde: #1b2338;
 
   /* el logo se aclara para no apagarse sobre el fondo oscuro */
   --brand-top:     #a67cc9;
@@ -1055,7 +1066,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
    el armazón no desplaza y el alto sobrante es de acá. */
 .analysis, .help, .todos, .settings { flex: 1; min-height: 0; overflow-y: auto; }
 
-.analysis { display: flex; flex-direction: column; gap: 1rem; }
+.analysis { display: flex; flex-direction: column; gap: .45rem; }
 
 /* ---------------- Gráficos ---------------- */
 
@@ -1073,7 +1084,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
    conviene que se lean con el mismo lenguaje. */
 .chart-card {
   margin: 0;
-  padding: .9rem 1rem 1rem;
+  padding: .55rem 1rem .7rem;
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1083,21 +1094,6 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   flex-direction: column;
 }
 
-/* El encabezado va centrado, como el de las tarjetas de indicadores. El hint
-   acompaña al título y se centra con él: dejarlo a la izquierda partía en dos
-   un bloque que se lee como uno solo. */
-.chart-title {
-  font-size: .85rem;
-  font-weight: 620;
-  color: var(--text);
-  text-align: center;
-}
-.chart-hint {
-  margin: .1rem 0 .75rem;
-  font-size: .74rem;
-  color: var(--text-faint);
-  text-align: center;
-}
 .chart-empty {
   margin: 1.25rem 0;
   text-align: center;
@@ -1327,13 +1323,36 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .todos { display: flex; flex-direction: column; gap: .7rem; }
 
 /* La línea de arriba: cómo se mira a la izquierda, qué se crea a la derecha. */
-/* Dos filas: el par de vistas centrado arriba, y debajo el control que le toca
-   a la vista puesta. En una sola fila el par se corría de lugar según qué
-   botón lo acompañara. */
+/* El par de vistas, centrado. Debajo aparece el mes cuando se mira el
+   calendario —`render` muda ahí la línea del mes—; en la lista no va nada, que
+   es lo que dejó libre mudar «Nueva categoría» al «+». */
+/* Tres columnas: el ☰ contra la izquierda, el par de vistas centrado y la
+   tercera vacía, que es la que mantiene el par en el medio de la pantalla. */
 .pend-barra {
   display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
   justify-items: center;
   gap: .5rem;
+}
+/* El mismo alto que los controles de la barra del mes: es el mismo botón en
+   otra pantalla, y dos ☰ de distinto tamaño se leen como dos cosas distintas.
+   El ancho ya lo comparte por `.icon-btn`. */
+.pend-barra .menu-btn {
+  grid-column: 1;
+  justify-self: start;
+  height: var(--ctl-h);
+  padding-block: 0;
+}
+.pend-barra .pend-vistas { grid-column: 2; }
+
+/* Del otro lado del par de vistas, contra el borde: el ☰ abre lo de la
+   sección y este cambia lo que se está mirando. */
+.pend-barra .pend-orden {
+  grid-column: 3;
+  justify-self: end;
+  height: var(--ctl-h);
+  padding-block: 0;
 }
 
 /* Un par de botones pegados, que se leen como un interruptor de dos posiciones
@@ -1342,7 +1361,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
    parecer la principal. */
 .pend-vistas {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   overflow: hidden;
@@ -1362,12 +1381,6 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 /* Contra la izquierda: encabeza la lista que viene abajo, no acompaña al par
    de vistas de arriba. */
-.pend-nueva-cat {
-  justify-self: start;
-  font-size: .82rem;
-  padding: .4rem .8rem;
-}
-
 /* La línea del mes, mudada acá adentro mientras se mira el calendario: pierde
    el hueco que tenía como encabezado y queda como una fila más de la barra. */
 #todos .controls { margin: 0; padding: 0; }
@@ -1384,9 +1397,42 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 .pend-bloque { display: flex; flex-direction: column; gap: .35rem; }
 
-/* La sangría es lo único que distingue a una subcategoría de su padre: alcanza
-   para leer la jerarquía sin cargar la fila con adornos. */
-.pend-nivel-1 { margin-left: 1.1rem; }
+/* Cada categoría es una tarjeta: agrupa lo suyo en un bloque con bordes, como
+   las tarjetas de Hábitos. Solo las de primer nivel —y el bloque de lo suelto—;
+   las subcategorías viven adentro de la de su madre y se distinguen por la
+   sangría, que una tarjeta adentro de otra cargaría la lista de recuadros. */
+.pend-lista > .pend-bloque {
+  padding: .5rem .7rem .6rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* Adentro de la tarjeta, las filas se hunden en vez de sobresalir: con el mismo
+   fondo que su contenedor solo las separaba el borde. */
+.pend-lista > .pend-bloque .pend-item { background: var(--bg); }
+
+/* La subcategoría es una tarjeta adentro de la tarjeta de su madre. No lleva
+   sangría propia: el hueco que la separa del borde es el mismo de los dos
+   lados, que es el padding de la tarjeta que la contiene, y una sangría extra
+   a la izquierda la dejaba descentrada. La jerarquía ya la dice el anidado.
+   Alterna el fondo con el nivel de arriba
+   —hundida adentro de la elevada— para que los dos bordes no se pierdan uno
+   contra otro. Son dos niveles y no hay un tercero: lo impide `cleanPendientes`
+   con los datos que entran, y lo impide el formulario, que no ofrece como madre
+   a una subcategoría. */
+.pend-nivel-1 {
+  padding: .45rem .6rem .5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* Adentro de la subcategoría las filas vuelven a elevarse: cada nivel alterna,
+   así ninguno queda del color de su contenedor. El selector repite el camino
+   entero para ganarle en especificidad al de las filas de la categoría madre,
+   que también las alcanza. */
+.pend-lista > .pend-bloque .pend-nivel-1 .pend-item { background: var(--bg-elev); }
 
 .pend-cat {
   display: flex;
@@ -1403,21 +1449,32 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   cursor: pointer;
   line-height: 1;
 }
-.pend-cat-nombre {
-  font: inherit;
+.pend-cat-nombre,
+/* El encabezado de una de las tres tarjetas de «Lista». Se ve igual que el de
+   una categoría —es el mismo tipo de rótulo— pero lleva clase propia: la de
+   categoría nombra una categoría, y confundirlas hacía que cualquier búsqueda
+   por nombre de categoría se llevara también estos tres. */
+.pend-grupo-nombre {
   font-size: .95rem;
   font-weight: 650;
   padding: .1rem .2rem;
-  border: 0;
-  background: none;
   color: var(--text);
-  text-align: left;
-  cursor: pointer;
 }
-.pend-cat-nombre:hover { text-decoration: underline; }
 
-/* La cuenta es lo único que queda a la vista con la categoría plegada. */
-.pend-cat-cuenta {
+/* El lápiz cierra el bloque de la derecha junto con la cuenta: es `margin-left`
+   el que empuja a los dos contra el borde. */
+.pend-cat-editar { margin-left: auto; }
+
+/* En las tarjetas de «Lista» no hay lápiz que empuje, así que la cuenta se
+   manda sola contra el borde. */
+.pend-grupo-cuenta { margin-left: auto; }
+
+/* La cuenta es lo único que queda a la vista con la categoría plegada. Va
+   contra el borde derecho de la tarjeta —`margin-left: auto`— y no pegada al
+   nombre: así queda en la misma columna en todas las categorías, que es lo que
+   deja compararlas de un vistazo. */
+.pend-cat-cuenta,
+.pend-grupo-cuenta {
   font-size: .72rem;
   font-weight: 600;
   color: var(--text-muted);
@@ -1427,11 +1484,16 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 }
 
 .pend-cat-vacia, .pend-cal-nota {
-  margin: 0 0 0 1.8rem;
+  margin: 0;
   font-size: .78rem;
   color: var(--text-faint);
 }
 .pend-cal-nota { margin: .6rem 0 0; }
+
+/* Lo guardado, al final y en tono menor: sigue estando y se abre cuando hace
+   falta, pero no compite con lo que está en curso. */
+.pend-lista > .pend-bloque.is-archivada { background: var(--bg-sunken); }
+.is-archivada .pend-cat-nombre { color: var(--text-muted); }
 
 .pend-sueltos {
   margin: 0;
@@ -1443,7 +1505,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .pend-items {
   list-style: none;
   margin: 0;
-  padding: 0 0 0 1.8rem;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: .35rem;
@@ -1486,18 +1548,16 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .pend-nombre {
   flex: 1;
   min-width: 0;
-  font: inherit;
   font-size: .9rem;
-  padding: 0;
-  border: 0;
-  background: none;
   color: var(--text);
-  text-align: left;
-  cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* El lápiz, entre el dato y el estado: el mismo lugar que ocupa en la lista
+   del día de Hábitos. */
+.pend-editar { flex: none; }
 
 .pend-fecha {
   flex: none;
@@ -1548,6 +1608,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 /* El nombre entero no entra en una celda de calendario: se recorta y el título
    lo dice completo al apoyar el dedo o el puntero. */
 .pend-cal-item {
+  display: block;
   font: inherit;
   font-size: .7rem;
   line-height: 1.2;
@@ -1673,16 +1734,39 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 }
 .plan-list li { margin-bottom: .25rem; }
 
-/* Cerrar sesión: contorno rojo y no relleno. No destruye nada —se vuelve a
-   entrar—, así que el relleno sólido de `.btn-danger` le quedaba grande; el
-   color alcanza para que no se confunda con el resto de la tarjeta. */
+/* Las dos salidas en una línea, contra la izquierda. Se envuelven en pantallas
+   angostas antes que apretarse. */
+.session-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .5rem;
+}
+
+/* Cerrar sesión no destruye nada —se vuelve a entrar—, así que va en el color
+   del texto y sin señal de peligro. El rojo queda reservado para la de al
+   lado, que es la que no tiene vuelta: con las dos en rojo, ninguna avisaba.
+
+   `--text` y no un negro fijo: en modo oscuro el texto es claro, y un borde
+   negro ahí desaparecería contra el fondo. */
 .session-out {
   justify-self: start;
-  margin-top: .5rem;
+  color: var(--text);
+  border-color: var(--text);
+}
+.session-out:hover:not(:disabled) {
+  background: var(--bg-sunken);
+  border-color: var(--text);
+}
+
+/* Eliminar la cuenta sí destruye, y para siempre: contorno rojo y letra roja.
+   De contorno y no relleno, para que no se lea como el botón principal de la
+   pantalla —lo normal es entrar acá y no borrar nada—. */
+.session-delete {
   color: var(--danger);
   border-color: var(--danger);
 }
-.session-out:hover:not(:disabled) {
+.session-delete:hover:not(:disabled) {
   background: var(--missed-bg);
   border-color: var(--danger);
   color: var(--missed-fg);
@@ -1885,7 +1969,10 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
    este día, cuando la tarea no tiene días propios y todavía no se la cargó, y
    cuando se la eximió a mano. Encendida queda lo que hoy cuenta: lo que la
    frecuencia pide y lo que se cargó igual. */
-.dia-fila.is-optional { background: var(--bg-sunken); }
+.dia-fila.is-optional {
+  background: var(--fila-apagada);
+  border-color: var(--fila-apagada-borde);
+}
 .dia-fila.is-optional .task-name { color: var(--text-muted); }
 
 /* El bloque de la tarea viene de la planilla, donde era una celda de ancho

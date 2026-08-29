@@ -232,11 +232,15 @@
      *
      * `categorias` admite UN nivel de anidado —una categoría con `padre` es una
      * subcategoría— y `items` cuelga de cualquiera de los dos, o de ninguna.
+     *
+     * `papelera` guarda lo borrado por `DIAS_PAPELERA` días, con lo necesario
+     * para devolverlo a su lugar. Es la misma idea que `state.trash`, pero de
+     * esta pantalla: lo que se borra acá no tiene nada que ver con las tareas.
      */
     pendientes: /** @type {{ categorias: {id:string,name:string,padre:string|null}[],
      *   items: {id:string,name:string,categoria:string|null,
      *   estado:'sin-iniciar'|'en-proceso'|'finalizada',fecha:string|null}[] }} */
-      ({ categorias: [], items: [] }),
+      ({ categorias: [], items: [], papelera: [] }),
     /** Qué muestra la columna de estatus: 'glyph' | 'pct' | 'both' | 'none'. */
     /** Qué miden las barras del análisis diario: 'tareas' | 'pct'. */
     /**
@@ -266,10 +270,24 @@
      */
     day: '',
     editingId: /** @type {string|null} */ (null),
-    /** Cómo se miran los pendientes: por categoría o por fecha. */
-    vistaPendientes: /** @type {'lista'|'calendario'} */ ('lista'),
+    /**
+     * Cómo se miran los pendientes: todo junto y por fecha, por categoría, o
+     * el mes en el calendario. Es siempre la MISMA lista.
+     */
+    vistaPendientes: /** @type {'lista'|'categorias'|'calendario'} */ ('lista'),
     /** Categorías plegadas. Es una postura de pantalla: no se persiste. */
     pendPlegadas: /** @type {Set<string>} */ (new Set()),
+    /** Y las archivadas que se abrieron, que arrancan al revés: cerradas. */
+    pendDesplegadas: /** @type {Set<string>} */ (new Set()),
+    /**
+     * Cómo se ordena cada una de las dos vistas que son listas. Uno por vista
+     * porque ordenan cosas distintas —tareas y categorías—, y volver de una a
+     * otra sin perder lo elegido es lo que se espera. No se persiste: es una
+     * postura de pantalla, como el orden de Análisis.
+     */
+    ordenPend: /** @type {{lista: 'personalizado'|'fecha'|'alfabetico',
+     *   categorias: 'personalizado'|'alfabetico'|'cantidad'}} */
+      ({ lista: 'fecha', categorias: 'personalizado' }),
     /** Qué pendiente y qué categoría están abiertos en su diálogo. */
     editandoPendiente: /** @type {string|null} */ (null),
     editandoCategoria: /** @type {string|null} */ (null),
@@ -820,6 +838,7 @@
   // ---------------------------------------------------------
 
   let currentUserId = null;
+  let currentUserEmail = null;
 
   /**
    * Si la lectura remota al iniciar sesión falló, no se escribe nada en
@@ -964,24 +983,106 @@
     }
   }
 
+  /* ---- Subida incremental ------------------------------------------------
+
+     Lo último que la base confirmó tener, para calcular contra eso qué cambió.
+     Se llena al leer y en cada subida exitosa; sin sombra —primera vez, o
+     después de un error raro— se sube el estado entero, que siempre es
+     correcto aunque cueste más. */
+  let sombraRemota = null;
+
+  /* Si la base todavía no tiene `merge_app_state`. Se prueba una vez: cuando
+     falta, no tiene sentido reintentarla en cada guardado. */
+  let mergeDisponible = true;
+
+  const clonar = valor => JSON.parse(JSON.stringify(valor));
+
+  /**
+   * El parche que lleva de `antes` a `ahora`, en formato JSON Merge Patch
+   * (RFC 7386): las claves que cambian traen su valor nuevo, las que se borran
+   * traen `null`, y lo que no cambió no viaja.
+   *
+   * Devuelve `null` si no hay nada que mandar. Los arreglos se tratan como
+   * valores enteros —así lo define el formato— y acá es además lo que se
+   * quiere: reordenar las tareas de un mes ES un cambio del mes.
+   */
+  function parcheDeMerge(antes, ahora) {
+    if (Array.isArray(antes) || Array.isArray(ahora)
+      || !esDiccionario(antes) || !esDiccionario(ahora)) {
+      return JSON.stringify(antes) === JSON.stringify(ahora) ? null : ahora;
+    }
+
+    const parche = {};
+
+    for (const clave of Object.keys(antes)) {
+      if (!(clave in ahora)) parche[clave] = null;   // lo que se borró
+    }
+    for (const [clave, valor] of Object.entries(ahora)) {
+      if (!(clave in antes)) {
+        parche[clave] = valor;
+        continue;
+      }
+      const dentro = parcheDeMerge(antes[clave], valor);
+      if (dentro !== null) parche[clave] = dentro;
+    }
+
+    return Object.keys(parche).length ? parche : null;
+  }
+
   /** Escribe el estado en la base. `true` si quedó guardado. */
   async function subirEstado() {
+    /* Una copia y no el estado vivo: entre que se arma la subida y contesta la
+       base puede pasar cualquier cosa —marcar otra celda—, y        devuelve un objeto que COMPARTE las ramas con . Sin clonar, la
+       sombra terminaba diciendo que la base ya tiene cambios que nunca se
+       mandaron, y el siguiente parche salía vacío. */
+    const payload = clonar(payloadRemoto());
+
     try {
+      /* Con sombra y con la función instalada, viaja el parche. Es lo que hace
+         que marcar una celda mande cien bytes en vez del historial entero. */
+      if (sombraRemota && mergeDisponible && typeof window.supabaseClient.rpc === 'function') {
+        const parche = parcheDeMerge(sombraRemota, payload);
+        if (!parche) return true;   // nada cambió de lo que la base ya tiene
+
+        const { error } = await window.supabaseClient.rpc('merge_app_state', { parche });
+        if (!error) {
+          sombraRemota = clonar(payload);
+          return true;
+        }
+
+        /* Si la función no está, se sigue por el camino de siempre y no se
+           vuelve a intentar: es un paso de puesta en marcha, no un error. */
+        if (!faltaLaFuncion(error)) throw error;
+        mergeDisponible = false;
+      }
+
       const { error } = await window.supabaseClient.from('app_state').upsert(
         {
           user_id: currentUserId,
-          payload: payloadRemoto(),
+          payload,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id' },
       );
       if (error) throw error;
+
+      sombraRemota = clonar(payload);
       return true;
     } catch (err) {
       console.error('No se pudo sincronizar con Supabase', err);
+      /* Después de un error no se sabe qué quedó del otro lado: la próxima
+         sube todo, que es el camino que no depende de saberlo. */
+      sombraRemota = null;
       return false;
     }
   }
+
+  /** Si el error es «esa función no existe» y no otra cosa. */
+  function faltaLaFuncion(error) {
+    const texto = `${error?.message ?? ''} ${error?.code ?? ''} ${error?.details ?? ''}`;
+    return /merge_app_state|PGRST202|404|does not exist|Could not find/i.test(texto);
+  }
+
 
   /**
    * Pide una subida. Si ya hay un temporizador armado no hace nada: ese mismo
@@ -1100,6 +1201,7 @@
 
   async function hydrateStateForUser(user) {
     currentUserId = user?.id || null;
+    currentUserEmail = user?.email || null;
     STORAGE_KEY = user?.id ? `${STORAGE_BASE}/${user.id}` : STORAGE_BASE;
     lecturaRemotaOk = false;
     avisoSync = '';
@@ -1118,6 +1220,11 @@
 
     const remoto = await loadFromSupabase();
     lecturaRemotaOk = remoto.estado !== 'error';
+
+    /* La sombra es lo que la base tiene AHORA, se use o no ese payload: contra
+       eso se calcula el primer parche. Si la copia local resulta más nueva, lo
+       que sube es justamente la diferencia entre las dos. */
+    sombraRemota = remoto.estado === 'ok' ? clonar(remoto.payload) : null;
 
     if (remoto.estado === 'ok') {
       /* La copia local puede ser MÁS NUEVA que la remota: si la pestaña se
@@ -1388,17 +1495,17 @@
    * en vez de tirarlo.
    */
   function cleanPendientes(valor) {
-    if (!esDiccionario(valor)) return { categorias: [], items: [] };
+    if (!esDiccionario(valor)) return { categorias: [], items: [], papelera: [] };
 
     const crudas = [];
     const vistas = new Set();
     for (const cruda of Array.isArray(valor.categorias) ? valor.categorias : []) {
       if (!esDiccionario(cruda)) continue;
       const id = String(cruda.id ?? '');
-      const name = String(cruda.name ?? '').trim().slice(0, 60);
+      const name = capitalizeFirstLetter(String(cruda.name ?? '').trim().slice(0, 60));
       if (!id || !name || vistas.has(id)) continue;
       vistas.add(id);
-      crudas.push({ id, name, pedido: String(cruda.padre ?? '') });
+      crudas.push({ id, name, pedido: String(cruda.padre ?? ''), archivada: cruda.archivada === true });
     }
 
     /* Primero quiénes son raíz —las que no piden padre válido—, y recién
@@ -1410,10 +1517,11 @@
        parte, y al dibujarla sería su propia hija. */
     const esRaiz = c => c.pedido === c.id || !vistas.has(c.pedido);
     const raices = new Set(crudas.filter(esRaiz).map(c => c.id));
-    const categorias = crudas.map(({ id, name, pedido }) => ({
+    const categorias = crudas.map(({ id, name, pedido, archivada }) => ({
       id,
       name,
       padre: pedido !== id && raices.has(pedido) ? pedido : null,
+      archivada,
     }));
     const porId = new Set(categorias.map(c => c.id));
 
@@ -1435,10 +1543,39 @@
         categoria: porId.has(categoria) ? categoria : null,
         estado: esEstadoPendiente(crudo.estado) ? crudo.estado : 'sin-iniciar',
         fecha: RE_DIA.test(fecha) ? fecha : null,
+        archivado: crudo.archivado === true,
       });
     }
 
-    return { categorias, items };
+    return { categorias, items, papelera: cleanPapelera(valor.papelera) };
+  }
+
+  /**
+   * Sanea la papelera de Pendientes y de paso la vacía: lo que pasó de
+   * `DIAS_PAPELERA` días no vuelve más, así que no viaja a la base.
+   */
+  function cleanPapelera(lista) {
+    if (!Array.isArray(lista)) return [];
+
+    const limpia = [];
+    for (const entrada of lista) {
+      if (!esDiccionario(entrada)) continue;
+      if (!RE_DIA.test(String(entrada.fecha ?? ''))) continue;
+      if (diasDesde(entrada.fecha) >= DIAS_PAPELERA) continue;
+      if (!['pendiente', 'categoria'].includes(entrada.tipo)) continue;
+      if (!esDiccionario(entrada.dato)) continue;
+
+      limpia.push({
+        tipo: entrada.tipo,
+        fecha: entrada.fecha,
+        nombre: String(entrada.nombre ?? '').slice(0, 80),
+        indice: Number.isFinite(Number(entrada.indice)) ? Number(entrada.indice) : 0,
+        dato: entrada.dato,
+        hijas: Array.isArray(entrada.hijas) ? entrada.hijas.map(String) : [],
+        sueltos: Array.isArray(entrada.sueltos) ? entrada.sueltos.map(String) : [],
+      });
+    }
+    return limpia;
   }
 
   function normalize(data) {
@@ -1717,6 +1854,18 @@
    * Los vacíos se saltean en lugar de asignarse: poner `className = ''`
    * dejaría un `class=""` en el HTML que hoy no está.
    */
+  /**
+   * Abre un diálogo y le deja el foco en su título.
+   *
+   * El título lleva  justamente para esto: sin dárselo a mano, el
+   * foco cae en el contenedor scrolleable de la lista y el anillo aparece
+   * rodeando todo el interior del diálogo.
+   */
+  function abrirDialogo(dialogo, titulo) {
+    dialogo.showModal();
+    $(titulo).focus();
+  }
+
   function elem(tag, className = '', text = '') {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -1828,6 +1977,7 @@
     grupoRecordatorio: $('#grupo-recordatorio'),
     grupoDatos: $('#grupo-datos'),
     grupoGuia: $('#grupo-guia'),
+    deleteAccount: $('#btn-delete-account'),
     fab: $('#btn-fab'),
     analysis: $('#analysis'),
     todos: $('#todos'),
@@ -1836,7 +1986,23 @@
     pendLista: $('#pend-lista'),
     pendCalendario: $('#pend-calendario'),
     pendVacio: $('#pend-vacio'),
-    pendCategoriaBtn: $('#btn-pend-categoria'),
+    pendMenu: $('#btn-pend-menu'),
+    pendOrden: $('#btn-pend-orden'),
+    pendOrdenDialog: $('#pend-orden-dialog'),
+    pendOrdenOpciones: $('#pend-orden-opciones'),
+    grupoPendientes: $('#grupo-pendientes'),
+    pendArchivoBtn: $('#btn-pend-archivo'),
+    pendArchivoDialog: $('#pend-archivo-dialog'),
+    pendArchivoList: $('#pend-archivo-list'),
+    pendArchivoEmpty: $('#pend-archivo-empty'),
+    pendArchivoAll: $('#pend-archivo-all'),
+    pendArchivoUndo: $('#pend-archivo-undo'),
+    pendPapeleraBtn: $('#btn-pend-papelera'),
+    pendPapeleraDialog: $('#pend-papelera-dialog'),
+    pendPapeleraList: $('#pend-papelera-list'),
+    pendPapeleraEmpty: $('#pend-papelera-empty'),
+    pendPapeleraAll: $('#pend-papelera-all'),
+    pendPapeleraRestore: $('#pend-papelera-restore'),
     pendienteDialog: $('#pendiente-dialog'),
     pendienteDialogTitle: $('#pendiente-dialog-title'),
     pendienteForm: $('#pendiente-form'),
@@ -1846,6 +2012,12 @@
     pendienteError: $('#pendiente-error'),
     pendienteTools: $('#pendiente-tools'),
     pendienteDelete: $('#pendiente-delete'),
+    pendienteReorder: $('#pendiente-reorder'),
+    pendienteArchive: $('#pendiente-archive'),
+    pendienteMove: $('#pendiente-move'),
+    pendienteMoveUp: $('#pendiente-move-up'),
+    pendienteMoveDown: $('#pendiente-move-down'),
+    pendienteMovePos: $('#pendiente-move-pos'),
     pendienteSubmit: $('#pendiente-submit'),
     categoriaDialog: $('#categoria-dialog'),
     categoriaDialogTitle: $('#categoria-dialog-title'),
@@ -1855,6 +2027,12 @@
     categoriaError: $('#categoria-error'),
     categoriaTools: $('#categoria-tools'),
     categoriaDelete: $('#categoria-delete'),
+    categoriaReorder: $('#categoria-reorder'),
+    categoriaArchive: $('#categoria-archive'),
+    categoriaMove: $('#categoria-move'),
+    categoriaMoveUp: $('#categoria-move-up'),
+    categoriaMoveDown: $('#categoria-move-down'),
+    categoriaMovePos: $('#categoria-move-pos'),
     categoriaSubmit: $('#categoria-submit'),
     settings: $('#settings'),
     help: $('#help'),
@@ -1934,6 +2112,8 @@
        tiempo—, y repetirlos acá obliga a buscar la única entrada que viene al
        caso entre seis que no. */
     el.grupoGraficos.hidden = !onIndicators;
+    /* Lo de Pendientes solo en Pendientes: son sus dos listas aparte. */
+    el.grupoPendientes.hidden = ui.page !== 'todos';
     // Fuera de Análisis no hay gráfico que ordenar.
     if (!onIndicators) el.orden.hidden = true;
     for (const grupo of [el.grupoRecordatorio, el.grupoDatos, el.grupoGuia]) {
@@ -1962,7 +2142,7 @@
     el.legend.hidden = !onHome;
     el.analysis.hidden = !onIndicators;
     el.todos.hidden = ui.page !== 'todos';
-    if (ui.page === 'todos') renderPendientes();
+    if (ui.page === 'todos') { renderPendientes(); renderEntradasPendientes(); }
     renderFab();
     el.settings.hidden = ui.page !== 'settings';
     el.help.hidden = !onHelp;
@@ -2152,7 +2332,9 @@
     el.fab.hidden = !(ui.page === 'home' || enPendientes);
     if (el.fab.hidden) return;
 
-    const label = enPendientes ? 'Agregar pendiente' : 'Agregar tarea';
+    const label = enPendientes
+      ? (ui.vistaPendientes === 'categorias' ? 'Agregar categoría' : 'Agregar tarea pendiente')
+      : 'Agregar tarea';
     el.fab.setAttribute('aria-label', label);
     el.fab.title = enPendientes ? label : 'Crear una tarea nueva (atajo: N)';
   }
@@ -2392,10 +2574,6 @@
       : 'Todavía no hay días de uso en este mes.';
   }
 
-  /* El texto que acompaña al día en las tarjetas y en el gráfico: una sola
-     medida, así que no hace falta nombrarla en cada lugar. */
-  const HINT_DIARIO = 'Cumplimiento de cada día, sobre los días de uso del mes';
-
   // ---------------------------------------------------------
   // Gráficos
   // ---------------------------------------------------------
@@ -2426,10 +2604,20 @@
       + `L ${x + w} ${y + h} Z`;
   }
 
-  function chartCard(title, hint) {
+  /**
+   * La tarjeta de un gráfico: el dibujo y nada más.
+   *
+   * Tuvo un título y una bajada. Los dos se fueron: se dibuja UN gráfico por
+   * vez y es el menú el que dice cuál —queda marcado ahí—, así que el rótulo
+   * repetía arriba de cada tarjeta lo que ya se acababa de elegir. Lo que hay
+   * que saber para leerlos vive en la guía, que es donde se lo busca.
+   *
+   * El nombre sigue estando para quien no ve la pantalla: va en `aria-label`,
+   * que es lo que anuncia un lector de pantalla al entrar a la figura.
+   */
+  function chartCard(title) {
     const card = elem('figure', 'chart-card');
-    card.appendChild(elem('figcaption', 'chart-title', title));
-    if (hint) card.appendChild(elem('p', 'chart-hint', hint));
+    card.setAttribute('aria-label', title);
     return card;
   }
 
@@ -2466,7 +2654,7 @@
   function weekdayChart(days) {
     /* Tuvo un botón en la esquina para elegir entre cantidad de tareas y
        porcentaje. Con una sola medida no hay nada que elegir. */
-    const card = chartCard('Barras', HINT_DIARIO);
+    const card = chartCard('Barras');
 
     /* El mismo mínimo que las tarjetas de productividad, porque es la misma
        cuenta: si la tarjeta dice que no alcanza, la barra de al lado no puede
@@ -2555,13 +2743,13 @@
          cuál era el extremo —verde el más alto, rojo el más bajo—, así que un mes
          malo parejo igual tenía su barra verde. Cuál es el extremo lo dice ahora
          el podio, arriba de la barra. */
-      /* Los mismos colores que la lista del día: una barra verde y una tarjeta
-         verde tienen que querer decir lo mismo. Son áreas grandes, así que el
-         pastel alcanza —lo que no alcanzaba era en los puntos de 13px. */
+      /* La misma paleta que «Puntos» y «Porcentajes»: los tres gráficos de esta
+         pantalla se miran de corrido, y con un verde acá y otro allá el mismo
+         nivel parecía dos cosas distintas. */
       const nivel = complianceOf(d.avg, 100);
       const bar = svg('path', {
         d: columnPath(cx - barW / 2, y, barW, h),
-        fill: `var(--${nivel.status}-bg)`,
+        fill: `var(--dot-${nivel.status})`,
       });
       bar.appendChild(svg('title')).textContent =
         `${capitalizeFirstLetter(d.w.long)}: ${pct(d.avg)} en promedio`;
@@ -2600,7 +2788,7 @@
    * al final: arriba ocuparían el lugar de las que sí.
    */
   function taskChart(days) {
-    const card = chartCard('Porcentajes', 'A cuánto llegó cada tarea en lo que va del mes');
+    const card = chartCard('Porcentajes');
     card.classList.add('is-plana');
 
     const filas = tareasOrdenadas(days);
@@ -2662,10 +2850,19 @@
   /**
    * Cómo viene el mes: lo hecho sobre lo que las tareas piden.
    *
-   * Es la MISMA cuenta que el resto de la app —una cumplida suma un punto y una
-   * parcial medio, y cada tarea aporta como mucho su propia meta—, agregada
-   * sobre todas las tareas del mes. Así el número de arriba no puede
-   * contradecir a los de abajo.
+   * Una cumplida suma un punto y una parcial medio, agregado sobre todas las
+   * tareas del mes.
+   *
+   * Suma los puntos ENTEROS, sin topear cada tarea en su propia meta: lo hecho
+   * de más en una compensa lo que falta en otra. Es una decisión distinta a la
+   * de la fila de cada tarea —donde el porcentaje sí topea en 100%, porque ahí
+   * la pregunta es si ESA tarea se cumplió—; acá la pregunta es cuánto se hizo
+   * en el mes contra cuánto se pedía, y para eso todo lo hecho cuenta. Una
+   * semanal hecha cuatro veces en una semana tapa un día de la diaria, y así
+   * se quiso.
+   *
+   * El porcentaje sigue sin pasar de 100%: es `complianceOf` el que lo topea,
+   * y un cumplimiento del 130% no querría decir nada.
    *
    * `taskTotals` recorta la meta a los días ya vencidos: lo que no transcurrió
    * no se exige, y al día 4 el mes entero por delante no cuenta como
@@ -2679,9 +2876,7 @@
 
     for (const task of currentTasks()) {
       const t = taskTotals(task, days);
-      /* El tope por tarea es lo que impide que hacer de más en una tape el
-         incumplimiento de otra. */
-      puntos += aporte(t.points, t.max);
+      puntos += t.points;
       meta += t.max;
     }
     return { puntos, meta };
@@ -2712,17 +2907,26 @@
    * Las que este mes no piden nada no tienen porcentaje que ordenar, así que van
    * al final en los dos sentidos: arriba ocuparían el lugar de las que sí.
    */
-  function tareasOrdenadas(days) {
+  function tareasOrdenadas(days, criterio = 'pct') {
     const filas = currentTasks().map(task => {
       const t = taskTotals(task, days);
-      return { task, nivel: complianceOf(t.points, t.max) };
+      return { task, puntos: t.points, nivel: complianceOf(t.points, t.max) };
     });
 
     if (ui.orden === 'lista') return filas;
 
     const signo = ui.orden === 'desc' ? -1 : 1;
     return [...filas].sort((a, b) => {
+      /* Las que este mes no piden nada no tienen porcentaje que comparar, así
+         que van al final en cualquiera de los dos órdenes. */
       if (!a.nivel || !b.nivel) return (a.nivel ? 0 : 1) - (b.nivel ? 0 : 1);
+
+      /* Los puntos empatan seguido —media docena de tareas diarias con la misma
+         cuenta—, y ahí decide el porcentaje: entre dos que hicieron 20, va
+         primero la que con eso cumplió más de lo suyo. */
+      if (criterio === 'puntos' && a.puntos !== b.puntos) {
+        return signo * (a.puntos - b.puntos);
+      }
       return signo * (a.nivel.ratio - b.nivel.ratio);
     });
   }
@@ -2762,8 +2966,7 @@
   }
 
   el.orden.addEventListener('click', () => {
-    el.ordenDialog.showModal();
-    $('#orden-title').focus();
+    abrirDialogo(el.ordenDialog, '#orden-title');
   });
 
   el.ordenDialog.addEventListener('click', e => {
@@ -2791,11 +2994,12 @@
        mismas tarjetas de Hábitos, y envolverla dejaba una caja adentro de otra.
        Sueltas, las filas ocupan el ancho entero, que es lo que los puntos
        necesitan para entrar en menos renglones. */
-    const card = chartCard('Puntos',
-      'Un punto por día, del color del estado de esa tarea ese día');
+    const card = chartCard('Puntos');
     card.classList.add('is-plana');
 
-    const filas = tareasOrdenadas(days);
+    /* Por PUNTOS, que es lo que esta tarjeta dibuja: ordenarla por porcentaje
+       la dejaba ordenada por un número que no muestra. */
+    const filas = tareasOrdenadas(days, 'puntos');
     if (!filas.length) {
       card.appendChild(emptyChart('Todavía no hay tareas este mes'));
       return card;
@@ -3385,89 +3589,119 @@
     return currentTasks().filter(task => tramoAbierto(task));
   }
 
-  function openArchived() {
-    renderArchived();
-    el.archivedDialog.showModal();
-    $('#archived-title').focus();
-  }
-
   /**
-   * Dibuja la lista. Se la vuelve a llamar al desarchivar: `render()` repinta la
-   * pantalla de atrás, pero el contenido de un diálogo abierto no lo toca nadie.
+   * Un diálogo de fichas con casillero: la lista, el «Seleccionar todas» y el
+   * botón que obra sobre lo tildado.
+   *
+   * Lo comparten los cuatro que hay —el Archivo y la Papelera de Hábitos, y los
+   * de Pendientes—, que se distinguían solo en qué fichas muestran, cómo se
+   * llaman los botones y qué hace el remate. Todo lo demás era el mismo código
+   * escrito cuatro veces: elegir, contar, apagar el botón y decir por qué.
+   *
+   * @param {object} nodos    `lista`, `vacio`, `todas` y `remate`
+   * @param {() => {clave: string, nombre: string, detalle: string}[]} fichas
+   *   qué mostrar, ya listo para dibujar
+   * @param {object} textos   `remate(n)`, `sinElegir` y `todas(total)`
+   * @param {(claves: string[]) => void} accion  qué hacer con lo tildado
    */
-  function renderArchived() {
-    const archivadas = tareasArchivadas();
-    el.archivedList.innerHTML = '';
-    for (const task of archivadas) el.archivedList.appendChild(archivedCard(task));
-    el.archivedEmpty.hidden = archivadas.length > 0;
-    // Cada dibujado arranca sin nada tildado: las fichas son nuevas.
-    syncArchivedUndo();
+  function listaElegible({ nodos, fichas, textos, accion }) {
+    const { lista, vacio, todas, remate } = nodos;
+
+    const elegidas = () => [...lista.querySelectorAll('.arch-pick:checked')]
+      .map(c => c.dataset.clave);
+
+    /* Un botón apagado sin decir por qué manda a adivinar, así que el título
+       dice qué falta o qué va a hacer. Y «Seleccionar todas» dice qué hace al
+       tocarlo: con todo tildado, lo único que queda es soltarlo. */
+    function sincronizar() {
+      const total = lista.querySelectorAll('.arch-pick').length;
+      const cuantas = elegidas().length;
+
+      remate.disabled = cuantas === 0;
+      remate.title = cuantas ? textos.remate(cuantas) : textos.sinElegir;
+
+      const todasPuestas = total > 0 && cuantas === total;
+      todas.disabled = total === 0;
+      todas.textContent = todasPuestas ? 'Quitar la selección' : 'Seleccionar todas';
+      todas.title = todasPuestas
+        ? 'Destildar las que están elegidas'
+        : textos.todas(total);
+    }
+
+    /* Se vuelve a llamar después de cada acción: `render()` repinta la pantalla
+       de atrás, pero el contenido de un diálogo abierto no lo toca nadie. */
+    function dibujar() {
+      const items = fichas();
+      lista.innerHTML = '';
+      for (const ficha of items) lista.appendChild(fichaElegible(ficha));
+      vacio.hidden = items.length > 0;
+      // Cada dibujado arranca sin nada tildado: las fichas son nuevas.
+      sincronizar();
+    }
+
+    lista.addEventListener('change', e => {
+      if (e.target.closest('.arch-pick')) sincronizar();
+    });
+    todas.addEventListener('click', () => {
+      alternarCasilleros(lista);
+      sincronizar();
+    });
+    remate.addEventListener('click', () => {
+      const claves = elegidas();
+      if (claves.length) accion(claves);
+    });
+
+    return { dibujar };
   }
 
-  function archivedCard(task) {
+  /** Una ficha: el casillero con su clave, el nombre y la línea que lo explica. */
+  function fichaElegible({ clave, nombre, detalle }) {
     const card = elem('article', 'arch');
 
     const pick = elem('input', 'arch-pick');
     pick.type = 'checkbox';
-    pick.dataset.taskId = task.id;
-    pick.title = `Elegir «${task.name}»`;
-    pick.setAttribute('aria-label', `Elegir ${task.name}`);
+    pick.dataset.clave = clave;
+    pick.title = `Elegir «${nombre}»`;
+    pick.setAttribute('aria-label', `Elegir ${nombre}`);
 
     const head = elem('header', 'arch-head');
-    head.append(pick, elem('h3', 'arch-name', task.name));
+    head.append(pick, elem('h3', 'arch-name', nombre));
 
-    /* La fecha es el dato que hace falta para entender qué se ve y qué no: desde
-       ahí la tarea no aparece, y antes de ahí sigue entera. */
-    card.append(head, elem('p', 'arch-desc',
-      `${freqLabel(task)} · archivada desde el `
-      + fmtShort.format(parseDateKey(tramoAbierto(task).from))));
+    card.append(head, elem('p', 'arch-desc', detalle));
     return card;
   }
 
-  /** Las tildadas en la lista del Archivo. */
-  function archivedElegidas() {
-    const ids = new Set([...el.archivedList.querySelectorAll('.arch-pick:checked')]
-      .map(c => c.dataset.taskId));
-    return tareasArchivadas().filter(t => ids.has(t.id));
+  function openArchived() {
+    archivo.dibujar();
+    abrirDialogo(el.archivedDialog, '#archived-title');
   }
 
-  /* Un botón apagado sin decir por qué manda a adivinar, así que el título dice
-     qué falta o qué va a hacer. */
-  function syncArchivedUndo() {
-    const cuantas = archivedElegidas().length;
-    const total = tareasArchivadas().length;
-
-    el.archivedUndo.disabled = cuantas === 0;
-    el.archivedUndo.title = cuantas
-      ? `Volver a pedir ${cuantas} ${cuantas === 1 ? 'tarea' : 'tareas'}`
-      : 'Tildá las tareas a desarchivar';
-
-    /* El botón dice qué va a hacer al tocarlo: con todo tildado, lo único que
-       queda por hacer es soltarlo. Sin fichas no hay nada que elegir. */
-    const todasPuestas = total > 0 && cuantas === total;
-    el.archivedAll.disabled = total === 0;
-    el.archivedAll.textContent = todasPuestas ? 'Quitar la selección' : 'Seleccionar todas';
-    el.archivedAll.title = todasPuestas
-      ? 'Destildar las que están elegidas'
-      : `Elegir las ${total} tareas archivadas`;
-  }
-
-  el.archivedList.addEventListener('change', e => {
-    if (e.target.closest('.arch-pick')) syncArchivedUndo();
-  });
-
-  el.archivedAll.addEventListener('click', () => {
-    const picks = [...el.archivedList.querySelectorAll('.arch-pick')];
-    const faltan = picks.some(p => !p.checked);
-    for (const pick of picks) pick.checked = faltan;
-    syncArchivedUndo();
-  });
-
-  /* Una sola vuelta por el diálogo de fecha para todas las tildadas: la fecha
-     de regreso se elige UNA vez. */
-  el.archivedUndo.addEventListener('click', () => {
-    const tasks = archivedElegidas();
-    if (tasks.length) abrirArchivo(tasks, 'desarchivar');
+  const archivo = listaElegible({
+    nodos: {
+      lista: el.archivedList,
+      vacio: el.archivedEmpty,
+      todas: el.archivedAll,
+      remate: el.archivedUndo,
+    },
+    /* La fecha es el dato que hace falta para entender qué se ve y qué no:
+       desde ahí la tarea no aparece, y antes de ahí sigue entera. */
+    fichas: () => tareasArchivadas().map(task => ({
+      clave: task.id,
+      nombre: task.name,
+      detalle: `${freqLabel(task)} · archivada desde el `
+        + fmtShort.format(parseDateKey(tramoAbierto(task).from)),
+    })),
+    textos: {
+      remate: n => `Volver a pedir ${n} ${n === 1 ? 'tarea' : 'tareas'}`,
+      sinElegir: 'Tildá las tareas a desarchivar',
+      todas: total => `Elegir las ${total} tareas archivadas`,
+    },
+    /* Una sola vuelta por el diálogo de fecha para todas las tildadas: la fecha
+       de regreso se elige UNA vez. */
+    accion: claves => {
+      const ids = new Set(claves);
+      abrirArchivo(tareasArchivadas().filter(t => ids.has(t.id)), 'desarchivar');
+    },
   });
 
   el.archived.addEventListener('click', () => {
@@ -3478,94 +3712,53 @@
   /* ---- la papelera ---- */
 
   function openTrash() {
-    renderTrash();
-    el.trashDialog.showModal();
-    $('#trash-title').focus();
+    trashUI.dibujar();
+    abrirDialogo(el.trashDialog, '#trash-title');
   }
 
-  function renderTrash() {
-    const items = papelera();
-    el.trashList.innerHTML = '';
-    for (const item of items) el.trashList.appendChild(trashCard(item));
-    el.trashEmpty.hidden = items.length > 0;
-    syncTrashRestore();
-  }
+  /** La clave de una entrada de la papelera: qué se borró y cuándo. */
+  const claveDePapelera = item => `${item.taskId}|${item.fecha}`;
 
-  function trashCard(item) {
-    const card = elem('article', 'arch');
-
-    const pick = elem('input', 'arch-pick');
-    pick.type = 'checkbox';
-    pick.dataset.taskId = item.taskId;
-    pick.dataset.fecha = item.fecha;
-    pick.title = `Elegir «${item.nombre}»`;
-    pick.setAttribute('aria-label', `Elegir ${item.nombre}`);
-
-    const head = elem('header', 'arch-head');
-    head.append(pick, elem('h3', 'arch-name', item.nombre));
-
+  const trashUI = listaElegible({
+    nodos: {
+      lista: el.trashList,
+      vacio: el.trashEmpty,
+      todas: el.trashAll,
+      remate: el.trashRestore,
+    },
     /* Tres datos y en este orden: qué era, desde cuándo se borró y cuánto
        queda. Los dos primeros explican qué se recupera; el tercero, hasta
        cuándo se puede. */
-    const quedan = diasQueQuedan(item);
-    const partes = [
-      item.frecuencia,
-      `eliminada desde el ${fmtNumerica.format(parseDateKey(item.desde ?? item.fecha))}`,
-      quedan === 1 ? 'queda 1 día' : `quedan ${quedan} días`,
-    ].filter(Boolean);
+    fichas: () => papelera().map(item => {
+      const quedan = diasQueQuedan(item);
+      return {
+        clave: claveDePapelera(item),
+        nombre: item.nombre,
+        detalle: [
+          item.frecuencia,
+          `eliminada desde el ${fmtNumerica.format(parseDateKey(item.desde ?? item.fecha))}`,
+          quedan === 1 ? 'queda 1 día' : `quedan ${quedan} días`,
+        ].filter(Boolean).join(' · '),
+      };
+    }),
+    textos: {
+      remate: n => `Restaurar ${n} ${n === 1 ? 'tarea' : 'tareas'}`,
+      sinElegir: 'Tildá lo que quieras restaurar',
+      todas: total => `Elegir las ${total} eliminadas`,
+    },
+    /* Restaurar no pregunta nada: la entrada guarda el estado anterior tal cual
+       era, así que devolverlo es exacto o no es. No hay fecha que elegir. */
+    accion: claves => {
+      const items = papelera().filter(item => claves.includes(claveDePapelera(item)));
+      for (const item of items) restaurarDePapelera(item);
 
-    card.append(head, elem('p', 'arch-desc', partes.join(' · ')));
-    return card;
-  }
-
-  /** Las entradas tildadas, en el orden en que están en la lista. */
-  function papeleraElegidas() {
-    const elegidas = [...el.trashList.querySelectorAll('.arch-pick:checked')]
-      .map(c => `${c.dataset.taskId}|${c.dataset.fecha}`);
-    return papelera().filter(item => elegidas.includes(`${item.taskId}|${item.fecha}`));
-  }
-
-  function syncTrashRestore() {
-    const cuantas = papeleraElegidas().length;
-    const total = papelera().length;
-
-    el.trashRestore.disabled = cuantas === 0;
-    el.trashRestore.title = cuantas
-      ? `Restaurar ${cuantas} ${cuantas === 1 ? 'tarea' : 'tareas'}`
-      : 'Tildá lo que quieras restaurar';
-
-    const todasPuestas = total > 0 && cuantas === total;
-    el.trashAll.disabled = total === 0;
-    el.trashAll.textContent = todasPuestas ? 'Quitar la selección' : 'Seleccionar todas';
-    el.trashAll.title = todasPuestas
-      ? 'Destildar las que están elegidas'
-      : `Elegir las ${total} eliminadas`;
-  }
-
-  el.trashList.addEventListener('change', e => {
-    if (e.target.closest('.arch-pick')) syncTrashRestore();
-  });
-
-  el.trashAll.addEventListener('click', () => {
-    const picks = [...el.trashList.querySelectorAll('.arch-pick')];
-    const faltan = picks.some(p => !p.checked);
-    for (const pick of picks) pick.checked = faltan;
-    syncTrashRestore();
-  });
-
-  /* Restaurar no pregunta nada: la entrada guarda el estado anterior tal cual
-     era, así que devolverlo es exacto o no es. No hay fecha que elegir. */
-  el.trashRestore.addEventListener('click', () => {
-    const items = papeleraElegidas();
-    if (!items.length) return;
-
-    for (const item of items) restaurarDePapelera(item);
-    save();
-    render();
-    renderTrash();
-    toast(items.length === 1
-      ? `«${items[0].nombre}» restaurada`
-      : `${items.length} tareas restauradas`);
+      save();
+      render();
+      trashUI.dibujar();
+      toast(items.length === 1
+        ? `«${items[0].nombre}» restaurada`
+        : `${items.length} tareas restauradas`);
+    },
   });
 
   el.trash.addEventListener('click', () => {
@@ -3576,43 +3769,101 @@
   /* ---- las tres acciones sobre la tarea que se está editando ---- */
 
   /** Abre o guarda las flechas de reordenar, y las pinta al abrirlas. */
-  function mostrarFlechas(abrir) {
-    el.taskMove.hidden = !abrir;
-    el.taskReorder.setAttribute('aria-pressed', String(abrir));
-    if (abrir) renderFlechas();
-  }
-
   /**
-   * Dónde está la tarea en la lista del mes y hasta dónde puede moverse.
+   * El control de «Reordenar»: las dos flechas y el «3 de 7» del medio.
    *
-   * La cuenta es sobre la lista del MES, no sobre las filas que se ven ese día:
-   * el orden que se guarda es uno solo para todo el mes, y una tarea que ese día
-   * no aparece —todavía no empezó, o ya está archivada— igual ocupa su lugar.
+   * Lo comparten los tres diálogos que reordenan algo —una tarea, una categoría
+   * y una tarea pendiente—, que hacían lo mismo con nodos distintos. Lo único
+   * propio de cada uno es de qué lista se trata y cómo se mueve en los datos:
+   *
+   * @param {object} nodos       `caja`, `boton`, `arriba`, `abajo` y `pos`
+   * @param {() => object[]} lista   los hermanos, en el orden en que se ven
+   * @param {() => string|null} actual  cuál de ellos está abierto
+   * @param {(delta: number) => boolean} mover  mueve en los datos; `false` si
+   *   no había a dónde. Guardar y redibujar corre por cuenta de acá.
    */
-  function renderFlechas() {
-    const tasks = currentTasks();
-    const i = tasks.findIndex(t => t.id === ui.editingId);
-    el.taskMovePos.textContent = i < 0 ? '' : `${i + 1} de ${tasks.length}`;
-    el.taskMoveUp.disabled = i <= 0;
-    el.taskMoveDown.disabled = i < 0 || i >= tasks.length - 1;
+  function controlDeOrden({ nodos, lista, actual, mover }) {
+    const { caja, boton, arriba, abajo, pos } = nodos;
+
+    /** Dónde está y hasta dónde puede ir: es lo que apaga cada flecha. */
+    const dibujar = () => {
+      const hermanos = lista();
+      const i = hermanos.findIndex(x => x.id === actual());
+      pos.textContent = i < 0 ? '' : `${i + 1} de ${hermanos.length}`;
+      arriba.disabled = i <= 0;
+      abajo.disabled = i < 0 || i >= hermanos.length - 1;
+    };
+
+    /** Abre o cierra las flechas. Cerradas es como arranca cada vez. */
+    const mostrar = abrir => {
+      caja.hidden = !abrir;
+      boton.setAttribute('aria-pressed', String(abrir));
+      if (abrir) dibujar();
+    };
+
+    /* Se aplica en el acto: cada paso ya es el resultado y volver atrás es
+       tocar la otra flecha, así que no hay nada que confirmar después. */
+    const paso = delta => {
+      if (!mover(delta)) return;
+      save();
+      render();
+      dibujar();
+    };
+
+    boton.addEventListener('click', () => mostrar(caja.hidden));
+    arriba.addEventListener('click', () => paso(-1));
+    abajo.addEventListener('click', () => paso(1));
+
+    return { mostrar };
   }
 
   /**
-   * Mueve la tarea un lugar y lo guarda en el acto. No hay nada que confirmar
-   * después: cada paso ya es el resultado, y volver atrás es tocar la otra
-   * flecha. Es lo que reemplazó a la postura de arrastrar toda la lista.
+   * Intercambia dos elementos de un arreglo por sus POSICIONES GLOBALES.
+   *
+   * Los hermanos casi nunca son contiguos —entre dos categorías de primer nivel
+   * están sus subcategorías, entre dos tareas de una categoría están las de
+   * otra—, así que se mueven ellos dos y lo del medio se queda donde está.
    */
-  function moverTarea(delta) {
-    const tasks = materialize();
-    const i = tasks.findIndex(t => t.id === ui.editingId);
-    const j = i + delta;
-    if (i < 0 || j < 0 || j >= tasks.length) return;
-
-    [tasks[i], tasks[j]] = [tasks[j], tasks[i]];
-    save();
-    render();
-    renderFlechas();
+  function intercambiar(arreglo, uno, otro) {
+    const a = arreglo.indexOf(uno);
+    const b = arreglo.indexOf(otro);
+    if (a < 0 || b < 0) return false;
+    [arreglo[a], arreglo[b]] = [arreglo[b], arreglo[a]];
+    return true;
   }
+
+  /**
+   * «Seleccionar todas»: tilda todas, y si ya lo están, las suelta. Es el mismo
+   * gesto de ida y vuelta, y lo comparten los cuatro diálogos con casilleros.
+   */
+  function alternarCasilleros(contenedor) {
+    const casillas = [...contenedor.querySelectorAll('.arch-pick')];
+    const marcar = casillas.some(c => !c.checked);
+    for (const c of casillas) c.checked = marcar;
+  }
+
+  /* Las flechas de «Editar tarea». La lista es la del MES, no la del día que se
+     ve: el orden guardado es uno solo para todo el mes, y una tarea que hoy no
+     aparece —todavía no empezó, o está archivada— igual ocupa su lugar. */
+  const flechasDeTarea = controlDeOrden({
+    nodos: {
+      caja: el.taskMove,
+      boton: el.taskReorder,
+      arriba: el.taskMoveUp,
+      abajo: el.taskMoveDown,
+      pos: el.taskMovePos,
+    },
+    lista: () => currentTasks(),
+    actual: () => ui.editingId,
+    mover: delta => {
+      // `materialize` y no `currentTasks`: si el mes todavía hereda la lista de
+      // otro, hay que darle la suya antes de tocarle el orden.
+      const tasks = materialize();
+      const i = tasks.findIndex(t => t.id === ui.editingId);
+      return i >= 0 && Boolean(tasks[i + delta]) && intercambiar(tasks, tasks[i], tasks[i + delta]);
+    },
+  });
+  const mostrarFlechas = flechasDeTarea.mostrar;
 
   el.taskDelete.addEventListener('click', () => {
     const id = ui.editingId;
@@ -3620,10 +3871,6 @@
     el.taskDialog.close();
     askDeleteTask(id);
   });
-
-  el.taskReorder.addEventListener('click', () => mostrarFlechas(el.taskMove.hidden));
-  el.taskMoveUp.addEventListener('click', () => moverTarea(-1));
-  el.taskMoveDown.addEventListener('click', () => moverTarea(1));
 
   el.taskArchive.addEventListener('click', () => {
     const task = currentTasks().find(t => t.id === ui.editingId);
@@ -3763,7 +4010,7 @@
     /* Desde la lista del archivo se sigue ahí: la ficha tiene que irse de la
        lista, y `render()` no toca el contenido de un diálogo abierto. Desde la
        edición de la tarea, en cambio, ya no queda nada que mirar atrás. */
-    if (el.archivedDialog.open) renderArchived();
+    if (el.archivedDialog.open) archivo.dibujar();
     else el.taskDialog.close();
 
     render();
@@ -4170,8 +4417,14 @@
      que está: una tarea en Hábitos, un pendiente en Pendientes. Es el mismo
      gesto para la misma intención, y por eso es un solo botón y no dos. */
   el.fab.addEventListener('click', () => {
-    if (ui.page === 'todos') openPendienteDialog();
-    else openTaskDialog();
+    if (ui.page !== 'todos') return openTaskDialog();
+
+    /* En Pendientes crea lo que la vista muestra: una categoría donde se ven
+       las categorías, y una tarea pendiente donde se ven las tareas. Antes
+       preguntaba cuál de las dos, que es un paso de más para la respuesta que
+       la pantalla ya está dando. */
+    if (ui.vistaPendientes === 'categorias') openCategoriaDialog();
+    else openPendienteDialog();
   });
 
   // ---------------------------------------------------------
@@ -4198,12 +4451,69 @@
     return ESTADOS_PENDIENTE[(i + 1) % ESTADOS_PENDIENTE.length].id;
   }
 
-  const categoriasRaiz = () => state.pendientes.categorias.filter(c => !c.padre);
-  const subcategoriasDe = id => state.pendientes.categorias.filter(c => c.padre === id);
+  /* Lo archivado no desaparece: sale de la lista de todos los días y se junta
+     al final, en su propio bloque. Por eso los recorridos de la lista piden las
+     vivas y el bloque del final pide las otras. */
+  /**
+   * Qué órdenes ofrece cada vista.
+   *
+   * Ordenan cosas distintas —tareas de un lado, categorías del otro—, así que
+   * no comparten opciones ni elección. En «Lista» el estado manda siempre y lo
+   * que se elige es el desempate; en «Categorías» se elige el orden entero.
+   */
+  const ORDENES_PEND = {
+    lista: [
+      { clave: 'personalizado', nombre: 'personalizado' },
+      { clave: 'fecha', nombre: 'por fecha' },
+      { clave: 'alfabetico', nombre: 'alfabético' },
+    ],
+    categorias: [
+      { clave: 'personalizado', nombre: 'personalizado' },
+      { clave: 'alfabetico', nombre: 'alfabético' },
+      { clave: 'cantidad', nombre: 'por cantidad de tareas' },
+    ],
+  };
+
+  /** Compara textos como los lee una persona: sin acentos ni mayúsculas. */
+  const porNombre = (a, b) => a.name.localeCompare(b.name, LOCALE, { sensitivity: 'base' });
+
+  const categoriasRaiz = () => state.pendientes.categorias
+    .filter(c => !c.padre && !c.archivada);
+  const subcategoriasDe = id => state.pendientes.categorias
+    .filter(c => c.padre === id && !c.archivada);
+  const categoriasArchivadas = () => state.pendientes.categorias.filter(c => c.archivada);
+
+  /** Las hermanas de una categoría, que son entre las que se la puede mover. */
+  const hermanasDe = cat => state.pendientes.categorias
+    .filter(c => (c.padre ?? null) === (cat.padre ?? null) && !c.archivada);
+
+  /**
+   * Si la categoría está guardada, ella o la que la contiene: una subcategoría
+   * de una archivada se archiva con ella, aunque su propia marca diga que no.
+   */
+  function estaArchivada(id) {
+    const cat = state.pendientes.categorias.find(c => c.id === id);
+    if (!cat) return false;
+    return Boolean(cat.archivada) || Boolean(cat.padre && estaArchivada(cat.padre));
+  }
   const categoriaPorId = id => state.pendientes.categorias.find(c => c.id === id) ?? null;
   const pendientePorId = id => state.pendientes.items.find(p => p.id === id) ?? null;
   /** Los pendientes de una categoría, SIN los de sus subcategorías. */
-  const pendientesDe = id => state.pendientes.items.filter(p => p.categoria === id);
+  const pendientesDe = id => state.pendientes.items
+    .filter(p => p.categoria === id && !p.archivado);
+
+  /** Los guardados, que se ven en el Archivo y en ningún otro lado. */
+  const pendientesArchivados = () => state.pendientes.items.filter(p => p.archivado);
+
+  /** Los de su misma categoría, que son entre los que se lo puede mover. */
+  const hermanosDe = p => state.pendientes.items
+    .filter(o => (o.categoria ?? null) === (p.categoria ?? null) && !o.archivado);
+
+  /* Lo que está en curso: todo menos lo que quedó adentro de una categoría
+     guardada. Es lo que mira el calendario —archivar es dejar de verlo, y verlo
+     igual ahí sería archivar a medias—. */
+  const pendientesVivos = () => state.pendientes.items
+    .filter(p => !p.archivado && (!p.categoria || !estaArchivada(p.categoria)));
 
   /**
    * Cuántos cuelgan de una categoría contando los de sus subcategorías: es lo
@@ -4214,84 +4524,245 @@
       + subcategoriasDe(cat.id).reduce((n, sub) => n + pendientesDe(sub.id).length, 0);
   }
 
+  /**
+   * El botón de orden: qué ofrece y qué dice.
+   *
+   * Solo en las dos vistas que son listas —el calendario lo ordena el
+   * almanaque— y con las opciones de la vista puesta, que ordenan cosas
+   * distintas.
+   */
+  function renderOrdenPendientes() {
+    const vista = ui.vistaPendientes;
+    const opciones = ORDENES_PEND[vista];
+    el.pendOrden.hidden = !opciones;
+    if (!opciones) return;
+
+    const actual = opciones.find(o => o.clave === ui.ordenPend[vista]) ?? opciones[0];
+    el.pendOrden.title = `Orden: ${actual.nombre}`;
+    el.pendOrden.setAttribute('aria-label', `Ordenar. Ahora: ${actual.nombre}`);
+
+    el.pendOrdenOpciones.innerHTML = '';
+    for (const opcion of opciones) {
+      const btn = elem('button', 'btn orden-opcion', capitalizeFirstLetter(opcion.nombre));
+      btn.type = 'button';
+      btn.dataset.orden = opcion.clave;
+      btn.setAttribute('aria-pressed', String(opcion.clave === actual.clave));
+      el.pendOrdenOpciones.appendChild(btn);
+    }
+  }
+
+  el.pendOrden.addEventListener('click', () => {
+    abrirDialogo(el.pendOrdenDialog, '#pend-orden-title');
+  });
+
+  el.pendOrdenOpciones.addEventListener('click', e => {
+    const opcion = e.target.closest('[data-orden]');
+    if (!opcion) return;
+    ui.ordenPend[ui.vistaPendientes] = opcion.dataset.orden;
+    el.pendOrdenDialog.close();
+    renderPendientes();
+  });
+
   /** Dibuja la vista que esté puesta. Las dos leen lo mismo de `state`. */
   function renderPendientes() {
-    const enLista = ui.vistaPendientes === 'lista';
+    const vista = ui.vistaPendientes;
+    const enCalendario = vista === 'calendario';
 
     for (const btn of document.querySelectorAll('.pend-vista')) {
-      const activa = btn.dataset.vista === ui.vistaPendientes;
+      const activa = btn.dataset.vista === vista;
       btn.classList.toggle('is-activa', activa);
       btn.setAttribute('aria-pressed', String(activa));
     }
 
-    el.pendLista.hidden = !enLista;
-    el.pendCalendario.hidden = enLista;
+    /* Las dos primeras vistas son listas y comparten el mismo contenedor: lo
+       que cambia es cómo se agrupa lo que va adentro. */
+    el.pendLista.hidden = enCalendario;
+    el.pendCalendario.hidden = !enCalendario;
 
-    /* Cada vista deja a la vista lo suyo y nada más: las categorías solo
-       ordenan la lista, y el mes solo mueve el calendario. El de mes vive en la
-       línea de arriba —ver `render`—, así que acá va el otro. */
-    el.pendCategoriaBtn.hidden = !enLista;
-
-    /* El cartel de bienvenida solo en la lista: en el calendario el mes vacío
+    /* El cartel de bienvenida solo en las listas: en el calendario el mes vacío
        ya se ve solo, y el cartel taparía la rejilla. */
     const { categorias, items } = state.pendientes;
-    el.pendVacio.hidden = !enLista || categorias.length > 0 || items.length > 0;
+    el.pendVacio.hidden = enCalendario || categorias.length > 0 || items.length > 0;
 
-    if (enLista) renderPendientesLista();
+    renderOrdenPendientes();
+
+    if (vista === 'lista') renderPendientesPlana();
+    else if (vista === 'categorias') renderPendientesCategorias();
     else renderPendientesCalendario();
   }
 
-  function renderPendientesLista() {
+  /**
+   * Todo junto, sin categorías, ordenado por fecha de completado.
+   *
+   * Contesta «qué sigue», que es otra pregunta que «dónde está»: por eso las
+   * filas van sueltas y no adentro de la tarjeta de su categoría. Lo que no
+   * tiene fecha va al final: sin fecha no hay lugar en una línea de tiempo, y
+   * ponerlo primero taparía lo que sí vence pronto.
+   */
+  function renderPendientesPlana() {
     el.pendLista.innerHTML = '';
-    for (const cat of categoriasRaiz()) el.pendLista.appendChild(bloqueCategoria(cat, 0));
+
+    /* El estado manda SIEMPRE, en el orden del avance: primero lo que no
+       arrancó, después lo que está en curso y al final lo terminado, que ya no
+       pide nada. Lo que se elige en el botón es cómo se desempata adentro de
+       cada grupo. */
+    const porEstado = p => ESTADOS_PENDIENTE.findIndex(e => e.id === p.estado);
+    const orden = ui.ordenPend.lista;
+
+    /* «Personalizado» es el orden del arreglo, que es el que mueven las flechas
+       de «Reordenar». Sigue agrupado por estado: eso no lo cambia ningún orden,
+       y una tarea terminada no vuelve arriba por haberla movido. */
+    const vivos = pendientesVivos();
+    const propio = new Map(vivos.map((p, i) => [p.id, i]));
+
+    const items = [...vivos].sort((a, b) => {
+      const grupos = porEstado(a) - porEstado(b);
+      if (grupos) return grupos;
+      if (orden === 'personalizado') return propio.get(a.id) - propio.get(b.id);
+      if (orden === 'alfabetico') return porNombre(a, b);
+
+      /* Por fecha: lo que vence antes va primero y lo que no tiene fecha, al
+         final —sin fecha no hay lugar en una línea de tiempo—. Con la misma
+         fecha decide el nombre, que si no el orden quedaba al azar. */
+      if (a.fecha !== b.fecha) {
+        if (!a.fecha) return 1;
+        if (!b.fecha) return -1;
+        return a.fecha < b.fecha ? -1 : 1;
+      }
+      return porNombre(a, b);
+    });
+    /* Una tarjeta por estado, siempre las tres y en el orden del avance. El
+       estado deja de ser algo que hay que ir leyendo fila por fila: es el
+       encabezado del bloque, y lo que no interesa hoy se pliega entero —lo
+       terminado, casi siempre—. */
+    for (const estado of ESTADOS_PENDIENTE) {
+      el.pendLista.appendChild(
+        bloqueDeEstado(estado, items.filter(p => p.estado === estado.id)));
+    }
+  }
+
+  /** Una de las tres tarjetas de «Lista», con lo que hay en ese estado. */
+  function bloqueDeEstado(estado, items) {
+    const bloque = elem('section', 'pend-bloque pend-nivel-0');
+    const plegada = ui.pendPlegadas.has(estado.id);
+
+    const cabecera = elem('div', 'pend-cat');
+
+    const flecha = elem('button', 'pend-cat-toggle', plegada ? '▸' : '▾');
+    flecha.type = 'button';
+    flecha.dataset.plegar = estado.id;
+    flecha.setAttribute('aria-expanded', String(!plegada));
+    flecha.title = plegada ? `Desplegar «${estado.label}»` : `Plegar «${estado.label}»`;
+    flecha.setAttribute('aria-label', flecha.title);
+
+    const cuenta = elem('span', 'pend-grupo-cuenta', String(items.length));
+    cuenta.title = items.length === 1 ? '1 tarea pendiente' : `${items.length} tareas pendientes`;
+
+    cabecera.append(flecha, elem('span', 'pend-grupo-nombre', estado.label), cuenta);
+    bloque.appendChild(cabecera);
+    if (plegada) return bloque;
+
+    /* Vacío se dice, no se esconde: las tres tarjetas están siempre, así que
+       una sin nada tiene que explicarse en vez de parecer que no cargó. */
+    if (!items.length) {
+      bloque.appendChild(elem('p', 'pend-cat-vacia', 'Nada acá todavía'));
+      return bloque;
+    }
+    bloque.appendChild(listaDePendientes(items));
+    return bloque;
+  }
+
+  function renderPendientesCategorias() {
+    el.pendLista.innerHTML = '';
+    for (const cat of ordenarCategorias(categoriasRaiz())) {
+      el.pendLista.appendChild(bloqueCategoria(cat, 0));
+    }
 
     /* Lo que no está en ninguna categoría va al final, bajo un encabezado que
        no se puede editar ni borrar: no es una categoría más, es su ausencia. */
-    const sueltos = state.pendientes.items.filter(p => !p.categoria);
-    if (!sueltos.length) return;
+    const sueltos = state.pendientes.items.filter(p => !p.categoria && !p.archivado);
+    if (sueltos.length) {
+      const bloque = elem('section', 'pend-bloque');
+      bloque.appendChild(elem('h3', 'pend-sueltos', 'Sin categoría'));
+      bloque.appendChild(listaDePendientes(sueltos));
+      el.pendLista.appendChild(bloque);
+    }
 
-    const bloque = elem('section', 'pend-bloque');
-    bloque.appendChild(elem('h3', 'pend-sueltos', 'Sin categoría'));
-    bloque.appendChild(listaDePendientes(sueltos));
-    el.pendLista.appendChild(bloque);
+  }
+
+  /**
+   * Las categorías en el orden elegido. «Personalizado» es el del arreglo, que
+   * es el que mueven las flechas de «Reordenar»; los otros dos lo ignoran, y
+   * por eso mover algo a mano vuelve a poner este —ver `reordenarCategoria`—.
+   */
+  function ordenarCategorias(lista) {
+    const orden = ui.ordenPend.categorias;
+    if (orden === 'personalizado') return lista;
+    if (orden === 'alfabetico') return [...lista].sort(porNombre);
+
+    /* Por cantidad, de la más cargada a la más vacía: la cuenta es la misma que
+       muestra la categoría —lo suyo más lo de sus subcategorías—, y entre dos
+       iguales decide el nombre. */
+    return [...lista].sort((a, b) => (cuentaDe(b) - cuentaDe(a)) || porNombre(a, b));
   }
 
   /**
    * Una categoría con lo suyo adentro: primero sus pendientes y después sus
    * subcategorías, cada una con los propios.
    */
-  function bloqueCategoria(cat, nivel) {
+  function bloqueCategoria(cat, nivel, { archivada = false } = {}) {
     const bloque = elem('section', `pend-bloque pend-nivel-${nivel}`);
-    const plegada = ui.pendPlegadas.has(cat.id);
+    /* La guardada arranca plegada: se archivó justamente para dejar de verla,
+       y se abre cuando hace falta. Solo la de arriba, eso sí: una vez abierta,
+       lo de adentro se ve como en cualquier otra. */
+    const raizGuardada = archivada && nivel === 0;
+    const plegada = raizGuardada
+      ? !ui.pendDesplegadas.has(cat.id)
+      : ui.pendPlegadas.has(cat.id);
+    if (archivada) bloque.classList.add('is-archivada');
 
     const cabecera = elem('div', 'pend-cat');
 
-    /* Plegar y editar son dos cosas distintas y llevan dos botones: con uno
-       solo habría que elegir cuál gana el toque, y las dos se usan seguido. */
+    /* El triángulo pliega. El nombre no hace nada: es el rótulo del bloque, y
+       que abriera la edición al tocarlo convertía en un formulario lo que
+       parece un título. */
     const flecha = elem('button', 'pend-cat-toggle', plegada ? '▸' : '▾');
     flecha.type = 'button';
     flecha.dataset.plegar = cat.id;
+    if (raizGuardada) flecha.dataset.guardada = '';
     flecha.setAttribute('aria-expanded', String(!plegada));
     flecha.title = plegada ? `Desplegar «${cat.name}»` : `Plegar «${cat.name}»`;
     flecha.setAttribute('aria-label', flecha.title);
 
-    const nombre = elem('button', 'pend-cat-nombre', cat.name);
-    nombre.type = 'button';
-    nombre.dataset.categoria = cat.id;
-    nombre.title = `Editar «${cat.name}»`;
+    const nombre = elem('span', 'pend-cat-nombre', cat.name);
+
+    /* El lápiz es la ÚNICA puerta a la edición de la categoría —de ahí salen el
+       nombre, dónde vive y el borrado—, igual que en las tarjetas de Hábitos.
+       Un solo lugar donde buscarla en las dos pantallas. */
+    const lapiz = boton('mini-btn pend-cat-editar', {
+      text: '✎',
+      title: `Editar «${cat.name}»`,
+      label: `Editar ${cat.name}`,
+    });
+    lapiz.dataset.categoria = cat.id;
 
     const cuenta = cuentaDe(cat);
     const marca = elem('span', 'pend-cat-cuenta', String(cuenta));
-    marca.title = cuenta === 1 ? '1 pendiente' : `${cuenta} pendientes`;
+    marca.title = cuenta === 1 ? '1 tarea pendiente' : `${cuenta} tareas pendientes`;
 
-    cabecera.append(flecha, nombre, marca);
+    // El lápiz va pegado a la cuenta, a su izquierda, contra el borde derecho.
+    cabecera.append(flecha, nombre, lapiz, marca);
     bloque.appendChild(cabecera);
     if (plegada) return bloque;
 
     const propios = pendientesDe(cat.id);
-    const subs = subcategoriasDe(cat.id);
+    /* Adentro de una archivada se muestran TODAS sus subcategorías: se
+       guardaron con ella, no cada una por su cuenta. */
+    const subs = ordenarCategorias(archivada
+      ? state.pendientes.categorias.filter(c => c.padre === cat.id)
+      : subcategoriasDe(cat.id));
     if (propios.length) bloque.appendChild(listaDePendientes(propios));
-    for (const sub of subs) bloque.appendChild(bloqueCategoria(sub, nivel + 1));
+    for (const sub of subs) bloque.appendChild(bloqueCategoria(sub, nivel + 1, { archivada }));
 
     // Una categoría recién creada está vacía: se dice, en vez de dejar un
     // encabezado suelto que se lee como algo que no cargó.
@@ -4323,17 +4794,27 @@
       + labelEstado(siguienteEstado(p.estado)).toLowerCase();
     estado.setAttribute('aria-label', `${p.name}: ${estado.title}`);
 
-    const nombre = elem('button', 'pend-nombre', p.name);
-    nombre.type = 'button';
-    nombre.dataset.pendiente = p.id;
-    nombre.title = `Editar «${p.name}»`;
+    // El nombre es el rótulo de la fila, no un botón: abrir un formulario al
+    // tocarlo convertía en control lo que se lee como un título.
+    const nombre = elem('span', 'pend-nombre', p.name);
+    nombre.title = p.name;
 
-    /* El nombre primero, que es lo que se busca al recorrer la lista, y los
-       dos datos contra la derecha: la fecha y el estado, que es donde también
-       los lleva la lista del día en Hábitos. */
+    /* El lápiz es la ÚNICA puerta a la edición del pendiente —de ahí salen el
+       nombre, la categoría, la fecha y el borrado—, igual que en las categorías
+       y en las tarjetas de Hábitos. Un solo lugar donde buscarla. */
+    const lapiz = boton('mini-btn pend-editar', {
+      text: '✎',
+      title: `Editar «${p.name}»`,
+      label: `Editar ${p.name}`,
+    });
+    lapiz.dataset.pendiente = p.id;
+
+    /* El nombre primero, que es lo que se busca al recorrer la lista, y contra
+       la derecha la fecha, el lápiz y el estado — el mismo orden que la lista
+       del día en Hábitos, donde el lápiz precede al recuadro de estado. */
     fila.append(nombre);
     if (p.fecha) fila.appendChild(chipDeFecha(p));
-    fila.appendChild(estado);
+    fila.append(lapiz, estado);
     return fila;
   }
 
@@ -4368,7 +4849,7 @@
     el.pendCalendario.appendChild(cabecera);
 
     const porFecha = new Map();
-    for (const p of state.pendientes.items) {
+    for (const p of pendientesVivos()) {
       if (!p.fecha) continue;
       if (!porFecha.has(p.fecha)) porFecha.set(p.fecha, []);
       porFecha.get(p.fecha).push(p);
@@ -4387,13 +4868,14 @@
       /* La fecha va en el marcado y no en un índice aparte: la usan las dos
          cosas que se pueden hacer sobre la celda —crear ahí y soltar ahí—. */
       celda.dataset.fecha = dateKey(dia);
-      celda.title = `Agregar un pendiente para el ${fmtFull.format(dia)}`;
+      celda.title = `Agregar una tarea para el ${fmtFull.format(dia)}`;
       if (sameDay(dia, today)) celda.classList.add('is-hoy');
       celda.appendChild(elem('span', 'pend-cal-num', String(dia.getDate())));
 
       for (const p of porFecha.get(dateKey(dia)) ?? []) {
-        const chip = elem('button', `pend-cal-item est-${p.estado}`, p.name);
-        chip.type = 'button';
+        /* Etiqueta y no botón: acá no se edita —para eso está el lápiz de la
+           lista—, se ve qué cae ese día y se arrastra a otro. */
+        const chip = elem('span', `pend-cal-item est-${p.estado}`, p.name);
         chip.dataset.pendiente = p.id;
         chip.title = `${p.name} — ${labelEstado(p.estado)}`;
         celda.appendChild(chip);
@@ -4402,12 +4884,12 @@
     }
     el.pendCalendario.appendChild(rejilla);
 
-    const sinFecha = state.pendientes.items.filter(p => !p.fecha).length;
+    const sinFecha = pendientesVivos().filter(p => !p.fecha).length;
     if (!sinFecha) return;
     el.pendCalendario.appendChild(elem('p', 'pend-cal-nota',
       sinFecha === 1
-        ? '1 pendiente sin fecha; está en la lista'
-        : `${sinFecha} pendientes sin fecha; están en la lista`));
+        ? '1 tarea sin fecha; está en la lista'
+        : `${sinFecha} tareas sin fecha; están en la lista`));
   }
 
   /**
@@ -4442,13 +4924,17 @@
     const p = id ? pendientePorId(id) : null;
     ui.editandoPendiente = p ? p.id : null;
 
-    el.pendienteDialogTitle.textContent = p ? 'Editar pendiente' : 'Nuevo pendiente';
-    const rotulo = p ? 'Guardar cambios' : 'Crear pendiente';
+    el.pendienteDialogTitle.textContent = p
+      ? 'Editar tarea pendiente'
+      : 'Nueva tarea pendiente';
+    const rotulo = p ? 'Guardar cambios' : 'Crear tarea pendiente';
     el.pendienteSubmit.title = rotulo;
     el.pendienteSubmit.setAttribute('aria-label', rotulo);
 
-    // No hay nada que eliminar en un alta.
+    // Las tres acciones obran sobre algo que ya existe: en un alta no hay nada.
     el.pendienteTools.hidden = !p;
+    el.pendienteArchive.textContent = p?.archivado ? 'Desarchivar' : 'Archivar';
+    mostrarFlechasPendiente(false);
     el.pendienteError.hidden = true;
 
     el.pendienteName.value = p ? p.name : '';
@@ -4474,6 +4960,18 @@
     el.categoriaTools.hidden = !cat;
     el.categoriaError.hidden = true;
     el.categoriaName.value = cat ? cat.name : '';
+
+    /* El mismo botón dice las dos cosas, según cómo esté: es una decisión que
+       se toma y se deshace en el mismo lugar. */
+    el.categoriaArchive.textContent = cat?.archivada ? 'Desarchivar' : 'Archivar';
+    /* Una subcategoría guardada con su madre no se desarchiva sola: primero
+       vuelve la madre. Sin esto quedaba suelta adentro de un bloque guardado. */
+    const heredada = Boolean(cat && !cat.archivada && cat.padre && estaArchivada(cat.padre));
+    el.categoriaArchive.disabled = heredada;
+    el.categoriaArchive.title = heredada
+      ? 'Está guardada con su categoría: desarchivá esa primero'
+      : '';
+    mostrarFlechasCategoria(false);
 
     /* Solo las de primer nivel pueden ser padre —el anidado llega hasta ahí— y
        una no puede colgar de sí misma. Con subcategorías propias tampoco puede
@@ -4502,8 +5000,6 @@
     });
   }
 
-  el.pendCategoriaBtn.addEventListener('click', () => openCategoriaDialog());
-
   /* Un solo oyente para toda la lista: las filas se redibujan enteras en cada
      cambio, y colgar oyentes de cada botón los volvería a colgar cada vez. */
   el.pendLista.addEventListener('click', e => {
@@ -4511,9 +5007,13 @@
     if (!boton) return;
 
     if (boton.dataset.plegar) {
+      /* Las vivas se guardan plegadas y las archivadas, desplegadas: cada
+         conjunto anota la excepción a cómo arranca, que es al revés en cada
+         uno. Así ninguna necesita que se la marque para verse como debe. */
       const id = boton.dataset.plegar;
-      if (ui.pendPlegadas.has(id)) ui.pendPlegadas.delete(id);
-      else ui.pendPlegadas.add(id);
+      const set = 'guardada' in boton.dataset ? ui.pendDesplegadas : ui.pendPlegadas;
+      if (set.has(id)) set.delete(id);
+      else set.add(id);
       renderPendientes();
       return;
     }
@@ -4524,14 +5024,13 @@
 
   el.pendCalendario.addEventListener('click', e => {
     /* El clic que cierra un arrastre no es un toque: sin esto, soltar un
-       pendiente sobre otro día abría además su diálogo. */
+       pendiente sobre un día vacío abría además el alta. */
     if (arrastre.hubo) {
       arrastre.hubo = false;
       return;
     }
-
-    const chip = e.target.closest('[data-pendiente]');
-    if (chip) return openPendienteDialog(chip.dataset.pendiente);
+    // Soltar sobre un pendiente tampoco crea nada.
+    if (e.target.closest('[data-pendiente]')) return;
 
     // Tocar el día crea ahí: la fecha es el dato que el calendario ya sabe.
     const celda = e.target.closest('.pend-cal-dia');
@@ -4640,6 +5139,55 @@
     toast(`«${p.name}» pasó al ${fmtFull.format(parseDateKey(fecha))}`);
   }
 
+  /* Las flechas del diálogo de categoría. Se mueve entre HERMANAS: las de
+     primer nivel entre las de primer nivel y una subcategoría adentro de su
+     madre. Cambiar de nivel es otra cosa, y eso lo hace «Dentro de». */
+  const flechasDeCategoria = controlDeOrden({
+    nodos: {
+      caja: el.categoriaMove,
+      boton: el.categoriaReorder,
+      arriba: el.categoriaMoveUp,
+      abajo: el.categoriaMoveDown,
+      pos: el.categoriaMovePos,
+    },
+    lista: () => {
+      const cat = categoriaPorId(ui.editandoCategoria);
+      return cat ? hermanasDe(cat) : [];
+    },
+    actual: () => ui.editandoCategoria,
+    mover: delta => {
+      const cat = categoriaPorId(ui.editandoCategoria);
+      if (!cat) return false;
+      const hermanas = hermanasDe(cat);
+      const vecina = hermanas[hermanas.indexOf(cat) + delta];
+      if (!vecina || !intercambiar(state.pendientes.categorias, cat, vecina)) return false;
+
+      /* Mover a mano ES elegir el orden personalizado: con otro puesto, la
+         flecha guardaba el cambio y la pantalla no se movía, que se lee como
+         que el botón está roto. */
+      ui.ordenPend.categorias = 'personalizado';
+      return true;
+    },
+  });
+  const mostrarFlechasCategoria = flechasDeCategoria.mostrar;
+
+  /* Archivar no pregunta nada ni pierde nada: guarda la categoría con todo lo
+     suyo al final de la lista y el mismo botón la trae de vuelta. Por eso no
+     tiene confirmación, a diferencia de eliminar. */
+  el.categoriaArchive.addEventListener('click', () => {
+    const cat = categoriaPorId(ui.editandoCategoria);
+    if (!cat) return;
+
+    cat.archivada = !cat.archivada;
+    ui.pendDesplegadas.delete(cat.id);
+    save();
+    el.categoriaDialog.close();
+    render();
+    toast(cat.archivada
+      ? `«${cat.name}» quedó guardada al final`
+      : `«${cat.name}» volvió a la lista`);
+  });
+
   /** Avanza al estado siguiente y vuelve al principio después del último. */
   function ciclarEstado(id) {
     const p = pendientePorId(id);
@@ -4648,6 +5196,53 @@
     save();
     renderPendientes();
   }
+
+  el.categoriaName.addEventListener('blur', () => {
+    el.categoriaName.value = capitalizeFirstLetter(el.categoriaName.value.trim());
+  });
+
+  /* Las flechas del diálogo de una tarea pendiente. Se mueve entre las de su
+     misma categoría; ese orden se ve en «Categorías», y en «Lista» solo con el
+     orden personalizado puesto —que es justamente el que deja puesto mover—. */
+  const flechasDePendiente = controlDeOrden({
+    nodos: {
+      caja: el.pendienteMove,
+      boton: el.pendienteReorder,
+      arriba: el.pendienteMoveUp,
+      abajo: el.pendienteMoveDown,
+      pos: el.pendienteMovePos,
+    },
+    lista: () => {
+      const p = pendientePorId(ui.editandoPendiente);
+      return p ? hermanosDe(p) : [];
+    },
+    actual: () => ui.editandoPendiente,
+    mover: delta => {
+      const p = pendientePorId(ui.editandoPendiente);
+      if (!p) return false;
+      const hermanos = hermanosDe(p);
+      const vecino = hermanos[hermanos.indexOf(p) + delta];
+      if (!vecino || !intercambiar(state.pendientes.items, p, vecino)) return false;
+
+      ui.ordenPend.lista = 'personalizado';
+      return true;
+    },
+  });
+  const mostrarFlechasPendiente = flechasDePendiente.mostrar;
+
+  /* Archivar no pregunta nada ni pierde nada: lo guarda en ☰ → Archivo y el
+     mismo botón lo trae de vuelta. Por eso no confirma, a diferencia de
+     eliminar. */
+  el.pendienteArchive.addEventListener('click', () => {
+    const p = pendientePorId(ui.editandoPendiente);
+    if (!p) return;
+
+    p.archivado = !p.archivado;
+    save();
+    el.pendienteDialog.close();
+    render();
+    toast(p.archivado ? `«${p.name}» quedó guardado` : `«${p.name}» volvió a la lista`);
+  });
 
   el.pendienteForm.addEventListener('submit', e => {
     e.preventDefault();
@@ -4670,7 +5265,7 @@
 
     const actual = ui.editandoPendiente ? pendientePorId(ui.editandoPendiente) : null;
     if (actual) Object.assign(actual, datos);
-    else state.pendientes.items.push({ id: newId(), ...datos });
+    else state.pendientes.items.push({ id: newId(), ...datos, archivado: false });
 
     save();
     el.pendienteDialog.close();
@@ -4682,18 +5277,27 @@
     if (!p) return;
     el.pendienteDialog.close();
 
-    confirmAction('Se elimina este pendiente.', () => {
+    confirmAction('Se elimina esta tarea pendiente.', () => {
+      /* Antes de sacarlo se anota dónde estaba: la papelera lo guarda siete
+         días y restaurarlo lo devuelve a ese lugar. */
+      const indice = state.pendientes.items.indexOf(p);
+      aPapelera({ tipo: 'pendiente', nombre: p.name, indice, dato: { ...p } });
+
       state.pendientes.items = state.pendientes.items.filter(i => i.id !== p.id);
       save();
       render();
-      toast('Pendiente eliminado');
-    }, { items: [p.name], ok: 'Eliminar' });
+      toast('Tarea pendiente eliminada');
+    }, {
+      items: [p.name],
+      ok: 'Eliminar',
+      note: `Queda ${DIAS_PAPELERA} días en la papelera, en ☰ → Papelera.`,
+    });
   });
 
   el.categoriaForm.addEventListener('submit', e => {
     e.preventDefault();
 
-    const name = el.categoriaName.value.trim();
+    const name = capitalizeFirstLetter(el.categoriaName.value.trim());
     if (!name) {
       el.categoriaError.textContent = 'Poné un nombre.';
       el.categoriaError.hidden = false;
@@ -4704,7 +5308,7 @@
     const padre = categoriaPorId(el.categoriaPadre.value)?.id ?? null;
     const actual = ui.editandoCategoria ? categoriaPorId(ui.editandoCategoria) : null;
     if (actual) Object.assign(actual, { name, padre });
-    else state.pendientes.categorias.push({ id: newId(), name, padre });
+    else state.pendientes.categorias.push({ id: newId(), name, padre, archivada: false });
 
     save();
     el.categoriaDialog.close();
@@ -4724,7 +5328,22 @@
       + subs.reduce((n, sub) => n + pendientesDe(sub.id).length, 0);
 
     confirmAction('Se elimina la categoría.', () => {
-      const hijas = new Set(subcategoriasDe(cat.id).map(c => c.id));
+      /* Se anota el cambio entero: dónde estaba, qué subcategorías quedaron de
+         primer nivel por su culpa y qué pendientes quedaron sueltos. Restaurar
+         deshace las tres cosas. */
+      const hijas = new Set(state.pendientes.categorias
+        .filter(c => c.padre === cat.id).map(c => c.id));
+      const sueltos = state.pendientes.items
+        .filter(p => p.categoria === cat.id).map(p => p.id);
+      aPapelera({
+        tipo: 'categoria',
+        nombre: cat.name,
+        indice: state.pendientes.categorias.indexOf(cat),
+        dato: { ...cat },
+        hijas: [...hijas],
+        sueltos,
+      });
+
       state.pendientes.categorias = state.pendientes.categorias
         .filter(c => c.id !== cat.id)
         .map(c => (hijas.has(c.id) ? { ...c, padre: null } : c));
@@ -4739,11 +5358,288 @@
       items: [cat.name],
       ok: 'Eliminar',
       note: dentro || subs.length
-        ? 'Lo que tiene adentro no se borra: los pendientes quedan sin categoría'
+        ? 'Lo que tiene adentro no se borra: las tareas quedan sin categoría'
           + ' y las subcategorías pasan a primer nivel.'
         : '',
     });
   });
+
+  // ---------------------------------------------------------
+  // Baja de la cuenta
+  // ---------------------------------------------------------
+
+  /**
+   * Borra de ESTE aparato todo lo del usuario que se va.
+   *
+   * Incluye la copia sin dueño —`STORAGE_BASE`—, que es la que `adoptarDatosPrevios`
+   * le ofrece al que entre después: sin borrarla, el próximo que inicie sesión
+   * en este navegador heredaría los datos del que se dio de baja.
+   */
+  function borrarDatosLocales() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(`${STORAGE_KEY}/pendiente`);
+      localStorage.removeItem(STORAGE_BASE);
+      localStorage.removeItem(`${STORAGE_BASE}/pendiente`);
+    } catch { /* sin almacenamiento no hay nada que borrar */ }
+  }
+
+  /**
+   * Da de baja la cuenta: borra al usuario en la base y todo lo suyo con él.
+   *
+   * El borrado lo hace `eliminar_cuenta` en Supabase —una función `security
+   * definer` que borra de `auth.users` al que la llama— porque desde el
+   * navegador no hay manera: la clave anónima no puede tocar usuarios, y darle
+   * ese poder al cliente sería darle el poder de borrar cualquier cuenta. Las
+   * tablas cuelgan de `auth.users` con `on delete cascade`, así que con el
+   * usuario se van sus tareas, sus suscripciones al push y su recordatorio.
+   *
+   * Si la función no está instalada, se dice qué falta en vez de fallar en
+   * silencio: es un paso de puesta en marcha, no un error del usuario.
+   */
+  async function eliminarCuenta() {
+    if (!window.supabaseClient) {
+      toast('Sin conexión con la base no se puede dar de baja la cuenta');
+      return;
+    }
+
+    const { error } = await window.supabaseClient.rpc('eliminar_cuenta');
+    if (error) {
+      const falta = /function .*eliminar_cuenta|not find the function|404/i
+        .test(`${error.message} ${error.code ?? ''}`);
+      toast(falta
+        ? 'Falta instalar db/eliminar-cuenta.sql en Supabase'
+        : 'No se pudo eliminar la cuenta. Probá de nuevo.');
+      return;
+    }
+
+    /* Primero lo local y después la sesión: si se hiciera al revés y la salida
+       fallara, quedarían los datos de una cuenta que ya no existe. */
+    borrarDatosLocales();
+    try {
+      await window.supabaseClient.auth.signOut();
+    } catch { /* el token ya no vale: la recarga limpia igual */ }
+
+    /* Recargar y no solo cerrar sesión: con el usuario borrado, el cliente
+       tiene en mano un token de alguien que ya no existe. Desde cero vuelve la
+       puerta de entrada, limpia. */
+    location.reload();
+  }
+
+  el.deleteAccount.addEventListener('click', () => {
+    confirmAction(
+      'Se elimina tu cuenta y todo lo que cargaste. No se puede deshacer.',
+      eliminarCuenta,
+      {
+        items: [currentUserEmail || 'Tu cuenta'],
+        ok: 'Eliminar cuenta',
+        note: 'Se borran las tareas de todos los meses, las tareas pendientes, las '
+          + 'plantillas propias y el recordatorio. Si querés conservar una copia, '
+          + 'salí de acá y usá ☰ → Exportar antes.',
+      },
+    );
+  });
+
+  // ---------------------------------------------------------
+  // Pendientes: Archivo y Papelera
+  // ---------------------------------------------------------
+
+  /** Lo borrado que todavía se puede restaurar. */
+  const papeleraPendientes = () => state.pendientes.papelera
+    .filter(entrada => diasDesde(entrada.fecha) < DIAS_PAPELERA);
+
+  /**
+   * Las dos entradas del cajón, con su estado y su porqué.
+   *
+   * Apagadas cuando no hay nada que mostrar, y el título dice cuánto hay: un
+   * botón apagado sin explicación manda a adivinar.
+   */
+  function renderEntradasPendientes() {
+    const guardadas = categoriasArchivadas().filter(c => !c.padre).length
+      + pendientesArchivados().length;
+    el.pendArchivoBtn.disabled = guardadas === 0;
+    el.pendArchivoBtn.title = guardadas
+      ? `Ver ${guardadas} ${guardadas === 1 ? 'cosa guardada' : 'cosas guardadas'}`
+      : 'No hay nada guardado';
+
+    const borrados = papeleraPendientes().length;
+    el.pendPapeleraBtn.disabled = borrados === 0;
+    el.pendPapeleraBtn.title = borrados
+      ? `${borrados} ${borrados === 1 ? 'cosa borrada' : 'cosas borradas'} en los últimos `
+        + `${DIAS_PAPELERA} días`
+      : 'No hay nada borrado que restaurar';
+  }
+
+  /* ---- Archivo ---- */
+
+  /**
+   * Las categorías guardadas, para elegir cuáles vuelven.
+   *
+   * Se listan solo las de primer nivel: una subcategoría se guardó CON su
+   * madre y vuelve con ella, así que ofrecerla por separado prometería algo
+   * que no pasa —ver `estaArchivada`—.
+   */
+  /* El Archivo mezcla dos cosas, así que la clave dice de cuál se trata: sin el
+     prefijo, una categoría y una tarea con el mismo id serían la misma ficha. */
+  const pendArchivo = listaElegible({
+    nodos: {
+      lista: el.pendArchivoList,
+      vacio: el.pendArchivoEmpty,
+      todas: el.pendArchivoAll,
+      remate: el.pendArchivoUndo,
+    },
+    /* Primero las categorías y después las tareas sueltas: guardar una
+       categoría se lleva más cosas, y conviene verlas antes. */
+    fichas: () => [
+      ...categoriasArchivadas().filter(c => !c.padre).map(cat => {
+        /* Qué se lleva guardado: sus subcategorías y todo lo anotado adentro.
+           Es lo que vuelve al desarchivarla, así que conviene verlo antes. */
+        const subs = state.pendientes.categorias.filter(c => c.padre === cat.id);
+        const dentro = pendientesDe(cat.id).length
+          + subs.reduce((n, sub) => n + pendientesDe(sub.id).length, 0);
+        const partes = ['Categoría'];
+        if (subs.length) {
+          partes.push(subs.length === 1 ? '1 subcategoría' : `${subs.length} subcategorías`);
+        }
+        partes.push(dentro === 1 ? '1 tarea' : `${dentro} tareas`);
+
+        return { clave: `cat:${cat.id}`, nombre: cat.name, detalle: partes.join(' · ') };
+      }),
+      ...pendientesArchivados().map(p => {
+        const partes = ['Tarea pendiente', labelEstado(p.estado)];
+        if (p.fecha) partes.push(`para el ${fmtNumerica.format(parseDateKey(p.fecha))}`);
+        return { clave: `pend:${p.id}`, nombre: p.name, detalle: partes.join(' · ') };
+      }),
+    ],
+    textos: {
+      remate: n => `Devolver ${n === 1 ? 'lo elegido' : `las ${n} cosas elegidas`} a la lista`,
+      sinElegir: 'Elegí al menos una',
+      todas: total => `Elegir las ${total} guardadas`,
+    },
+    accion: claves => {
+      const cats = new Set(claves.filter(c => c.startsWith('cat:')).map(c => c.slice(4)));
+      const items = new Set(claves.filter(c => c.startsWith('pend:')).map(c => c.slice(5)));
+
+      for (const cat of state.pendientes.categorias) {
+        if (cats.has(cat.id)) cat.archivada = false;
+      }
+      for (const p of state.pendientes.items) {
+        if (items.has(p.id)) p.archivado = false;
+      }
+
+      save();
+      render();
+      pendArchivo.dibujar();
+      // Sin nada que mostrar, el diálogo ya no tiene de qué hablar.
+      if (!categoriasArchivadas().length && !pendientesArchivados().length) {
+        el.pendArchivoDialog.close();
+      }
+      toast(claves.length === 1 ? 'Devuelto a la lista' : 'Devueltos a la lista');
+    },
+  });
+
+  el.pendArchivoBtn.addEventListener('click', () => {
+    setDrawer(false);
+    pendArchivo.dibujar();
+    abrirDialogo(el.pendArchivoDialog, '#pend-archivo-title');
+  });
+
+  /* ---- Papelera ---- */
+
+  /**
+   * Anota en la papelera lo que se está por borrar.
+   *
+   * Guarda el CAMBIO y no solo la cosa: el lugar que ocupaba y, en una
+   * categoría, quiénes quedaron sueltos por su culpa. Es lo que permite que
+   * restaurar la devuelva a su lugar con lo suyo, en vez de dejarla al final y
+   * vacía.
+   */
+  function aPapelera(entrada) {
+    state.pendientes.papelera.unshift({ fecha: dateKey(today), ...entrada });
+  }
+
+  const pendPapeleraUI = listaElegible({
+    nodos: {
+      lista: el.pendPapeleraList,
+      vacio: el.pendPapeleraEmpty,
+      todas: el.pendPapeleraAll,
+      remate: el.pendPapeleraRestore,
+    },
+    /* Qué era, cuándo se borró y cuánto le queda: lo mismo que dice la papelera
+       de Hábitos, que es la misma pregunta sobre otras cosas. La clave es la
+       posición en la lista, que se rehace entera en cada dibujado. */
+    fichas: () => papeleraPendientes().map((entrada, i) => {
+      const quedan = Math.max(0, DIAS_PAPELERA - diasDesde(entrada.fecha));
+      return {
+        clave: String(i),
+        nombre: entrada.nombre,
+        detalle: [
+          entrada.tipo === 'categoria' ? 'Categoría' : 'Tarea pendiente',
+          `borrada el ${fmtNumerica.format(parseDateKey(entrada.fecha))}`,
+          quedan === 1 ? 'queda 1 día' : `quedan ${quedan} días`,
+        ].join(' · '),
+      };
+    }),
+    textos: {
+      remate: n => `Restaurar ${n === 1 ? 'lo elegido' : `las ${n} cosas elegidas`}`,
+      sinElegir: 'Elegí al menos una',
+      todas: total => `Elegir las ${total} borradas`,
+    },
+    accion: claves => {
+      const elegidas = new Set(claves.map(Number));
+      const vuelven = papeleraPendientes().filter((_, i) => elegidas.has(i));
+      for (const entrada of vuelven) restaurarDePendientes(entrada);
+
+      state.pendientes.papelera = state.pendientes.papelera
+        .filter(entrada => !vuelven.includes(entrada));
+
+      save();
+      render();
+      pendPapeleraUI.dibujar();
+      if (!papeleraPendientes().length) el.pendPapeleraDialog.close();
+      toast(vuelven.length === 1 ? 'Restaurado' : `${vuelven.length} restaurados`);
+    },
+  });
+
+  el.pendPapeleraBtn.addEventListener('click', () => {
+    setDrawer(false);
+    pendPapeleraUI.dibujar();
+    abrirDialogo(el.pendPapeleraDialog, '#pend-papelera-title');
+  });
+
+  /**
+   * Devuelve una entrada a su lugar.
+   *
+   * Un pendiente vuelve al lugar que tenía, y si su categoría ya no existe
+   * queda suelto en vez de perderse. Una categoría vuelve con su marca de
+   * archivada y se lleva de vuelta a las subcategorías y los pendientes que
+   * habían quedado sueltos cuando se la borró — pero solo si siguen existiendo:
+   * lo que se borró después de eso no revive por esta puerta.
+   */
+  function restaurarDePendientes(entrada) {
+    const { categorias, items } = state.pendientes;
+
+    if (entrada.tipo === 'pendiente') {
+      const item = { ...entrada.dato };
+      if (item.categoria && !categorias.some(c => c.id === item.categoria)) item.categoria = null;
+      items.splice(Math.min(entrada.indice, items.length), 0, item);
+      return;
+    }
+
+    const cat = { ...entrada.dato };
+    // El padre pudo haberse borrado mientras tanto: vuelve de primer nivel.
+    if (cat.padre && !categorias.some(c => c.id === cat.padre)) cat.padre = null;
+    categorias.splice(Math.min(entrada.indice, categorias.length), 0, cat);
+
+    for (const id of entrada.hijas) {
+      const sub = categorias.find(c => c.id === id);
+      if (sub && !sub.padre) sub.padre = cat.id;
+    }
+    for (const id of entrada.sueltos) {
+      const item = items.find(p => p.id === id);
+      if (item && !item.categoria) item.categoria = cat.id;
+    }
+  }
 
   // ---------------------------------------------------------
   // Plantillas
@@ -4799,8 +5695,7 @@
     for (const tpl of plantillasVisibles()) el.templatesList.appendChild(templateCard(tpl));
 
     syncTemplatesTarget();
-    el.templatesDialog.showModal();
-    $('#templates-title').focus();
+    abrirDialogo(el.templatesDialog, '#templates-title');
   }
 
   /**
@@ -5087,6 +5982,7 @@
   });
 
   el.menu.addEventListener('click', () => setDrawer(true));
+  el.pendMenu.addEventListener('click', () => setDrawer(true));
   $('#btn-menu-close').addEventListener('click', () => setDrawer(false));
   el.drawerBackdrop.addEventListener('click', () => setDrawer(false));
 
@@ -5602,7 +6498,7 @@
   function estadoVacio() {
     return {
       months: {}, status: {}, trash: [],
-      pendientes: { categorias: [], items: [] },
+      pendientes: { categorias: [], items: [], papelera: [] },
       theme: state.theme,   // el tema es de la pantalla, no del usuario
     };
   }
@@ -5642,6 +6538,8 @@
     stop() {
       clearTimeout(relojDia);
       currentUserId = null;
+      currentUserEmail = null;
+      sombraRemota = null;
       state = estadoVacio();
       ui.selected.clear();
       ui.diasEditables.clear();

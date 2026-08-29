@@ -139,6 +139,32 @@ const TABS = [
   }
   ok('cerrar sesión es un botón, no un enlace',
     doc.querySelector('#btn-sign-out').tagName === 'BUTTON');
+
+  /* Las dos salidas van juntas y en ese orden: primero la que no destruye
+     nada. Y se distinguen a la vista —contorno contra relleno—, que es lo que
+     evita el clic equivocado. */
+  const salidas = [...doc.querySelectorAll('.session-acciones .btn')].map(b => b.id);
+  ok('  y al lado está el de eliminar la cuenta',
+    salidas.join(',') === 'btn-sign-out,btn-delete-account', salidas.join(','));
+  /* El rojo lo lleva la que no tiene vuelta, y solo ella: con las dos en rojo
+     ninguna avisaba nada. */
+  ok('  y el rojo se lo queda la que no tiene vuelta',
+    doc.querySelector('#btn-delete-account').className.includes('session-delete')
+      && !doc.querySelector('#btn-sign-out').className.includes('session-delete'));
+
+  /* Eliminar la cuenta pide confirmación y dice todo lo que se lleva: es la
+     única acción de la app que no se puede deshacer ni desde la papelera. */
+  doc.querySelector('#btn-delete-account').click();
+  const dialogo = doc.querySelector('#confirm-dialog');
+  ok('  y pide confirmación antes de nada', dialogo.hasAttribute('open'));
+  ok('    diciendo que no tiene vuelta',
+    /No se puede deshacer/.test(doc.querySelector('#confirm-text').textContent),
+    doc.querySelector('#confirm-text').textContent);
+  ok('    qué se lleva puesto',
+    /pendientes/.test(doc.querySelector('#confirm-note').textContent),
+    doc.querySelector('#confirm-note').textContent);
+  ok('    y ofreciendo la copia antes de borrar',
+    /Exportar/.test(doc.querySelector('#confirm-note').textContent));
   ok('el plan tiene su tarjeta', Boolean(doc.querySelector('#plan-name')));
 
   // Y no quedó una segunda copia en el cajón.

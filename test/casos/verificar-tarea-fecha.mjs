@@ -24,6 +24,17 @@ const crear = async (estado, { nombre = 'Nueva', fecha, mover = 0 } = {}) => {
   return { window, doc };
 };
 
+// --- 0. el nombre topea en 35 caracteres ------------------------------------
+{
+  /* El tope lo pone el campo, no una comprobación al guardar: así el que
+     escribe ve que se frena, en lugar de enterarse después de que le
+     recortaron el nombre. */
+  const { doc } = await crear(ESTADO_VACIO);
+  ok('el nombre de la tarea topea en 35 caracteres',
+    doc.querySelector('#task-name').getAttribute('maxlength') === '35',
+    doc.querySelector('#task-name').getAttribute('maxlength'));
+}
+
 // --- 1. el campo es obligatorio y abre en hoy -------------------------------
 {
   const { doc } = await crear(ESTADO_VACIO);

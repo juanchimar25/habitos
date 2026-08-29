@@ -12,7 +12,7 @@ cualquiera de ellas y tener algo usable.
 | 0 — Preparar el terreno | ✅ hecha |
 | 1 — Hosting | ✅ hecha (Vercel, con fallbacks para Netlify y GitHub Pages) |
 | 2 — Login | ✅ hecha ([`auth.js`](../auth.js)) |
-| 3 — Persistencia contra Postgres | ⏳ **a medias** — ver abajo |
+| 3 — Persistencia contra Postgres | ⏳ **a medias** — con el tamaño ya resuelto; ver abajo |
 | 4 — Offline | ⏳ apenas arrancada — se reintenta solo y al recuperar la conexión, pero no hay cola de operaciones |
 
 La etapa 3 se resolvió por un **atajo**: en vez de las tablas de [`schema.sql`](schema.sql), hoy
@@ -23,11 +23,17 @@ que ahora también contra la red.
 Eso ya da lo que importaba —los datos sobreviven a cambiar de navegador o de equipo—, y por eso
 no urge terminar. Lo que queda pendiente es lo que el atajo no resuelve:
 
-- **Cada subida lleva el estado entero.** Ya no una por clic: las ráfagas se agrupan en una sola
-  escritura, nunca hay dos en vuelo y las preferencias de pantalla quedaron fuera del payload
-  (ver *Cómo se sube* en el README). Pero lo que viaja sigue siendo el estado completo, así que
-  el problema crece con el historial, no con el uso.
-- **Entre dispositivos gana el último que escribe**, y pisa el mes entero, no la celda.
+- ~~**Cada subida lleva el estado entero.**~~ **Resuelto sin normalizar**: el cliente manda un
+  parche (RFC 7386) con lo que cambió y `merge_app_state` lo mezcla en el mismo `jsonb`. Marcar una
+  celda son 34 bytes, y siguen siendo 34 con diez años de historial. Ver *Qué viaja en cada
+  escritura* en el README y [`sincronizacion-incremental.sql`](sincronizacion-incremental.sql).
+
+  Se hizo así —y no partiendo el estado en tablas— por una razón de tiempo, no de gusto: el modelo
+  todavía se está moviendo (Pendientes nació esta semana), y `schema.sql` congelaría un diseño que
+  ya no coincide con la app. El parche paga la deuda cara y deja el camino a las tablas abierto.
+- **Entre dispositivos gana el último que escribe**, aunque ahora pisa solo lo que tocó y no el
+  estado entero: dos aparatos editando meses distintos ya no se borran mutuamente. La mezcla por
+  celda sigue necesitando una fila por marca.
   Sin `updated_at` por fila no hay forma de mezclar. La marca de pendientes que hay hoy resuelve
   un caso más chico —que la lectura remota no pise cambios locales que no llegaron a subir—, no
   la mezcla entre dos aparatos que editaron a la vez.

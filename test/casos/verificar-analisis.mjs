@@ -169,7 +169,9 @@ const marcar = (desde, hasta, fn) => {
     doc.querySelector('#summary') === null && doc.querySelectorAll('.tile').length === 0);
   ok('  ni paneles plegables', doc.querySelectorAll('#analysis .panel').length === 0);
 
-  const titulo = () => doc.querySelector('#charts .chart-title')?.textContent ?? '';
+  /* El gráfico ya no lleva su nombre a la vista —lo dice el menú, que queda
+     marcado—, pero sigue anunciándose para quien no ve la pantalla. */
+  const titulo = () => doc.querySelector('#charts .chart-card')?.getAttribute('aria-label') ?? '';
   const cuantos = () => doc.querySelectorAll('#charts .chart-card').length;
 
   ok('se dibuja uno solo', cuantos() === 1, String(cuantos()));
@@ -221,7 +223,7 @@ const marcar = (desde, hasta, fn) => {
   verGrafico(doc, 'puntos');
 
   const tarjeta = [...doc.querySelectorAll('#charts .chart-card')]
-    .find(c => /^Puntos$/.test(c.querySelector('.chart-title')?.textContent ?? ''));
+    .find(c => c.getAttribute('aria-label') === 'Puntos');
   const filas = [...tarjeta.querySelectorAll('.dots-row')];
   const puntosDe = i => [...filas[i].querySelectorAll('.dot')];
 
@@ -276,7 +278,7 @@ const marcar = (desde, hasta, fn) => {
   const { doc } = await montar({ ...estado({}), months: { '2026-07': [] } });
   verGrafico(doc, 'puntos');
   const tarjeta = [...doc.querySelectorAll('#charts .chart-card')]
-    .find(c => /^Puntos$/.test(c.querySelector('.chart-title')?.textContent ?? ''));
+    .find(c => c.getAttribute('aria-label') === 'Puntos');
 
   ok('sin tareas el gráfico lo dice',
     /Todavía no hay tareas/.test(tarjeta.querySelector('.chart-empty')?.textContent ?? ''),
@@ -304,13 +306,13 @@ const marcar = (desde, hasta, fn) => {
 === color de las barras ===
   ${rellenos.join(' · ')}`);
 
-  /* Con los colores de la lista del día: una barra verde y una tarjeta verde
-     tienen que querer decir lo mismo. */
+  /* Con la misma paleta que «Puntos» y «Porcentajes»: los tres gráficos se
+     miran de corrido y el mismo nivel tiene que ser el mismo color. */
   ok('las barras se pintan por cumplimiento',
-    rellenos.every(f => ['done', 'partial', 'missed'].some(e => f === `var(--${e}-bg)`)),
+    rellenos.every(f => ['done', 'partial', 'missed'].some(e => f === `var(--dot-${e})`)),
     rellenos.join(' · '));
-  ok('  el día cumplido va verde', rellenos[0] === 'var(--done-bg)', rellenos[0]);
-  ok('  y el domingo en cero va rojo', rellenos.at(-1) === 'var(--missed-bg)',
+  ok('  el día cumplido va verde', rellenos[0] === 'var(--dot-done)', rellenos[0]);
+  ok('  y el domingo en cero va rojo', rellenos.at(-1) === 'var(--dot-missed)',
     rellenos.at(-1));
   ok('  sin barras neutras', !rellenos.includes('var(--chart-neutral)'), rellenos.join(' · '));
 
@@ -478,6 +480,78 @@ const marcar = (desde, hasta, fn) => {
     tarjeta.className);
 }
 
+// --- «Puntos» se ordena por puntos ----------------------------------------
+{
+  /* Cada gráfico se ordena por el número que dibuja. En «Puntos» eso son los
+     PUNTOS —lo hecho—, y en «Porcentajes», el porcentaje. Con un solo criterio
+     para los dos, uno de los dos quedaba ordenado por algo que no muestra.
+
+     «Leer» es diaria y va cumplida 20 días: 20 puntos sobre 30 pedidos, 67%.
+     «Correr» es semanal y va cumplida 4 días: 4 puntos sobre 5, 80%. Por puntos
+     manda «Leer»; por porcentaje, «Correr». */
+  const semanal = tarea('sem', 'Correr', 'weekly');
+  const status = {
+    ...marcar(1, 20, iso => ({ [`d1|${iso}`]: 'done' })),
+    'sem|2026-07-06': 'done',
+    'sem|2026-07-13': 'done',
+    'sem|2026-07-20': 'done',
+    'sem|2026-07-27': 'done',
+  };
+
+  const { doc } = await montar(estado(status, [TAREAS[0], semanal]));
+  const nombres = () => [...doc.querySelectorAll('#charts .task-name')].map(n => n.textContent);
+  const ordenar = clave => {
+    doc.querySelector('#btn-orden').click();
+    doc.querySelector(`.orden-opcion[data-orden="${clave}"]`).click();
+  };
+
+  verGrafico(doc, 'puntos');
+  ordenar('desc');
+  console.log(`\n=== orden por puntos ===\n  puntos: ${nombres().join(' · ')}`);
+  ok('«Puntos» ordena por puntos, no por porcentaje',
+    nombres().join(',') === 'Leer,Correr', nombres().join(','));
+
+  verGrafico(doc, 'porcentajes');
+  console.log(`  porcentajes: ${nombres().join(' · ')}`);
+  ok('  y «Porcentajes» sigue ordenando por porcentaje',
+    nombres().join(',') === 'Correr,Leer', nombres().join(','));
+
+  verGrafico(doc, 'puntos');
+  ordenar('asc');
+  ok('  de menor a mayor, al revés', nombres().join(',') === 'Correr,Leer', nombres().join(','));
+}
+{
+  /* Empate en puntos: decide el porcentaje. Las dos van cumplidas 10 días, así
+     que las dos suman 10 puntos; «Inglés» pide 13 días en el mes y «Leer», 30,
+     así que con lo mismo hecho cumplió más de lo suyo. */
+  const fijos = tarea('lxv', 'Inglés', 'custom', { weekdays: [1, 3, 5] });
+  const status = {
+    ...marcar(1, 10, iso => ({ [`d1|${iso}`]: 'done' })),
+    ...marcar(1, 31, (iso, dow) => ([1, 3, 5].includes(dow) && iso <= '2026-07-22'
+      ? { [`lxv|${iso}`]: 'done' }
+      : {})),
+  };
+
+  const { doc } = await montar(estado(status, [TAREAS[0], fijos]));
+  const nombres = () => [...doc.querySelectorAll('#charts .task-name')].map(n => n.textContent);
+
+  verGrafico(doc, 'puntos');
+  doc.querySelector('#btn-orden').click();
+  doc.querySelector('.orden-opcion[data-orden="desc"]').click();
+
+  const puntos = [...doc.querySelectorAll('#charts .dots-row')].map(f => ({
+    nombre: f.querySelector('.task-name').textContent,
+    hechos: f.querySelectorAll('.dot.st-done').length,
+  }));
+  console.log(`\n=== empate en puntos ===\n  `
+    + puntos.map(p => `${p.nombre}: ${p.hechos}`).join(' · '));
+
+  ok('con los mismos puntos, desempata el porcentaje',
+    nombres().join(',') === 'Inglés,Leer', nombres().join(','));
+  ok('  y los puntos eran los mismos', puntos[0].hechos === puntos[1].hechos,
+    puntos.map(p => p.hechos).join(' vs '));
+}
+
 // --- el desplegable del orden ---------------------------------------------
 {
   /* El botón abre un desplegable con las tres opciones y muestra la puesta.
@@ -589,15 +663,49 @@ const marcar = (desde, hasta, fn) => {
     doc.querySelector('#mes-resumen-valor').textContent);
 }
 {
-  /* Cada tarea aporta como mucho su propia meta: hacer de más en una no puede
-     tapar el incumplimiento de otra. «Leer» va cumplida los 30 días y encima
-     marcada... no puede pasar de 30; «Meditar» no se marca nunca. */
+  /* «Leer» cumplida los 30 días y «Meditar» sin marcar: 30 puntos sobre una
+     meta de 60. */
   const s = marcar(1, 30, iso => ({ [`d1|${iso}`]: 'done' }));
   const { doc } = await montar(estado(s, [TAREAS[0], TAREAS[1]]));
   doc.querySelector('[data-page="indicators"]').click();
 
   ok('una tarea al 100% y otra en cero dan la mitad',
     doc.querySelector('#mes-resumen-valor').textContent === '50%',
+    doc.querySelector('#mes-resumen-valor').textContent);
+}
+{
+  /* El total NO topea cada tarea en su meta: lo hecho de más en una compensa lo
+     que falta en otra. La semanal se marca los 30 días: pide 5 —las tres semanas
+     enteras del mes más las dos partidas, que al marcarlas pasan a pedir— y
+     aporta 30 puntos. La diaria, que pide 30, no se marca nunca. Con tope daría
+     5 sobre 35 —14%—; sin tope, 30 sobre 35.
+
+     Cada fila sigue mostrando lo suyo: la semanal topea en 100%. */
+  const semanal = tarea('sem', 'Lavar ropa', 'weekly');
+  const s = marcar(1, 30, iso => ({ [`sem|${iso}`]: 'done' }));
+  const { doc } = await montar(estado(s, [semanal, TAREAS[0]]));
+  doc.querySelector('[data-page="indicators"]').click();
+
+  const caja = doc.querySelector('#mes-resumen');
+  console.log(`\n=== sin tope por tarea ===\n  `
+    + `${doc.querySelector('#mes-resumen-valor').textContent} · ${caja.title}`);
+
+  ok('lo hecho de más cuenta en el total',
+    /30 sobre una meta de 35/.test(caja.title), caja.title);
+  ok('  y levanta el porcentaje del mes',
+    doc.querySelector('#mes-resumen-valor').textContent === '86%',
+    doc.querySelector('#mes-resumen-valor').textContent);
+}
+{
+  /* Pero el porcentaje no pasa de 100%: una sola tarea marcada muy por encima
+     de lo que pide no puede dar 750%. */
+  const semanal = tarea('sem', 'Lavar ropa', 'weekly');
+  const s = marcar(1, 30, iso => ({ [`sem|${iso}`]: 'done' }));
+  const { doc } = await montar(estado(s, [semanal]));
+  doc.querySelector('[data-page="indicators"]').click();
+
+  ok('el porcentaje del mes topea en 100%',
+    doc.querySelector('#mes-resumen-valor').textContent === '100%',
     doc.querySelector('#mes-resumen-valor').textContent);
 }
 {

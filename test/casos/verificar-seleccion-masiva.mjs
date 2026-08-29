@@ -47,6 +47,12 @@ const enviar = (doc, form) => doc.querySelector(form)
 // --- 1. dónde vive ---------------------------------------------------------
 {
   const { doc } = await montar(ESTADO_LLENO);
+  /* Se llama «Múltiple»: nombra qué se elige —varias tareas— y no el mecanismo
+     con que se eligen. */
+  ok('la entrada del cajón se llama «Múltiple»',
+    doc.querySelector('#btn-masiva').textContent.trim().replace(/\s+/g, ' ') === '☑ Selección múltiple',
+    doc.querySelector('#btn-masiva').textContent.trim());
+
   const grupo = doc.querySelector('#grupo-masiva');
 
   ok('es un grupo plegable del menú', grupo?.tagName === 'DETAILS', grupo?.tagName);

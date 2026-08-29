@@ -44,8 +44,9 @@ const latir = async (veces = 6) => {
  *   `remoto`     qué devuelve la base: `null` = cuenta vacía
  *   `pendiente`  marca de cambios locales sin subir (ISO)
  *   `alSubir`    respuesta del upsert; por omisión, éxito
+ *   `alParchear` respuesta de `merge_app_state`; por omisión, éxito
  */
-async function montar({ local = null, remoto = null, pendiente = null, alSubir } = {}) {
+async function montar({ local = null, remoto = null, pendiente = null, alSubir, alParchear } = {}) {
   const html = leer('index.html').replace(/<script type="module"[^>]*><\/script>/, '');
   const dom = new JSDOM(html, {
     url: 'http://localhost/', runScripts: 'dangerously', pretendToBeVisual: true,
@@ -126,7 +127,9 @@ async function montar({ local = null, remoto = null, pendiente = null, alSubir }
 
   // --- el doble de Supabase ---------------------------------------
   const subidas = [];
+  const parches = [];
   const responder = alSubir ?? (async () => ({ error: null }));
+  const responderParche = alParchear ?? (async () => ({ data: null, error: null }));
   window.supabaseClient = {
     from: () => ({
       select: () => ({
@@ -142,6 +145,12 @@ async function montar({ local = null, remoto = null, pendiente = null, alSubir }
         return responder(subidas.length);
       },
     }),
+    /* La subida incremental: el cliente manda el parche y la base lo mezcla.
+       El doble solo lo anota — mezclar de verdad es cosa de Postgres. */
+    rpc: async (nombre, args) => {
+      parches.push({ nombre, ...args });
+      return responderParche(parches.length);
+    },
   };
 
   window.eval(leer('app.js'));
@@ -150,7 +159,7 @@ async function montar({ local = null, remoto = null, pendiente = null, alSubir }
 
   const doc = window.document;
   return {
-    window, doc, subidas, avanzar,
+    window, doc, subidas, parches, avanzar,
     /** Cicla el estado de una celda, como un clic del usuario. */
     marcar: dia => marcarCelda(doc, celdaDe(doc, 't1', `2026-07-${dia}`)),
     guardadoEn: k => (guardado.has(k) ? guardado.get(k) : null),
@@ -163,23 +172,48 @@ async function montar({ local = null, remoto = null, pendiente = null, alSubir }
 
 const REMOTO = { payload: estadoCon({}), updatedAt: '2026-07-30T10:00:00+00:00' };
 
+/* Lo que la app escribe hoy: el estado sin las preferencias de pantalla. Sirve
+   para que el primer parche sea el cambio y nada más — contra un payload viejo,
+   el primer parche además lo normaliza, que es su otro trabajo. */
+const REMOTO_AL_DIA = {
+  payload: {
+    /* La tarea como la deja `normalize`: si al fixture le faltara un campo, el
+       primer parche lo agregaría y ensuciaría lo que estos casos miran. */
+    months: { '2026-07': TAREAS.map(t => ({ ...t, archived: [], end: null })) },
+    status: {},
+    trash: [],
+    templates: [],
+    removedTemplates: [],
+    pendientes: { categorias: [], items: [], papelera: [] },
+  },
+  updatedAt: '2026-07-30T10:00:00+00:00',
+};
+
+/* Una escritura es una sola cosa mirada desde el planificador, venga por el
+   parche —lo normal— o por el volcado entero. Lo que prueban estos casos es
+   CUÁNDO se escribe, no por cuál de los dos caminos. */
+const escrituras = a => a.parches.length + a.subidas.length;
+/** Lo que llevó la última escritura: el parche, o el payload completo. */
+const ultimo = a => (a.parches.length
+  ? a.parches.at(-1).parche
+  : a.subidas.at(-1).payload);
+
 // --- 1. las ráfagas se agrupan en una sola escritura -----------------------
 {
   const a = await montar({ remoto: REMOTO });
-  const base = a.subidas.length;
+  const base = escrituras(a);
 
   a.marcar('27'); a.marcar('28'); a.marcar('29');
   await latir();
-  ok('tres clics no escriben en el acto', a.subidas.length === base,
-    `${a.subidas.length - base} subida(s)`);
+  ok('tres clics no escriben en el acto', escrituras(a) === base,
+    `${escrituras(a) - base} escritura(s)`);
 
   await a.avanzar(800);
-  ok('tras la espera sube UNA vez', a.subidas.length === base + 1,
-    `${a.subidas.length - base} subida(s)`);
+  ok('tras la espera sube UNA vez', escrituras(a) === base + 1,
+    `${escrituras(a) - base} escritura(s)`);
 
-  const payload = a.subidas.at(-1).payload;
-  ok('y lleva los tres estados', Object.keys(payload.status).length === 3,
-    Object.keys(payload.status).join(' '));
+  ok('y lleva los tres estados', Object.keys(ultimo(a).status).length === 3,
+    Object.keys(ultimo(a).status).join(' '));
 }
 
 // --- 2. nunca hay dos escrituras en vuelo ---------------------------------
@@ -190,40 +224,50 @@ const REMOTO = { payload: estadoCon({}), updatedAt: '2026-07-30T10:00:00+00:00' 
 
   const a = await montar({
     remoto: REMOTO,
-    alSubir: async n => {
+    alParchear: async n => {
       numero = n;
       if (n === 1) await enEspera;      // la primera queda colgada
-      return { error: null };
+      return { data: null, error: null };
     },
   });
-  const base = a.subidas.length;
+  const base = escrituras(a);
 
   a.marcar('27');
   await a.avanzar(800);
-  ok('arranca la primera subida', a.subidas.length === base + 1);
+  ok('arranca la primera subida', escrituras(a) === base + 1);
 
   // Llegan cambios mientras la anterior sigue sin resolver.
   a.marcar('28');
   await a.avanzar(800);
-  ok('no se lanza una segunda en paralelo', a.subidas.length === base + 1,
-    `${a.subidas.length - base} en vuelo`);
+  ok('no se lanza una segunda en paralelo', escrituras(a) === base + 1,
+    `${escrituras(a) - base} en vuelo`);
 
-  soltar({ error: null });
+  soltar({ data: null, error: null });
   await latir();
-  ok('al resolverse la primera, sube lo que quedó', a.subidas.length === base + 2,
-    `${a.subidas.length - base} subida(s)`);
-  ok('y esa última lleva los dos estados',
-    Object.keys(a.subidas.at(-1).payload.status).length === 2,
-    Object.keys(a.subidas.at(-1).payload.status).join(' '));
+  ok('al resolverse la primera, sube lo que quedó', escrituras(a) === base + 2,
+    `${escrituras(a) - base} escritura(s)`);
+  /* La segunda lleva UNA sola marca: la sombra ya tiene la primera, así que el
+     parche solo trae lo que la base todavía no vio. */
+  ok('y esa última lleva lo que faltaba',
+    Object.keys(ultimo(a).status).join(',') === 't1|2026-07-28',
+    Object.keys(ultimo(a).status).join(' '));
   ok('el doble vio las dos', numero === 2, String(numero));
 }
 
 // --- 3. las preferencias de pantalla no viajan ----------------------------
 {
-  const a = await montar({ remoto: REMOTO });
+  /* Contra una base sin la función de mezcla, para poder mirar el payload
+     entero: en un parche solo viaja lo que cambió, así que la ausencia de una
+     preferencia no probaría nada. */
+  const a = await montar({
+    remoto: REMOTO,
+    alParchear: async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }),
+  });
   a.marcar('27');
   await a.avanzar(800);
 
+  /* Se mira el volcado entero y no el parche: un parche solo trae lo que
+     cambió, así que la ausencia de una preferencia no probaría nada. */
   const payload = a.subidas.at(-1).payload;
   console.log('  claves del payload:', Object.keys(payload).join(', '));
   for (const campo of ['theme', 'zoom', 'controlsCollapsed', 'panels', 'complianceMode']) {
@@ -235,15 +279,15 @@ const REMOTO = { payload: estadoCon({}), updatedAt: '2026-07-30T10:00:00+00:00' 
 // --- 4. cambiar una preferencia no sube nada ------------------------------
 {
   const a = await montar({ remoto: REMOTO });
-  const base = a.subidas.length;
+  const base = escrituras(a);
 
   a.doc.querySelector('#btn-theme').click();
   a.doc.querySelector('#btn-zoom')?.click();
   a.doc.querySelector('[data-compliance-mode]')?.click();
   await a.avanzar(2000);
 
-  ok('tema, zoom y estatus no generan escrituras', a.subidas.length === base,
-    `${a.subidas.length - base} subida(s)`);
+  ok('tema, zoom y estatus no generan escrituras', escrituras(a) === base,
+    `${escrituras(a) - base} escritura(s)`);
   ok('pero quedan guardadas en el aparato',
     Boolean(a.guardadoEn('tareas-diarias/prefs')),
     String(a.guardadoEn('tareas-diarias/prefs')));
@@ -253,25 +297,27 @@ const REMOTO = { payload: estadoCon({}), updatedAt: '2026-07-30T10:00:00+00:00' 
 {
   const a = await montar({
     remoto: REMOTO,
-    alSubir: async n => (n === 1 ? { error: { message: 'red caída' } } : { error: null }),
+    alParchear: async n => (n === 1
+      ? { data: null, error: { message: 'red caída' } }
+      : { data: null, error: null }),
   });
-  const base = a.subidas.length;
+  const base = escrituras(a);
 
   a.marcar('27');
   await a.avanzar(800);
-  ok('el primer intento sale y falla', a.subidas.length === base + 1);
+  ok('el primer intento sale y falla', escrituras(a) === base + 1);
 
   await a.avanzar(1000);
-  ok('no reintenta enseguida', a.subidas.length === base + 1,
-    `${a.subidas.length - base} intento(s)`);
+  ok('no reintenta enseguida', escrituras(a) === base + 1,
+    `${escrituras(a) - base} intento(s)`);
 
   await a.avanzar(5000);
-  ok('reintenta tras la espera de castigo', a.subidas.length === base + 2,
-    `${a.subidas.length - base} intento(s)`);
+  ok('reintenta tras la espera de castigo', escrituras(a) === base + 2,
+    `${escrituras(a) - base} intento(s)`);
 
   await a.avanzar(60000);
-  ok('y al lograrlo deja de intentar', a.subidas.length === base + 2,
-    `${a.subidas.length - base} intento(s)`);
+  ok('y al lograrlo deja de intentar', escrituras(a) === base + 2,
+    `${escrituras(a) - base} intento(s)`);
 }
 
 // --- 6. la marca de pendiente sigue el estado real ------------------------
@@ -292,6 +338,7 @@ const REMOTO = { payload: estadoCon({}), updatedAt: '2026-07-30T10:00:00+00:00' 
 {
   const a = await montar({
     remoto: REMOTO,
+    alParchear: async () => ({ data: null, error: { message: 'red caída' } }),
     alSubir: async () => ({ error: { message: 'red caída' } }),
   });
   a.marcar('27');
@@ -317,8 +364,8 @@ const REMOTO = { payload: estadoCon({}), updatedAt: '2026-07-30T10:00:00+00:00' 
     marcada?.className ?? '(sin celda)');
 
   await a.avanzar(800);
-  ok('y se sube para alinear la base', a.subidas.length >= 1,
-    `${a.subidas.length} subida(s)`);
+  ok('y se sube para alinear la base', escrituras(a) >= 1,
+    `${escrituras(a)} escritura(s)`);
 }
 
 {
@@ -355,8 +402,143 @@ const REMOTO = { payload: estadoCon({}), updatedAt: '2026-07-30T10:00:00+00:00' 
 
   a.ocultar();
   await latir();
-  ok('al ocultarse la pestaña sube en el acto', a.subidas.length === base + 1,
-    `${a.subidas.length - base} subida(s)`);
+  ok('al ocultarse la pestaña sube en el acto', escrituras(a) === base + 1,
+    `${escrituras(a) - base} escritura(s)`);
+}
+
+// --- 8. sube solo lo que cambió -------------------------------------------
+{
+  /* Con el estado leído de la base, el cliente sabe qué tiene el otro lado y
+     manda solo la diferencia: marcar una celda son cien bytes, no el historial
+     entero. El formato es JSON Merge Patch, el mismo que entiende la función
+     `merge_app_state`. */
+  const a = await montar({ remoto: REMOTO_AL_DIA });
+
+  a.marcar('27');
+  await a.avanzar(900);
+
+  console.log(`\n=== el parche ===\n  ${JSON.stringify(a.parches.at(-1))}`);
+
+  ok('la subida va por el parche y no por el upsert',
+    a.parches.length === 1 && a.subidas.length === 0,
+    `${a.parches.length} parche(s) · ${a.subidas.length} upsert(s)`);
+  ok('  contra la función que mezcla del lado de la base',
+    a.parches[0].nombre === 'merge_app_state', a.parches[0].nombre);
+
+  const parche = a.parches[0].parche;
+  ok('  y lleva SOLO la marca nueva',
+    Object.keys(parche).join(',') === 'status'
+      && Object.keys(parche.status).join(',') === 't1|2026-07-27',
+    JSON.stringify(parche));
+  ok('  sin arrastrar los meses ni el resto del estado',
+    parche.months === undefined && parche.templates === undefined,
+    Object.keys(parche).join(','));
+
+  // Un cambio más viaja igual de chico: la sombra se actualizó con el anterior.
+  a.marcar('28');
+  await a.avanzar(900);
+  ok('el segundo cambio también viaja solo',
+    Object.keys(a.parches.at(-1).parche.status).join(',') === 't1|2026-07-28',
+    JSON.stringify(a.parches.at(-1).parche));
+}
+
+// --- 9. borrar una marca viaja como null ----------------------------------
+{
+  /* RFC 7386: en un parche, `null` significa «borrá esta clave». Es lo que
+     necesita desmarcar una celda —si no, la marca vieja quedaría en la base—. */
+  const a = await montar({
+    remoto: {
+      ...REMOTO_AL_DIA,
+      payload: { ...REMOTO_AL_DIA.payload, status: { 't1|2026-07-27': 'done' } },
+    },
+  });
+
+  /* El ciclo de una diaria es cumplida → parcial → no cumplida → no requerida
+     → sin cargar, así que desde «cumplida» hacen falta cuatro toques para
+     volver al principio. */
+  a.marcar('27'); a.marcar('27'); a.marcar('27'); a.marcar('27');
+  await a.avanzar(900);
+
+  ok('desmarcar manda null, que es como se borra en un parche',
+    a.parches.at(-1).parche.status['t1|2026-07-27'] === null,
+    JSON.stringify(a.parches.at(-1).parche));
+}
+
+// --- 10. sin la función instalada, sube todo como antes -------------------
+{
+  /* Instalar `merge_app_state` es un paso de puesta en marcha, no un requisito:
+     si no está, el cliente vuelve al upsert de siempre y no lo reintenta. */
+  const a = await montar({
+    remoto: REMOTO_AL_DIA,
+    alParchear: async () => ({
+      data: null,
+      error: { message: 'Could not find the function public.merge_app_state', code: 'PGRST202' },
+    }),
+  });
+
+  a.marcar('27');
+  await a.avanzar(900);
+  ok('si la función no está, sube el estado entero', a.subidas.length === 1,
+    `${a.subidas.length} upsert(s)`);
+  ok('  con el payload completo',
+    Object.keys(a.subidas[0].payload).includes('months'),
+    Object.keys(a.subidas[0].payload).join(','));
+
+  a.marcar('28');
+  await a.avanzar(900);
+  ok('  y no vuelve a intentar el parche', a.parches.length === 1,
+    `${a.parches.length} intento(s)`);
+  ok('  pero sigue guardando', a.subidas.length === 2, `${a.subidas.length} upsert(s)`);
+}
+
+// --- 11. la primera vez, y después de un error, sube todo -----------------
+{
+  // Cuenta vacía: no hay contra qué comparar, así que va el estado entero.
+  const a = await montar({ local: estadoCon({}), remoto: null });
+  ok('en una cuenta vacía sube el estado entero',
+    a.subidas.length === 1 && a.parches.length === 0,
+    `${a.subidas.length} upsert(s) · ${a.parches.length} parche(s)`);
+
+  /* Tras un fallo no se sabe qué quedó del otro lado, así que la próxima no
+     puede ser un parche: se manda todo, que es lo que no depende de saberlo. */
+  let vuelta = 0;
+  const b = await montar({
+    remoto: REMOTO_AL_DIA,
+    alParchear: async () => {
+      vuelta++;
+      return vuelta === 1
+        ? { data: null, error: { message: 'network error' } }
+        : { data: null, error: null };
+    },
+  });
+
+  b.marcar('27');
+  await b.avanzar(900);
+  ok('un parche que falla no da la subida por hecha', b.subidas.length === 0);
+
+  await b.avanzar(6000);   // el reintento, con su espera creciente
+  ok('  y el reintento manda el estado entero',
+    b.subidas.length === 1 && Object.keys(b.subidas[0].payload).includes('status'),
+    `${b.subidas.length} upsert(s)`);
+}
+
+// --- 12. el primer parche también normaliza lo que había -------------------
+{
+  /* Un payload de una versión vieja trae claves que ya no existen —el modo de
+     estatus, el zoom, los paneles—. El primer parche las borra con `null`, que
+     es como se borra en RFC 7386: la fila queda como la app la entiende hoy,
+     sin necesidad de una migración aparte. */
+  const a = await montar({ remoto: REMOTO });
+
+  a.marcar('27');
+  await a.avanzar(900);
+
+  const parche = a.parches.at(-1).parche;
+  ok('el parche borra las claves que ya no existen',
+    ['complianceMode', 'zoom', 'panels'].every(k => parche[k] === null),
+    Object.keys(parche).filter(k => parche[k] === null).join(','));
+  ok('  y trae la marca nueva', parche.status['t1|2026-07-27'] === 'done',
+    JSON.stringify(parche.status));
 }
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');

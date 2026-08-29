@@ -67,8 +67,9 @@ const ok = (n, cond, det = '') => {
   const fab = doc.querySelector('#btn-fab');
 
   ok('en Pendientes sigue estando', fab.hidden === false);
-  ok('pero se llama «Agregar pendiente»',
-    fab.getAttribute('aria-label') === 'Agregar pendiente', fab.getAttribute('aria-label'));
+  ok('pero se llama «Agregar tarea pendiente»',
+    fab.getAttribute('aria-label') === 'Agregar tarea pendiente',
+    fab.getAttribute('aria-label'));
   /* El atajo `N` es del alta de tareas: nombrarlo acá prometería algo que no
      pasa. */
   ok('y su ayuda ya no habla del atajo de tareas', !/atajo/.test(fab.title), fab.title);
@@ -77,9 +78,12 @@ const ok = (n, cond, det = '') => {
      que crea es lo que la sección contiene. */
   fab.click();
   ok('no abre el alta de tareas', doc.querySelector('#task-dialog').hasAttribute('open') === false);
-  ok('abre el alta de pendientes',
+  /* Crea lo que la vista muestra, sin paso intermedio: en «Lista» —la que abre
+     por defecto— una tarea pendiente. En «Categorías» abre el alta de una
+     categoría, que se comprueba en su propio caso. */
+  ok('abre el alta de una tarea pendiente',
     doc.querySelector('#pendiente-dialog').hasAttribute('open')
-      && doc.querySelector('#pendiente-dialog-title').textContent === 'Nuevo pendiente',
+      && doc.querySelector('#pendiente-dialog-title').textContent === 'Nueva tarea pendiente',
     doc.querySelector('#pendiente-dialog-title').textContent);
 }
 
