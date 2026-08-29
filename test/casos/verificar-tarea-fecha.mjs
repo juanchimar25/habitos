@@ -35,6 +35,31 @@ const crear = async (estado, { nombre = 'Nueva', fecha, mover = 0 } = {}) => {
     doc.querySelector('#task-name').getAttribute('maxlength'));
 }
 
+// --- 0b. dos tareas del mes no pueden llamarse igual ------------------------
+{
+  /* En la lista, en el gráfico y en el archivo, dos tareas con el mismo nombre
+     son indistinguibles: no hay forma de saber cuál es cuál. En otro mes sí se
+     puede, porque ahí no conviven. */
+  const { doc } = await crear(ESTADO_LLENO, { nombre: 'Leer' });
+  enviar(doc);
+
+  ok('no entran dos tareas con el mismo nombre en el mes',
+    doc.querySelector('#task-dialog').hasAttribute('open'),
+    'el diálogo se cerró: la creó');
+  ok('  y lo dice', /Ya hay una tarea llamada/.test(doc.querySelector('#task-error').textContent),
+    doc.querySelector('#task-error').textContent);
+
+  // Con otra mayúscula es la misma tarea escrita de otra manera.
+  doc.querySelector('#task-name').value = 'leer';
+  enviar(doc);
+  ok('  sin importar mayúsculas ni acentos',
+    doc.querySelector('#task-dialog').hasAttribute('open'));
+
+  doc.querySelector('#task-name').value = 'Leer de noche';
+  enviar(doc);
+  ok('y con otro nombre entra', doc.querySelector('#task-dialog').hasAttribute('open') === false);
+}
+
 // --- 1. el campo es obligatorio y abre en hoy -------------------------------
 {
   const { doc } = await crear(ESTADO_VACIO);

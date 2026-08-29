@@ -610,6 +610,16 @@
     return names.length ? names.join(' · ') : 'Sin días';
   }
 
+  /**
+   * ¿Es el mismo nombre? Como lo leería una persona: sin distinguir mayúsculas
+   * ni acentos, y sin los espacios de los bordes. «Correr» y «correr» son el
+   * mismo hábito escrito de dos maneras.
+   */
+  function mismoNombre(uno, otro) {
+    return String(uno).trim().localeCompare(String(otro).trim(), LOCALE,
+      { sensitivity: 'base' }) === 0;
+  }
+
   /** `YYYY-MM-DD` → Date local (evita el corrimiento de `new Date('2026-07-15')`). */
   function parseDateKey(key) {
     const [y, m, d] = key.split('-').map(Number);
@@ -1494,8 +1504,33 @@
    * o cuyo padre ya es subcategoría, queda de primer nivel: se conserva el dato
    * en vez de tirarlo.
    */
+  /* La categoría en la que cae todo lo que no se puso en otro lado. Existe
+     desde la primera vez, con su subcategoría, y no se puede borrar: es lo que
+     sostiene que ninguna tarea quede huérfana. El id es fijo —no un uuid— para
+     poder reconocerla después de que le cambien el nombre. */
+  const VARIOS = 'cat-varios';
+  const VARIOS_SUB = 'cat-varios-sub';
+  const esProtegida = id => id === VARIOS || id === VARIOS_SUB;
+
+  /**
+   * Se asegura de que «Varios» y su subcategoría estén, sin pisar el nombre que
+   * les hayan puesto. Van al final: en una lista que ya tiene categorías
+   * propias, el cajón de sastre no encabeza.
+   */
+  function conVarios(categorias) {
+    const completas = [...categorias];
+    if (!completas.some(c => c.id === VARIOS)) {
+      completas.push({ id: VARIOS, name: 'Varios', padre: null, archivada: false });
+    }
+    if (!completas.some(c => c.id === VARIOS_SUB)) {
+      completas.push({ id: VARIOS_SUB, name: 'Varios', padre: VARIOS, archivada: false });
+    }
+    return completas;
+  }
+
   function cleanPendientes(valor) {
-    if (!esDiccionario(valor)) return { categorias: [], items: [], papelera: [] };
+    // Sin nada guardado, «Varios» igual: es el piso, no un dato del usuario.
+    if (!esDiccionario(valor)) return { categorias: conVarios([]), items: [], papelera: [] };
 
     const crudas = [];
     const vistas = new Set();
@@ -1539,15 +1574,16 @@
       items.push({
         id,
         name,
-        // Una categoría borrada deja al pendiente suelto, no lo borra con ella.
-        categoria: porId.has(categoria) ? categoria : null,
+        /* Una categoría borrada no se lleva puesta la tarea: cae en «Varios»,
+           que es donde vive lo que no está en ningún otro lado. */
+        categoria: porId.has(categoria) ? categoria : VARIOS,
         estado: esEstadoPendiente(crudo.estado) ? crudo.estado : 'sin-iniciar',
         fecha: RE_DIA.test(fecha) ? fecha : null,
         archivado: crudo.archivado === true,
       });
     }
 
-    return { categorias, items, papelera: cleanPapelera(valor.papelera) };
+    return { categorias: conVarios(categorias), items, papelera: cleanPapelera(valor.papelera) };
   }
 
   /**
@@ -2008,6 +2044,7 @@
     pendienteForm: $('#pendiente-form'),
     pendienteName: $('#pendiente-name'),
     pendienteCategoria: $('#pendiente-categoria'),
+    pendienteSub: $('#pendiente-subcategoria'),
     pendienteFecha: $('#pendiente-fecha'),
     pendienteError: $('#pendiente-error'),
     pendienteTools: $('#pendiente-tools'),
@@ -4043,6 +4080,13 @@
     }
     if (!start) return showFormError('Elegí la fecha de inicio de la tarea.');
 
+    /* Dos tareas con el mismo nombre en el mismo mes son indistinguibles en la
+       lista, en el gráfico y en el archivo: no hay forma de saber cuál es cuál.
+       En otro mes sí se puede, porque ahí no conviven. */
+    const repetida = currentTasks()
+      .some(t => t.id !== ui.editingId && mismoNombre(t.name, name));
+    if (repetida) return showFormError(`Ya hay una tarea llamada «${name}» este mes.`);
+
     const fields = { name, freq, customMode, weekdays, target: clampTarget(rawTarget), start };
 
     /* EDICIÓN: la tarea ya vive en la lista del mes visible, así que se la
@@ -4442,6 +4486,11 @@
     { id: 'en-proceso', label: 'En proceso' },
     { id: 'finalizada', label: 'Finalizada' },
   ];
+  /* Lo que entra en una fila sin recortarse con puntos suspensivos en un
+     teléfono. Es el mismo tope que el alta de tareas, que lo declara en el
+     atributo del campo. */
+  const TOPE_NOMBRE = 35;
+
   const esEstadoPendiente = v => ESTADOS_PENDIENTE.some(e => e.id === v);
   const labelEstado = id => ESTADOS_PENDIENTE.find(e => e.id === id)?.label ?? '';
 
@@ -4581,8 +4630,11 @@
 
     /* El cartel de bienvenida solo en las listas: en el calendario el mes vacío
        ya se ve solo, y el cartel taparía la rejilla. */
+    /* «Varios» viene de fábrica, así que no cuenta como algo anotado: con el
+       cartel mirando `categorias.length` no aparecía nunca. */
     const { categorias, items } = state.pendientes;
-    el.pendVacio.hidden = enCalendario || categorias.length > 0 || items.length > 0;
+    const propias = categorias.some(c => !esProtegida(c.id));
+    el.pendVacio.hidden = enCalendario || propias || items.length > 0;
 
     renderOrdenPendientes();
 
@@ -4893,26 +4945,48 @@
   }
 
   /**
-   * Llena un desplegable de categorías, con las subcategorías nombradas por su
-   * camino completo: dos pueden llamarse igual colgando de padres distintos, y
-   * sueltas no habría cómo distinguirlas.
+   * Llena un desplegable con una lista de categorías y una opción vacía.
+   *
+   * Las subcategorías se nombran por su camino completo donde conviven con las
+   * de primer nivel —dos pueden llamarse igual colgando de madres distintas—;
+   * donde ya se sabe de cuál cuelgan, alcanza con su nombre.
    */
-  function opcionesDeCategoria(select, elegida, vacia) {
+  function llenarSelect(select, lista, elegida, vacia, conCamino = false) {
     select.innerHTML = '';
     const ninguna = elem('option', '', vacia);
     ninguna.value = '';
     select.appendChild(ninguna);
 
-    const opcion = (cat, texto) => {
-      const op = elem('option', '', texto);
+    for (const cat of lista) {
+      const madre = cat.padre ? categoriaPorId(cat.padre) : null;
+      const op = elem('option', '', conCamino && madre ? `${madre.name} › ${cat.name}` : cat.name);
       op.value = cat.id;
       select.appendChild(op);
-    };
-    for (const cat of categoriasRaiz()) {
-      opcion(cat, cat.name);
-      for (const sub of subcategoriasDe(cat.id)) opcion(sub, `${cat.name} › ${sub.name}`);
     }
     select.value = elegida ?? '';
+  }
+
+  /** Todas, con las subcategorías nombradas por su camino. Es la del diálogo de categoría. */
+  function opcionesDeCategoria(select, elegida, vacia) {
+    const todas = categoriasRaiz().flatMap(cat => [cat, ...subcategoriasDe(cat.id)]);
+    llenarSelect(select, todas, elegida, vacia, true);
+  }
+
+  /**
+   * El segundo paso: las subcategorías de la principal elegida.
+   *
+   * Se apaga cuando no hay de dónde elegir —sin categoría, o con una que no
+   * tiene subcategorías—, y el título dice cuál de las dos cosas pasa: un
+   * desplegable apagado y mudo manda a adivinar.
+   */
+  function opcionesDeSubcategoria(madre, elegida) {
+    const hijas = madre ? subcategoriasDe(madre) : [];
+    llenarSelect(el.pendienteSub, hijas, elegida, 'Ninguna');
+
+    el.pendienteSub.disabled = hijas.length === 0;
+    el.pendienteSub.title = hijas.length
+      ? ''
+      : (madre ? 'Esta categoría no tiene subcategorías' : 'Elegí una categoría primero');
   }
 
   /**
@@ -4938,7 +5012,17 @@
     el.pendienteError.hidden = true;
 
     el.pendienteName.value = p ? p.name : '';
-    opcionesDeCategoria(el.pendienteCategoria, p?.categoria ?? '', 'Sin categoría');
+
+    /* Lo guardado es UNA categoría, que puede ser de cualquiera de los dos
+       niveles; los dos desplegables la parten en madre e hija para mostrarla. */
+    const suya = p ? categoriaPorId(p.categoria) : null;
+    /* Sin categoría no se puede: un alta arranca en «Varios», que es donde cae
+       lo que no se ordena en otro lado. Por eso el desplegable tampoco tiene
+       una opción vacía. */
+    const madre = suya?.padre ?? suya?.id ?? VARIOS;
+    llenarSelect(el.pendienteCategoria, categoriasRaiz(), madre, '');
+    el.pendienteCategoria.querySelector('option[value=""]')?.remove();
+    opcionesDeSubcategoria(madre, suya ? (suya.padre ? suya.id : '') : VARIOS_SUB);
     const estado = p ? p.estado : 'sin-iniciar';
     el.pendienteForm
       .querySelector(`input[name="pendiente-estado"][value="${estado}"]`).checked = true;
@@ -4958,6 +5042,16 @@
     el.categoriaSubmit.title = rotulo;
     el.categoriaSubmit.setAttribute('aria-label', rotulo);
     el.categoriaTools.hidden = !cat;
+
+    /* «Varios» y su subcategoría se pueden renombrar, pero no sacar de en
+       medio: son el piso que sostiene que ninguna tarea quede sin categoría.
+       Borrarlas dejaría huérfano a lo que cuelga de ellas, y archivarlas
+       escondería la categoría en la que caen las tareas nuevas. */
+    const protegida = Boolean(cat && esProtegida(cat.id));
+    el.categoriaDelete.disabled = protegida;
+    el.categoriaDelete.title = protegida
+      ? 'Esta categoría no se puede eliminar: es donde caen las tareas sin otra'
+      : '';
     el.categoriaError.hidden = true;
     el.categoriaName.value = cat ? cat.name : '';
 
@@ -4967,10 +5061,10 @@
     /* Una subcategoría guardada con su madre no se desarchiva sola: primero
        vuelve la madre. Sin esto quedaba suelta adentro de un bloque guardado. */
     const heredada = Boolean(cat && !cat.archivada && cat.padre && estaArchivada(cat.padre));
-    el.categoriaArchive.disabled = heredada;
-    el.categoriaArchive.title = heredada
-      ? 'Está guardada con su categoría: desarchivá esa primero'
-      : '';
+    el.categoriaArchive.disabled = heredada || protegida;
+    el.categoriaArchive.title = protegida
+      ? 'Esta categoría no se puede archivar: es donde caen las tareas sin otra'
+      : (heredada ? 'Está guardada con su categoría: desarchivá esa primero' : '');
     mostrarFlechasCategoria(false);
 
     /* Solo las de primer nivel pueden ser padre —el anidado llega hasta ahí— y
@@ -5244,10 +5338,16 @@
     toast(p.archivado ? `«${p.name}» quedó guardado` : `«${p.name}» volvió a la lista`);
   });
 
+  /* Elegir otra categoría cambia de qué subcategorías se está hablando, así que
+     la segunda lista se rehace y lo elegido antes deja de valer. */
+  el.pendienteCategoria.addEventListener('change', () => {
+    opcionesDeSubcategoria(el.pendienteCategoria.value, '');
+  });
+
   el.pendienteForm.addEventListener('submit', e => {
     e.preventDefault();
 
-    const name = el.pendienteName.value.trim();
+    const name = el.pendienteName.value.trim().slice(0, TOPE_NOMBRE);
     if (!name) {
       el.pendienteError.textContent = 'Escribí qué hay que hacer.';
       el.pendienteError.hidden = false;
@@ -5257,13 +5357,28 @@
 
     const datos = {
       name,
-      categoria: categoriaPorId(el.pendienteCategoria.value)?.id ?? null,
+      categoria: categoriaPorId(el.pendienteSub.value)?.id
+        ?? categoriaPorId(el.pendienteCategoria.value)?.id
+        ?? VARIOS,
       estado: el.pendienteForm
         .querySelector('input[name="pendiente-estado"]:checked').value,
       fecha: RE_DIA.test(el.pendienteFecha.value) ? el.pendienteFecha.value : null,
     };
 
     const actual = ui.editandoPendiente ? pendientePorId(ui.editandoPendiente) : null;
+
+    /* Únicas adentro de su categoría. «Comprar filtros» puede estar en Cocina y
+       en Auto: son dos cosas distintas que se llaman igual, y el lugar las
+       distingue. Dos veces en la misma lista, no. */
+    const repetida = state.pendientes.items.some(p => p.id !== actual?.id
+      && p.categoria === datos.categoria && mismoNombre(p.name, datos.name));
+    if (repetida) {
+      el.pendienteError.textContent = 'Ya hay una tarea con ese nombre en esa categoría.';
+      el.pendienteError.hidden = false;
+      el.pendienteName.focus();
+      return;
+    }
+
     if (actual) Object.assign(actual, datos);
     else state.pendientes.items.push({ id: newId(), ...datos, archivado: false });
 
@@ -5297,7 +5412,7 @@
   el.categoriaForm.addEventListener('submit', e => {
     e.preventDefault();
 
-    const name = capitalizeFirstLetter(el.categoriaName.value.trim());
+    const name = capitalizeFirstLetter(el.categoriaName.value.trim().slice(0, TOPE_NOMBRE));
     if (!name) {
       el.categoriaError.textContent = 'Poné un nombre.';
       el.categoriaError.hidden = false;
@@ -5307,8 +5422,30 @@
 
     const padre = categoriaPorId(el.categoriaPadre.value)?.id ?? null;
     const actual = ui.editandoCategoria ? categoriaPorId(ui.editandoCategoria) : null;
+
+    /* Únicas entre sus hermanas y no en toda la app: dos «Compras» colgando de
+       madres distintas se distinguen por dónde están, y esa es justamente la
+       razón de tener subcategorías. Dos de primer nivel con el mismo nombre no
+       se distinguirían por nada. */
+    const hermana = state.pendientes.categorias.some(c => c.id !== actual?.id
+      && (c.padre ?? null) === padre && mismoNombre(c.name, name));
+    if (hermana) {
+      el.categoriaError.textContent = padre
+        ? `Esa categoría ya tiene una subcategoría llamada «${name}».`
+        : `Ya hay una categoría llamada «${name}».`;
+      el.categoriaError.hidden = false;
+      el.categoriaName.focus();
+      return;
+    }
     if (actual) Object.assign(actual, { name, padre });
-    else state.pendientes.categorias.push({ id: newId(), name, padre, archivada: false });
+    else {
+      /* Las nuevas van ANTES de «Varios»: es el cajón de sastre y su lugar es el
+         final. Como el orden que se ve es el del arreglo —eso es lo que mueven
+         las flechas—, ponerla acá es lo mismo que ponerla en su lugar. */
+      const nueva = { id: newId(), name, padre, archivada: false };
+      const piso = state.pendientes.categorias.findIndex(c => c.id === VARIOS);
+      state.pendientes.categorias.splice(piso < 0 ? state.pendientes.categorias.length : piso, 0, nueva);
+    }
 
     save();
     el.categoriaDialog.close();
@@ -5348,7 +5485,7 @@
         .filter(c => c.id !== cat.id)
         .map(c => (hijas.has(c.id) ? { ...c, padre: null } : c));
       for (const p of state.pendientes.items) {
-        if (p.categoria === cat.id) p.categoria = null;
+        if (p.categoria === cat.id) p.categoria = VARIOS;
       }
       ui.pendPlegadas.delete(cat.id);
       save();
@@ -5358,8 +5495,8 @@
       items: [cat.name],
       ok: 'Eliminar',
       note: dentro || subs.length
-        ? 'Lo que tiene adentro no se borra: las tareas quedan sin categoría'
-          + ' y las subcategorías pasan a primer nivel.'
+        ? 'Lo que tiene adentro no se borra: las tareas pasan a «Varios»'
+          + ' y las subcategorías, a primer nivel.'
         : '',
     });
   });
@@ -5637,7 +5774,7 @@
     }
     for (const id of entrada.sueltos) {
       const item = items.find(p => p.id === id);
-      if (item && !item.categoria) item.categoria = cat.id;
+      if (item && (!item.categoria || item.categoria === VARIOS)) item.categoria = cat.id;
     }
   }
 
@@ -5923,20 +6060,28 @@
     const nombreMes = labelDeMes(year, month);
 
     const tasks = materialize(year, month);
-    // Se comparan contra los nombres que YA estaban EN ESE MES: así una
-    // plantilla que repite un nombre a propósito entra completa, pero volver a
-    // aplicarla no duplica nada.
-    const existentes = new Set(tasks.map(t => t.name.trim().toLowerCase()));
+
+    /* Se comparan contra los nombres que YA estaban EN ESE MES, con el mismo
+       criterio que el alta —sin distinguir mayúsculas ni acentos—: dos tareas
+       con el mismo nombre en un mes son indistinguibles, venga la segunda de
+       una plantilla o del formulario.
+
+       La lista crece con cada una que entra: una plantilla que repite un nombre
+       adentro suyo tampoco puede meterlo dos veces. */
+    const puestos = tasks.map(t => t.name);
+    const afuera = [];
 
     let agregadas = 0;
     for (const item of tpl.tasks) {
       const task = templateTask(item, start);
-      if (existentes.has(task.name.toLowerCase())) continue;
+      if (puestos.some(nombre => mismoNombre(nombre, task.name))) {
+        afuera.push(task.name);
+        continue;
+      }
       tasks.push({ id: newId(), ...task });
+      puestos.push(task.name);
       agregadas += 1;
     }
-
-    const omitidas = tpl.tasks.length - agregadas;
     save();
     el.templatesDialog.close();
 
@@ -5947,10 +6092,23 @@
     irAlDia(parseDateKey(start));
     irA('home');
 
-    if (!agregadas) toast(`Esas tareas ya estaban en ${nombreMes}`);
-    else toast(`${agregadas} tarea(s) agregadas a ${nombreMes}`
-      + ` desde el ${fmtShort.format(parseDateKey(start))}`
-      + (omitidas ? ` · ${omitidas} ya estaban` : ''));
+    /* El aviso nombra las que quedaron afuera en vez de contarlas: «2 ya
+       estaban» obliga a ir a buscar cuáles, y con dos o tres nombres entra en
+       la misma línea. */
+    const cuales = afuera.length <= 3
+      ? afuera.map(n => `«${n}»`).join(', ')
+      : `${afuera.slice(0, 2).map(n => `«${n}»`).join(', ')} y ${afuera.length - 2} más`;
+
+    if (!agregadas) {
+      toast(`No se agregó ninguna: ${cuales} ya ${afuera.length === 1 ? 'estaba' : 'estaban'}`
+        + ` en ${nombreMes}`);
+    } else {
+      toast(`${agregadas} tarea(s) agregadas a ${nombreMes}`
+        + ` desde el ${fmtShort.format(parseDateKey(start))}`
+        + (afuera.length
+          ? ` · ${cuales} no, ${afuera.length === 1 ? 'ya estaba' : 'ya estaban'}`
+          : ''));
+    }
   }
 
   // ---------------------------------------------------------
@@ -6498,7 +6656,7 @@
   function estadoVacio() {
     return {
       months: {}, status: {}, trash: [],
-      pendientes: { categorias: [], items: [], papelera: [] },
+      pendientes: { categorias: conVarios([]), items: [], papelera: [] },
       theme: state.theme,   // el tema es de la pantalla, no del usuario
     };
   }

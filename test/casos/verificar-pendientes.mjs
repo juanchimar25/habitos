@@ -52,13 +52,23 @@ const nuevaCategoria = (doc, nombre, padre = '') => {
   enviar(doc, '#categoria-form');
 };
 
-/** Crea un pendiente desde el «+». */
+/**
+ * Crea un pendiente desde el «+». `categoria` acepta «Madre» o «Madre › Hija»:
+ * el formulario las elige en dos pasos, uno por desplegable.
+ */
 const nuevoPendiente = (doc, nombre, { categoria = '', fecha = '', estado = '' } = {}) => {
   agregar(doc, 'pendiente');
   doc.querySelector('#pendiente-name').value = nombre;
-  const select = doc.querySelector('#pendiente-categoria');
-  const opcion = [...select.options].find(o => o.textContent === categoria);
-  select.value = opcion ? opcion.value : '';
+
+  const [madre, hija] = categoria.split(' › ');
+  const elegir = (id, texto) => {
+    const select = doc.querySelector(id);
+    const opcion = [...select.options].find(o => o.textContent === texto);
+    select.value = opcion ? opcion.value : '';
+    select.dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }));
+  };
+  elegir('#pendiente-categoria', madre ?? '');
+  if (hija) elegir('#pendiente-subcategoria', hija);
   doc.querySelector('#pendiente-fecha').value = fecha;
   if (estado) {
     doc.querySelector(`#pendiente-form input[name="pendiente-estado"][value="${estado}"]`)
@@ -69,8 +79,21 @@ const nuevoPendiente = (doc, nombre, { categoria = '', fecha = '', estado = '' }
 
 const nombres = doc => [...doc.querySelectorAll('#pend-lista .pend-nombre')]
   .map(n => n.textContent);
+/* Las categorías que arma cada escenario. «Varios» y su subcategoría están
+   siempre —son el piso que sostiene que ninguna tarea quede sin categoría— y
+   ensuciarían todas las listas que estos casos comparan, así que se filtran acá
+   y se prueban aparte. */
 const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre')]
-  .map(n => n.textContent);
+  .map(n => n.textContent)
+  .filter(n => n !== 'Varios');
+
+/** Abre el diálogo de una categoría por su nombre, no por su posición. */
+const editarCategoria = (doc, nombre) => {
+  const cabecera = [...doc.querySelectorAll('#pend-lista .pend-cat')]
+    .find(c => c.querySelector('.pend-cat-nombre').textContent === nombre);
+  if (!cabecera) throw new Error(`no encontré la categoría «${nombre}»`);
+  cabecera.querySelector('.pend-cat-editar').click();
+};
 
 // --- 1. la pantalla vacía ---------------------------------------------------
 {
@@ -79,6 +102,8 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
 
   ok('la sección se muestra', doc.querySelector('#todos').hidden === false);
   ok('  y arranca en la lista', doc.querySelector('#btn-pend-lista').getAttribute('aria-pressed') === 'true');
+  /* El cartel de bienvenida mira que no haya NADA anotado: «Varios» viene de
+     fábrica y no cuenta como algo que alguien haya cargado. */
   ok('  con el cartel de bienvenida', doc.querySelector('#pend-vacio').hidden === false);
   /* El «+» es el mismo botón de Hábitos y acá crea lo que la vista muestra. */
   const rotuloFab = () => doc.querySelector('#btn-fab').getAttribute('aria-label');
@@ -105,6 +130,9 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
     doc.querySelector('#pendiente-dialog').hasAttribute('open')
       && doc.querySelector('#pendiente-dialog-title').textContent === 'Nueva tarea pendiente',
     doc.querySelector('#pendiente-dialog-title').textContent);
+  ok('  con el nombre topeado en 35 caracteres',
+    doc.querySelector('#pendiente-name').getAttribute('maxlength') === '35',
+    doc.querySelector('#pendiente-name').getAttribute('maxlength'));
   doc.querySelector('#pendiente-dialog').close();
 
   // …y en «Categorías», el de una categoría: crea lo que la vista muestra.
@@ -119,6 +147,11 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
   ok('    que aclara cómo queda suelta',
     /categoría suelta/.test(doc.querySelector('#categoria-dialog .field-hint')?.textContent ?? ''),
     doc.querySelector('#categoria-dialog .field-hint')?.textContent);
+  /* El mismo tope que el alta de tareas: 35 caracteres, que es lo que entra en
+     una fila sin recortarse en un teléfono. */
+  ok('    y topea el nombre en 35 caracteres',
+    doc.querySelector('#categoria-name').getAttribute('maxlength') === '35',
+    doc.querySelector('#categoria-name').getAttribute('maxlength'));
   doc.querySelector('#categoria-dialog').close();
   doc.querySelector('#btn-pend-lista').click();
 
@@ -154,13 +187,11 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
     doc.querySelector('#pend-vacio').hidden === true);
   ok('las dos categorías están', categorias(doc).join(',') === 'Casa,Cocina', categorias(doc).join(','));
   ok('  y la subcategoría va sangrada adentro de su padre',
-    doc.querySelector('.pend-nivel-0 .pend-nivel-1 .pend-cat-nombre')?.textContent === 'Cocina');
+    [...doc.querySelectorAll('.pend-nivel-0 .pend-nivel-1 .pend-cat-nombre')]
+      .some(n => n.textContent === 'Cocina'));
   ok('los tres pendientes están',
-    nombres(doc).join(',') === 'Pagar expensas,Cambiar la canilla,Llamar al banco',
+    nombres(doc).sort().join(',') === 'Cambiar la canilla,Llamar al banco,Pagar expensas',
     nombres(doc).join(','));
-
-  /* Lo suelto va al final, bajo un encabezado que no se edita: no es una
-     categoría más, es su ausencia. */
   /* Con mayúscula inicial, se haya escrito como se haya escrito: es el mismo
      criterio que el alta de tareas, y una lista con mayúsculas mezcladas se lee
      peor de lo que cuesta arreglarla. */
@@ -183,21 +214,32 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
   ok('  y el nombre no es un botón',
     doc.querySelector('.pend-cat-nombre').tagName === 'SPAN',
     doc.querySelector('.pend-cat-nombre').tagName);
-  doc.querySelector('.pend-cat-editar').click();
+  editarCategoria(doc, 'Casa');
   ok('  con los datos de esa categoría',
     doc.querySelector('#categoria-dialog').hasAttribute('open')
-      && doc.querySelector('#categoria-name').value === 'Casa',
+      && doc.querySelector('#categoria-name').value !== '',
     doc.querySelector('#categoria-name').value);
   doc.querySelector('#categoria-dialog').close();
 
-  ok('lo que no tiene categoría cae en «Sin categoría»',
-    doc.querySelector('.pend-sueltos')?.textContent === 'Sin categoría');
-  ok('  y no cuenta como categoría editable', categorias(doc).includes('Sin categoría') === false);
+  /* Nada queda suelto: lo que no se puso en otro lado cae en «Varios», que es
+     una categoría de verdad —se puede renombrar y reordenar— y no un cartel. */
+  ok('lo que no se puso en ninguna categoría cae en «Varios»',
+    doc.querySelector('.pend-sueltos') === null);
+  const enVarios = [...doc.querySelectorAll('#pend-lista > .pend-bloque')]
+    .find(b => b.querySelector('.pend-cat-nombre')?.textContent === 'Varios');
+  ok('  que lo muestra adentro',
+    [...enVarios.querySelectorAll('.pend-nombre')].map(n => n.textContent)
+      .join(',') === 'Llamar al banco',
+    [...enVarios.querySelectorAll('.pend-nombre')].map(n => n.textContent).join(','));
 
   /* La cuenta de una categoría incluye lo de sus subcategorías: es lo único
      que queda a la vista cuando está plegada. */
-  const cuentas = [...doc.querySelectorAll('.pend-cat-cuenta')].map(c => c.textContent);
-  ok('la cuenta de la categoría suma lo de adentro', cuentas.join(',') === '2,1', cuentas.join(','));
+  const cuentaDe = nombre => [...doc.querySelectorAll('#pend-lista .pend-cat')]
+    .find(c => c.querySelector('.pend-cat-nombre').textContent === nombre)
+    ?.querySelector('.pend-cat-cuenta').textContent;
+  ok('la cuenta de la categoría suma lo de adentro',
+    cuentaDe('Casa') === '2' && cuentaDe('Cocina') === '1',
+    `Casa ${cuentaDe('Casa')} · Cocina ${cuentaDe('Cocina')}`);
 
   // Solo aparece la fecha del que la tiene: es opcional a propósito.
   const fechas = [...doc.querySelectorAll('.pend-fecha')].map(f => f.textContent);
@@ -217,7 +259,9 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
   agregar(doc, 'categoria');
   const ofrecidas = [...doc.querySelector('#categoria-padre').options].map(o => o.textContent);
   ok('solo las de primer nivel se ofrecen como padre',
-    ofrecidas.join(' | ') === 'Ninguna (primer nivel) | Casa', ofrecidas.join(' | '));
+    ofrecidas.join(' | ') === 'Ninguna (primer nivel) | Casa | Varios'
+      || ofrecidas.join(' | ') === 'Ninguna (primer nivel) | Varios | Casa',
+    ofrecidas.join(' | '));
   doc.querySelector('#categoria-dialog').close();
 
   // Y una que ya tiene hijas tampoco puede mudarse adentro de otra.
@@ -307,10 +351,18 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
     nombres(doc).sort().join(',') === 'Cambiar la canilla,Pagar expensas',
     nombres(doc).join(','));
   ok('  la subcategoría pasa a primer nivel',
-    categorias(doc).join(',') === 'Cocina' && doc.querySelector('.pend-nivel-1') === null,
+    categorias(doc).join(',') === 'Cocina'
+      && doc.querySelector('#pend-lista > .pend-bloque .pend-nivel-1 .pend-cat-nombre')
+        ?.textContent !== 'Cocina',
     categorias(doc).join(','));
-  ok('  y lo que quedó sin categoría se dice',
-    doc.querySelector('.pend-sueltos')?.textContent === 'Sin categoría');
+  /* Y lo que estaba adentro cae en «Varios», que es lo que sostiene que ninguna
+     tarea quede sin categoría. */
+  const enVarios2 = [...doc.querySelectorAll('#pend-lista > .pend-bloque')]
+    .find(b => b.querySelector('.pend-cat-nombre')?.textContent === 'Varios');
+  ok('  y sus tareas caen en «Varios»',
+    [...enVarios2.querySelectorAll('.pend-nombre')].map(n => n.textContent)
+      .includes('Pagar expensas'),
+    [...enVarios2.querySelectorAll('.pend-nombre')].map(n => n.textContent).join(','));
 }
 
 // --- 6b. reordenar categorías ----------------------------------------------
@@ -325,7 +377,7 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
   nuevaCategoria(doc, 'Baño', 'Casa');
   nuevaCategoria(doc, 'Trabajo');
 
-  const editar = nombre => doc.querySelectorAll('.pend-cat-editar')[categorias(doc).indexOf(nombre)].click();
+  const editar = nombre => editarCategoria(doc, nombre);
 
   editar('Casa');
   const acciones = [...doc.querySelectorAll('#categoria-tools .btn')].map(b => b.textContent.trim());
@@ -339,8 +391,9 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
       && doc.querySelector('#categoria-reorder').getAttribute('aria-pressed') === 'true');
   /* La cuenta es entre HERMANAS: «Casa» y «Trabajo» son las dos de primer
      nivel, y las subcategorías no entran en esa lista. */
+  /* Tres hermanas de primer nivel: las dos del caso y «Varios», que va última. */
   ok('  y dicen dónde está entre sus hermanas',
-    doc.querySelector('#categoria-move-pos').textContent === '1 de 2',
+    doc.querySelector('#categoria-move-pos').textContent === '1 de 3',
     doc.querySelector('#categoria-move-pos').textContent);
   ok('  sin poder subir la primera', doc.querySelector('#categoria-move-up').disabled === true);
 
@@ -349,7 +402,7 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
   ok('bajarla la mueve, y sus subcategorías van con ella',
     categorias(doc).join(',') === 'Trabajo,Casa,Cocina,Baño', categorias(doc).join(','));
   ok('  y la posición se actualiza sola',
-    doc.querySelector('#categoria-move-pos').textContent === '2 de 2',
+    doc.querySelector('#categoria-move-pos').textContent === '2 de 3',
     doc.querySelector('#categoria-move-pos').textContent);
   doc.querySelector('#categoria-dialog').close();
 
@@ -375,7 +428,7 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
   nuevoPendiente(doc, 'Cambiar la canilla', { categoria: 'Casa › Cocina', fecha: '2026-07-20' });
   nuevoPendiente(doc, 'Revisar el informe', { categoria: 'Trabajo' });
 
-  const editar = nombre => doc.querySelectorAll('.pend-cat-editar')[categorias(doc).indexOf(nombre)].click();
+  const editar = nombre => editarCategoria(doc, nombre);
   const enArchivo = () => [...doc.querySelectorAll('#pend-archivo-list .arch-name')]
     .map(n => n.textContent);
 
@@ -458,7 +511,7 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
   nuevoPendiente(doc, 'Pagar expensas', { categoria: 'Casa' });
   nuevoPendiente(doc, 'Llamar al banco');
 
-  const editar = nombre => doc.querySelectorAll('.pend-cat-editar')[categorias(doc).indexOf(nombre)].click();
+  const editar = nombre => editarCategoria(doc, nombre);
   const enPapelera = () => [...doc.querySelectorAll('#pend-papelera-list .arch-name')]
     .map(n => n.textContent);
   const abrirPapelera = () => {
@@ -740,7 +793,7 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
   ok('con el alfabético puesto, las categorías van por nombre',
     categorias(doc).join(',') === 'Almacén,Zapatería', categorias(doc).join(','));
 
-  doc.querySelectorAll('.pend-cat-editar')[categorias(doc).indexOf('Almacén')].click();
+  editarCategoria(doc, 'Almacén');
   doc.querySelector('#categoria-reorder').click();
   doc.querySelector('#categoria-move-down').click();
   ok('bajar una a mano la mueve de verdad',
@@ -766,6 +819,210 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
     /personalizado/.test(boton().title), boton().title);
   ok('  y la lista la muestra donde quedó',
     nombres(doc).join(',') === 'Bananas,Aceite', nombres(doc).join(','));
+}
+
+// --- 6i. la categoría se elige en dos pasos ---------------------------------
+{
+  /* Una lista con los caminos completos —«Casa › Cocina»— mezclaba los dos
+     niveles y obligaba a leer la ruta para saber dónde estaba parado uno. Ahora
+     el primer desplegable trae solo las principales y el segundo aparece con
+     las de esa. */
+  const { doc } = await montar(VACIO);
+  irAPendientes(doc);
+  verCategorias(doc);
+  nuevaCategoria(doc, 'Casa');
+  nuevaCategoria(doc, 'Cocina', 'Casa');
+  nuevaCategoria(doc, 'Patio', 'Casa');
+  nuevaCategoria(doc, 'Trabajo');
+  nuevoPendiente(doc, 'Cambiar la canilla', { categoria: 'Casa › Cocina' });
+
+  const opciones = id => [...doc.querySelectorAll(`#${id} option`)].map(o => o.textContent);
+  const madre = () => doc.querySelector('#pendiente-categoria');
+  const hija = () => doc.querySelector('#pendiente-subcategoria');
+
+  // Al abrir el alta: solo las principales, y la segunda lista apagada.
+  doc.querySelector('#btn-pend-lista').click();
+  doc.querySelector('#btn-fab').click();
+  console.log(`\n=== los dos desplegables ===\n  `
+    + opciones('pendiente-categoria').join(' · '));
+
+  /* Sin opción vacía: una tarea no puede quedar sin categoría, y «Varios» —que
+     va última— es la que viene puesta. */
+  ok('el primer desplegable trae solo las principales',
+    opciones('pendiente-categoria').join(',') === 'Casa,Trabajo,Varios',
+    opciones('pendiente-categoria').join(','));
+  ok('  sin caminos ni subcategorías mezcladas',
+    !opciones('pendiente-categoria').some(o => o.includes('›')));
+  /* Arranca en «Varios › Varios», que es la categoría por defecto. */
+  ok('  y arranca en «Varios»',
+    madre().options[madre().selectedIndex].textContent === 'Varios',
+    madre().options[madre().selectedIndex].textContent);
+  ok('    con su subcategoría',
+    hija().options[hija().selectedIndex].textContent === 'Varios',
+    hija().options[hija().selectedIndex].textContent);
+
+  // Elegir una principal habilita las suyas.
+  madre().value = [...madre().options].find(o => o.textContent === 'Casa').value;
+  madre().dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }));
+  ok('elegir una categoría habilita sus subcategorías', hija().disabled === false);
+  ok('  con las de esa categoría y ninguna más',
+    opciones('pendiente-subcategoria').join(',') === 'Ninguna,Cocina,Patio',
+    opciones('pendiente-subcategoria').join(','));
+
+  // Y una sin subcategorías vuelve a apagarlo.
+  madre().value = [...madre().options].find(o => o.textContent === 'Trabajo').value;
+  madre().dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }));
+  ok('una categoría sin subcategorías lo deja apagado', hija().disabled === true);
+  ok('  y lo dice', /no tiene subcategorías/.test(hija().title), hija().title);
+  doc.querySelector('#pendiente-dialog').close();
+
+  /* Al editar, lo guardado —que es UNA categoría de cualquiera de los dos
+     niveles— se muestra partido en los dos desplegables. */
+  verCategorias(doc);
+  doc.querySelector('.pend-editar').click();
+  ok('al editar, la madre queda en el primero',
+    madre().options[madre().selectedIndex].textContent === 'Casa',
+    madre().options[madre().selectedIndex].textContent);
+  ok('  y la subcategoría en el segundo',
+    hija().options[hija().selectedIndex].textContent === 'Cocina',
+    hija().options[hija().selectedIndex].textContent);
+
+  // Guardar sin tocar nada la deja donde estaba.
+  enviar(doc, '#pendiente-form');
+  ok('  y guardar sin tocar nada no la mueve',
+    doc.querySelector('.pend-nivel-1 .pend-item .pend-nombre')?.textContent === 'Cambiar la canilla');
+}
+
+// --- 6j. «Varios», el piso que sostiene todo --------------------------------
+{
+  /* Ninguna tarea puede quedar sin categoría, y eso solo se sostiene si hay una
+     categoría que siempre está. «Varios» y su subcategoría vienen de fábrica,
+     no se pueden borrar ni archivar, y sí se pueden renombrar: lo que importa
+     es que existan, no cómo se llamen. */
+  const { doc, window } = await montar(VACIO);
+  irAPendientes(doc);
+  verCategorias(doc);
+
+  const todas = () => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre')]
+    .map(n => n.textContent);
+
+  console.log(`\n=== una cuenta nueva ===\n  ${todas().join(' · ')}`);
+  ok('una cuenta nueva ya tiene «Varios» y su subcategoría',
+    todas().join(',') === 'Varios,Varios', todas().join(','));
+  ok('  con la subcategoría adentro',
+    doc.querySelector('.pend-nivel-1 .pend-cat-nombre')?.textContent === 'Varios');
+
+  // No se borra ni se archiva, y el botón dice por qué.
+  editarCategoria(doc, 'Varios');
+  ok('no se puede eliminar', doc.querySelector('#categoria-delete').disabled === true);
+  ok('  y dice por qué',
+    /donde caen las tareas/.test(doc.querySelector('#categoria-delete').title),
+    doc.querySelector('#categoria-delete').title);
+  ok('tampoco se puede archivar', doc.querySelector('#categoria-archive').disabled === true);
+
+  // Pero se renombra, y sigue siendo la misma: el id no cambia.
+  doc.querySelector('#categoria-name').value = 'Cajón de sastre';
+  enviar(doc, '#categoria-form');
+  ok('se puede renombrar', todas().includes('Cajón de sastre'), todas().join(','));
+
+  const ids = guardado(window).pendientes.categorias.map(c => c.id);
+  ok('  sin dejar de ser la misma', ids.includes('cat-varios'), ids.join(','));
+
+  /* Y sigue siendo la de por defecto después del cambio de nombre: lo que la
+     identifica es el id, no el rótulo. */
+  doc.querySelector('#btn-pend-lista').click();
+  doc.querySelector('#btn-fab').click();
+  const madre = doc.querySelector('#pendiente-categoria');
+  ok('sigue siendo la que viene puesta al crear una tarea',
+    madre.options[madre.selectedIndex].textContent === 'Cajón de sastre',
+    madre.options[madre.selectedIndex].textContent);
+  doc.querySelector('#pendiente-name').value = 'Algo';
+  enviar(doc, '#pendiente-form');
+
+  ok('  y la tarea queda ahí',
+    guardado(window).pendientes.items[0].categoria === 'cat-varios-sub',
+    guardado(window).pendientes.items[0].categoria);
+
+  // Una categoría normal sí se borra: la protección es de estas dos y nada más.
+  verCategorias(doc);
+  nuevaCategoria(doc, 'Casa');
+  editarCategoria(doc, 'Casa');
+  ok('una categoría normal sí se puede eliminar',
+    doc.querySelector('#categoria-delete').disabled === false);
+  ok('  y archivar', doc.querySelector('#categoria-archive').disabled === false);
+  doc.querySelector('#categoria-dialog').close();
+}
+
+// --- 6k. nombres únicos donde conviven -------------------------------------
+{
+  /* Dos cosas con el mismo nombre en la misma lista son indistinguibles. En
+     listas distintas no: ahí el lugar las distingue, y esa es justamente la
+     razón de tener categorías. */
+  const { doc } = await montar(VACIO);
+  irAPendientes(doc);
+  verCategorias(doc);
+  nuevaCategoria(doc, 'Casa');
+  nuevaCategoria(doc, 'Auto');
+  nuevaCategoria(doc, 'Cocina', 'Casa');
+
+  const error = id => doc.querySelector(id).hidden
+    ? '' : doc.querySelector(id).textContent;
+
+  // --- categorías de primer nivel: únicas ---
+  agregar(doc, 'categoria');
+  doc.querySelector('#categoria-name').value = 'casa';   // con otra mayúscula
+  enviar(doc, '#categoria-form');
+  console.log(`\n=== nombres repetidos ===\n  ${error('#categoria-error')}`);
+  ok('no entran dos categorías con el mismo nombre',
+    /Ya hay una categoría/.test(error('#categoria-error')), error('#categoria-error'));
+  ok('  sin importar mayúsculas ni acentos',
+    categorias(doc).filter(n => n.toLowerCase() === 'casa').length === 1,
+    categorias(doc).join(','));
+  doc.querySelector('#categoria-dialog').close();
+
+  // --- subcategorías: únicas adentro de SU madre ---
+  agregar(doc, 'categoria');
+  doc.querySelector('#categoria-name').value = 'Cocina';
+  const padre = doc.querySelector('#categoria-padre');
+  padre.value = [...padre.options].find(o => o.textContent === 'Casa').value;
+  enviar(doc, '#categoria-form');
+  ok('  ni dos subcategorías con el mismo nombre en la misma madre',
+    /ya tiene una subcategoría/.test(error('#categoria-error')), error('#categoria-error'));
+  doc.querySelector('#categoria-dialog').close();
+
+  /* Pero en otra madre sí: «Casa › Cocina» y «Auto › Cocina» se distinguen por
+     dónde están. */
+  nuevaCategoria(doc, 'Cocina', 'Auto');
+  ok('pero sí en otra categoría',
+    categorias(doc).filter(n => n === 'Cocina').length === 2, categorias(doc).join(','));
+
+  // --- tareas pendientes: únicas adentro de su categoría ---
+  nuevoPendiente(doc, 'Comprar filtros', { categoria: 'Casa › Cocina' });
+  nuevoPendiente(doc, 'Comprar filtros', { categoria: 'Auto › Cocina' });
+  ok('una tarea puede repetirse en otra categoría',
+    nombres(doc).filter(n => n === 'Comprar filtros').length === 2, nombres(doc).join(','));
+
+  doc.querySelector('#btn-pend-lista').click();
+  doc.querySelector('#btn-fab').click();
+  doc.querySelector('#pendiente-name').value = 'Comprar filtros';
+  const madre = doc.querySelector('#pendiente-categoria');
+  madre.value = [...madre.options].find(o => o.textContent === 'Casa').value;
+  madre.dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }));
+  const hija = doc.querySelector('#pendiente-subcategoria');
+  hija.value = [...hija.options].find(o => o.textContent === 'Cocina').value;
+  enviar(doc, '#pendiente-form');
+  ok('  pero no dos veces en la misma',
+    /Ya hay una tarea con ese nombre/.test(error('#pendiente-error')),
+    error('#pendiente-error'));
+  doc.querySelector('#pendiente-dialog').close();
+
+  /* Y al editar, el nombre propio no cuenta como repetido: guardar sin tocar
+     nada tiene que seguir funcionando. */
+  verCategorias(doc);
+  doc.querySelector('.pend-editar').click();
+  enviar(doc, '#pendiente-form');
+  ok('editar sin cambiar el nombre no se choca consigo misma',
+    doc.querySelector('#pendiente-dialog').hasAttribute('open') === false);
 }
 
 // --- 7. plegar --------------------------------------------------------------
@@ -929,9 +1186,10 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
   const { pendientes } = guardado(window);
   console.log(`\n=== lo guardado ===\n  ${JSON.stringify(pendientes)}`);
 
-  ok('la categoría se guarda', pendientes.categorias.length === 1
-    && pendientes.categorias[0].name === 'Casa'
-    && pendientes.categorias[0].padre === null);
+  const propias = pendientes.categorias.filter(c => !c.id.startsWith('cat-varios'));
+  ok('la categoría se guarda', propias.length === 1
+    && propias[0].name === 'Casa' && propias[0].padre === null,
+    JSON.stringify(propias.map(c => c.name)));
   ok('el pendiente también, con todo lo suyo',
     pendientes.items[0].name === 'Pagar expensas'
       && pendientes.items[0].fecha === '2026-08-05'
@@ -982,7 +1240,8 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
     categorias(doc).join(',') === 'Casa,Cocina,Alacena,Bucle', categorias(doc).join(','));
   ok('  el tercer nivel sube a primer nivel',
     [...doc.querySelectorAll('.pend-nivel-1 .pend-cat-nombre')].map(n => n.textContent)
-      .join(',') === 'Cocina');
+      .filter(n => n !== 'Varios').join(',') === 'Cocina',
+    [...doc.querySelectorAll('.pend-nivel-1 .pend-cat-nombre')].map(n => n.textContent).join(','));
   ok('  y una que se apunta a sí misma también',
     [...doc.querySelectorAll('#pend-lista > .pend-bloque .pend-cat-nombre')]
       .map(n => n.textContent).includes('Bucle'));
@@ -993,14 +1252,16 @@ const categorias = doc => [...doc.querySelectorAll('#pend-lista .pend-cat-nombre
     [...doc.querySelectorAll('.pend-estado')].every(b => b.textContent === 'Sin iniciar'));
   /* Una categoría que no existe deja al pendiente suelto, no lo borra con ella:
      es la misma decisión que toma la pantalla al eliminar una. */
-  ok('  y una categoría que no existe lo deja suelto',
-    doc.querySelector('.pend-sueltos') !== null && nombres(doc).length === 3);
+  ok('  y una categoría que no existe la manda a «Varios»',
+    doc.querySelector('.pend-sueltos') === null && nombres(doc).length === 3,
+    nombres(doc).join(','));
 
   // Y lo saneado es lo que se guarda: un toque cualquiera lo escribe.
   doc.querySelector('.pend-estado').click();
   const limpio = guardado(window).pendientes;
   ok('  el saneado es lo que queda guardado',
-    limpio.categorias.length === 4 && limpio.items.length === 3
+    limpio.categorias.filter(c => !c.id.startsWith('cat-varios')).length === 4
+      && limpio.items.length === 3
       && limpio.categorias.find(c => c.name === 'Alacena').padre === null
       && limpio.categorias.find(c => c.name === 'Cocina').padre === 'c1',
     JSON.stringify(limpio.categorias));

@@ -567,9 +567,13 @@
             <p><strong>Tareas pendientes</strong>: lo que hay que hacer <strong>una vez</strong>, sin frecuencia, sin puntaje y sin entrar en ningún cálculo. El <strong>+</strong> de la esquina agrega lo que la vista muestra —una tarea pendiente en <em>Lista</em> y en <em>Calendario</em>, una categoría en <em>Categorías</em>—.</p>
             <ul>
               <li>Cada tarea pendiente tiene <strong>tres estados</strong>: el botón de la derecha dice en cuál está —<em>Sin iniciar</em>, <em>En proceso</em>, <em>Finalizada</em>— y tocarlo pasa al siguiente.</li>
+              <li>Dos tareas de la misma categoría no pueden llamarse igual, pero sí una en cada categoría: ahí el lugar las distingue.</li>
               <li>El <strong>lápiz</strong> de cada fila abre su edición y sus tres acciones —<strong>Eliminar</strong>, <strong>Reordenar</strong> y <strong>Archivar</strong>—, las mismas que las de una tarea o una categoría. Es el único lugar desde donde se edita.</li>
               <li><strong>Reordenar</strong> lo sube o lo baja entre los de su misma categoría; el orden se ve en <strong>Categorías</strong>, porque <strong>Lista</strong> ordena por fecha. <strong>Archivar</strong> lo guarda en <strong>☰ → Archivo</strong>, junto a las categorías guardadas.</li>
-              <li>La <strong>fecha de completado</strong> es opcional. Las que la tienen aparecen en el calendario; las que no, viven solo en la lista.</li>
+              <li><strong>Calendarizar</strong> es opcional: le pone día a la tarea. Las que lo tienen aparecen en el calendario; las que no, viven solo en la lista.</li>
+              <li>Al crear o editar una tarea pendiente, la <strong>categoría</strong> se elige en dos pasos: primero la principal y después, si tiene, su subcategoría. <strong>Toda tarea tiene categoría</strong>: la que viene puesta es <em>Varios</em>.</li>
+              <li>Dos categorías principales no pueden llamarse igual; dos subcategorías sí, mientras cuelguen de categorías distintas.</li>
+              <li><strong>Varios</strong> y su subcategoría vienen de fábrica y no se pueden eliminar ni archivar —son donde caen las tareas que no ordenaste en otro lado—, pero sí les podés cambiar el nombre.</li>
               <li>Para armar <strong>categorías</strong>, el <strong>+</strong> desde la vista <em>Categorías</em>. Una categoría puede quedar suelta o ir <em>dentro de</em> otra —ahí es una subcategoría—, y hasta ahí llega el anidado.</li>
               <li>El <strong>lápiz</strong> de cada categoría abre sus tres acciones, las mismas que las de una tarea: <strong>Eliminar</strong>, <strong>Reordenar</strong> —dos flechas que la suben o la bajan entre sus hermanas— y <strong>Archivar</strong>.</li>
               <li><strong>Archivar</strong> guarda la categoría con todo lo suyo. Sale de la lista y del calendario, y queda en <strong>☰ → Archivo</strong>, de donde vuelve entera cuando quieras.</li>
@@ -1166,13 +1170,22 @@
 
       <label class="field">
         <span class="field-label">Qué hay que hacer</span>
-        <input type="text" id="pendiente-name" maxlength="80" autocomplete="off"
+        <input type="text" id="pendiente-name" maxlength="35" autocomplete="off"
                placeholder="Ej: Renovar el pasaporte" required>
       </label>
 
+      <!-- En dos pasos y no en una lista con los caminos completos: con muchas
+           categorías, esa lista mezclaba niveles y obligaba a leer «Casa ›
+           Cocina» para entender dónde estaba parado uno. Acá se elige la
+           principal y recién entonces aparecen las suyas. -->
       <label class="field">
         <span class="field-label">Categoría</span>
         <select class="field-select" id="pendiente-categoria"></select>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Subcategoría</span>
+        <select class="field-select" id="pendiente-subcategoria"></select>
       </label>
 
       <fieldset class="field">
@@ -1187,7 +1200,7 @@
       <!-- Opcional a propósito: no todo lo que hay que hacer tiene fecha, y
            obligar a inventarle una llenaría el calendario de fechas falsas. -->
       <label class="field">
-        <span class="field-label">Fecha de completado <span class="field-nota">(opcional)</span></span>
+        <span class="field-label">Calendarizar <span class="field-nota">(opcional)</span></span>
         <input type="date" id="pendiente-fecha">
       </label>
 
@@ -1233,7 +1246,7 @@
 
       <label class="field">
         <span class="field-label">Nombre</span>
-        <input type="text" id="categoria-name" maxlength="60" autocomplete="off"
+        <input type="text" id="categoria-name" maxlength="35" autocomplete="off"
                placeholder="Ej: Casa" required>
       </label>
 

@@ -130,5 +130,31 @@ const abrir = async (estado, fecha, { irAMes } = {}) => {
     doc.querySelector('#templates-start').value);
 }
 
+// --- las repetidas no entran, y el aviso dice cuáles ------------------------
+{
+  /* Dos tareas con el mismo nombre en un mes son indistinguibles, venga la
+     segunda del formulario o de una plantilla. Al aplicar una que trae algo que
+     ya está, esa queda afuera y el aviso la nombra: «2 ya estaban» obliga a ir
+     a buscar cuáles. */
+  const { window, doc } = await abrir(ESTADO_VACIO, '2026-07-30');
+  const primera = doc.querySelector('.tpl-add');
+  primera.click();
+
+  const cuantas = () => (meses(window)['2026-07'] ?? []).length;
+  const puestas = cuantas();
+  ok('la plantilla entra completa la primera vez', puestas > 0, String(puestas));
+
+  // Otra vez la misma: ya está todo, no entra nada.
+  doc.querySelector('#btn-templates').click();
+  doc.querySelector('.tpl-add').click();
+  ok('aplicarla de nuevo no duplica nada', cuantas() === puestas, String(cuantas()));
+
+  const aviso = doc.querySelector('.toast')?.textContent ?? '';
+  console.log(`\n=== el aviso ===\n  ${aviso}`);
+  ok('  y el aviso dice que no se agregó ninguna',
+    /No se agregó ninguna/.test(aviso), aviso);
+  ok('    nombrando alguna de las que ya estaban', /«/.test(aviso), aviso);
+}
+
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');
 process.exit(fallos ? 1 : 0);

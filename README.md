@@ -566,6 +566,27 @@ El nombre se guarda con la **primera letra en mayúscula**, sin importar qué ve
 
   > Esta ya no es una regla propia de la meta mensual: es **la** regla, y la comparten todas las frecuencias — ver [Períodos partidos](#períodos-partidos). Lo único particular de este submodo es que su período es el mes entero y pide el número que cargaste, en vez de una vez.
 
+### Nombres únicos
+
+Dos cosas con el mismo nombre en la misma lista son indistinguibles: no hay forma de saber cuál es
+cuál en la lista, en el gráfico ni en el archivo. Por eso el nombre es único **donde conviven**, y
+se puede repetir donde no:
+
+| | Único entre | Se puede repetir en |
+|---|---|---|
+| Tarea de Hábitos | las del mes | otro mes |
+| Categoría de Pendientes | las de primer nivel | — |
+| Subcategoría | las de su misma madre | otra categoría |
+| Tarea pendiente | las de su misma categoría | otra categoría |
+
+La comparación es como la leería una persona —sin distinguir mayúsculas ni acentos, y sin los
+espacios de los bordes—: «Correr» y «correr» son el mismo hábito escrito de dos maneras. Al editar,
+el nombre propio no cuenta como repetido, así que guardar sin tocar nada sigue funcionando.
+
+Las **plantillas** siguen la misma regla: al aplicar una, las tareas cuyo nombre ya está en el mes
+quedan afuera y el aviso las **nombra** —«2 ya estaban» obligaba a ir a buscar cuáles—. Vale también
+para una plantilla que repita un nombre adentro suyo: entra una sola vez.
+
 ### Fecha de inicio
 
 Cada tarea tiene una **fecha de inicio obligatoria**. Antes de esa fecha la tarea no existe:
@@ -1095,10 +1116,10 @@ estado (`state.pendientes`), no entre las tareas.
 
 | Campo | Qué guarda |
 |---|---|
-| Nombre | Qué hay que hacer |
-| Categoría | Dónde va, o ninguna |
+| Nombre | Qué hay que hacer (hasta 35 caracteres, como el de una tarea) |
+| Categoría | Dónde va. Se elige en dos pasos: la principal y, si tiene, su subcategoría |
 | Estado | `sin-iniciar`, `en-proceso` o `finalizada` |
-| Fecha de completado | Cuándo hay que hacerlo, o ninguna |
+| Calendarizar | Qué día hay que hacerlo, o ninguno |
 
 El **lápiz** de cada fila es la única puerta a su edición —nombre, categoría, fecha— y a sus tres
 acciones, las mismas que las de una tarea o una categoría: **Eliminar**, **Reordenar** —entre los de
@@ -1125,8 +1146,13 @@ habría que dibujar una sangría sin fondo, y un padre que apunte a un descendie
 sin poder recorrerse. Por eso el desplegable *Dentro de* solo ofrece categorías de primer nivel, y
 una que ya tiene subcategorías no puede mudarse adentro de otra.
 
-Lo que no está en ninguna categoría cae al final, bajo **Sin categoría** — un encabezado que no se
-edita ni se borra, porque no es una categoría más: es su ausencia.
+**Toda tarea pendiente tiene categoría.** La que viene puesta es **Varios**, con su subcategoría del
+mismo nombre: existen desde la primera vez, van últimas en la lista y **no se pueden eliminar ni
+archivar**, porque son lo que sostiene que nada quede huérfano. El nombre sí se cambia —lo que las
+identifica es su id, no el rótulo—, y siguen siendo las de por defecto después de renombrarlas.
+
+Ahí cae lo que no se ordenó en otro lado: una tarea creada sin tocar la categoría, una que venía sin
+ninguna en un archivo importado, y las que quedan cuando se borra la categoría que las contenía.
 
 ### Qué se le puede hacer a una categoría
 

@@ -184,7 +184,16 @@ const REMOTO_AL_DIA = {
     trash: [],
     templates: [],
     removedTemplates: [],
-    pendientes: { categorias: [], items: [], papelera: [] },
+    /* Con «Varios», que la app agrega sola: si al fixture le faltara, el primer
+       parche lo sumaría y ensuciaría lo que estos casos miran. */
+    pendientes: {
+      categorias: [
+        { id: 'cat-varios', name: 'Varios', padre: null, archivada: false },
+        { id: 'cat-varios-sub', name: 'Varios', padre: 'cat-varios', archivada: false },
+      ],
+      items: [],
+      papelera: [],
+    },
   },
   updatedAt: '2026-07-30T10:00:00+00:00',
 };
