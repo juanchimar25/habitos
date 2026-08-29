@@ -1,6 +1,6 @@
 /* Alta de tarea: la fecha de inicio es obligatoria, arranca en HOY y decide a
    qué mes va la tarea. Hoy es jueves 30 de julio de 2026 (reloj del arnés). */
-import { montar, moverMeses, verVista } from '../harness.mjs';
+import { montar, moverMeses, verDia } from '../harness.mjs';
 import { ESTADO_LLENO, ESTADO_VACIO } from '../escenarios.mjs';
 
 let fallos = 0;
@@ -18,7 +18,7 @@ const enviar = doc => doc.querySelector('#task-form')
 const crear = async (estado, { nombre = 'Nueva', fecha, mover = 0 } = {}) => {
   const { window, doc } = await montar(estado);
   moverMeses(doc, mover);
-  doc.querySelector('[data-add-task]').click();
+  doc.querySelector('#btn-fab').click();
   doc.querySelector('#task-name').value = nombre;
   if (fecha !== undefined) doc.querySelector('#task-start').value = fecha;
   return { window, doc };
@@ -51,10 +51,14 @@ const crear = async (estado, { nombre = 'Nueva', fecha, mover = 0 } = {}) => {
   ok('navegó a julio', /julio 2026/i.test(doc.querySelector('#month-label').textContent),
     doc.querySelector('#month-label').textContent);
 
-  verVista(doc, 'month');
-  const celdas = [...doc.querySelectorAll('.cell')];
-  ok('no nace toda apagada', celdas.some(c => !c.disabled),
-    `${celdas.filter(c => c.disabled).length}/${celdas.length} apagadas`);
+  /* El alta deja el carrete parado en el día de inicio, que es el primero en
+     que la tarea existe: su celda tiene que estar viva. */
+  ok('y quedó parado en el día de inicio',
+    doc.querySelector('.carrete-dia.is-centro')?.dataset.date === '2026-07-30',
+    doc.querySelector('.carrete-dia.is-centro')?.dataset.date);
+  const celda = doc.querySelector('#dia-lista .dia-fila .cell');
+  ok('no nace apagada en su día de inicio', celda && !celda.disabled,
+    celda ? `disabled=${celda.disabled}` : '(sin celda)');
 }
 
 // --- 4. parado en julio, fecha en septiembre --------------------------------
@@ -96,16 +100,16 @@ const crear = async (estado, { nombre = 'Nueva', fecha, mover = 0 } = {}) => {
 // --- 7. editar conserva la fecha propia y NO muda de mes --------------------
 {
   const { doc } = await montar(ESTADO_LLENO);
-  const fila = [...doc.querySelectorAll('tbody tr[data-task-id]')]
-    .find(tr => tr.dataset.taskId === 't5');            // «Meditar», start 2026-07-10
+  const fila = [...doc.querySelectorAll('#dia-lista .dia-fila')]
+    .find(f => f.dataset.taskId === 't5');            // «Meditar», start 2026-07-10
   fila.querySelector('[data-action="edit"]').click();
   ok('precarga la fecha propia', doc.querySelector('#task-start').value === '2026-07-10',
     doc.querySelector('#task-start').value);
 }
 {
   const { window, doc } = await montar(ESTADO_LLENO);
-  const fila = [...doc.querySelectorAll('tbody tr[data-task-id]')]
-    .find(tr => tr.dataset.taskId === 't5');
+  const fila = [...doc.querySelectorAll('#dia-lista .dia-fila')]
+    .find(f => f.dataset.taskId === 't5');
   fila.querySelector('[data-action="edit"]').click();
   doc.querySelector('#task-start').value = '2026-09-01';   // fecha de otro mes
   enviar(doc);
@@ -122,21 +126,23 @@ const crear = async (estado, { nombre = 'Nueva', fecha, mover = 0 } = {}) => {
 // --- 8. editar una tarea vieja sin fecha no recorta su historial ------------
 {
   const { window, doc } = await montar(ESTADO_LLENO);
-  const fila = [...doc.querySelectorAll('tbody tr[data-task-id]')]
-    .find(tr => tr.dataset.taskId === 't1');            // «Leer», start: null
+  const fila = [...doc.querySelectorAll('#dia-lista .dia-fila')]
+    .find(f => f.dataset.taskId === 't1');            // «Leer», start: null
   fila.querySelector('[data-action="edit"]').click();
   ok('propone el 1 del mes visible, NO hoy',
     doc.querySelector('#task-start').value === '2026-07-01',
     doc.querySelector('#task-start').value);
 
-  const antes = [...doc.querySelectorAll('tr[data-task-id="t1"] .cell')]
-    .filter(c => c.disabled).length;
+  /* La fecha propuesta es el 1: ningún día del mes puede quedar apagado, y el
+     que ya tenía carga menos que ninguno. */
+  const apagada = () => doc
+    .querySelector('.dia-fila[data-task-id="t1"] .cell')?.disabled;
+  const antes = apagada();
   enviar(doc);
-  const despues = [...doc.querySelectorAll('tr[data-task-id="t1"] .cell')]
-    .filter(c => c.disabled).length;
 
   ok('guardó', tareas(window, '2026-07').find(t => t.id === 't1')?.start === '2026-07-01');
-  ok('no apagó ninguna celda ya cargada', antes === despues, `${antes} → ${despues}`);
+  ok('no apagó la celda del día que se está mirando', antes === apagada(),
+    `${antes} → ${apagada()}`);
 }
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');

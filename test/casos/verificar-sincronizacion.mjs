@@ -6,7 +6,7 @@
    propio, para no esperar de verdad los 800 ms de la agrupación ni los 5 s del
    primer reintento. */
 import { JSDOM } from 'jsdom';
-import { leer, marcarCelda, AHORA } from '../harness.mjs';
+import { celdaDe, leer, marcarCelda, AHORA } from '../harness.mjs';
 
 let fallos = 0;
 const ok = (n, cond, det = '') => {
@@ -152,8 +152,7 @@ async function montar({ local = null, remoto = null, pendiente = null, alSubir }
   return {
     window, doc, subidas, avanzar,
     /** Cicla el estado de una celda, como un clic del usuario. */
-    marcar: dia => marcarCelda(
-      doc, doc.querySelector(`.cell[data-task-id="t1"][data-date="2026-07-${dia}"]`)),
+    marcar: dia => marcarCelda(doc, celdaDe(doc, 't1', `2026-07-${dia}`)),
     guardadoEn: k => (guardado.has(k) ? guardado.get(k) : null),
     ocultar: () => {
       visibilidad = 'hidden';
@@ -313,7 +312,7 @@ const REMOTO = { payload: estadoCon({}), updatedAt: '2026-07-30T10:00:00+00:00' 
     pendiente: '2026-07-30T11:00:00.000Z',
   });
 
-  const marcada = a.doc.querySelector('.cell[data-task-id="t1"][data-date="2026-07-28"]');
+  const marcada = celdaDe(a.doc, 't1', '2026-07-28');
   ok('gana la copia local', marcada?.classList.contains('st-done'),
     marcada?.className ?? '(sin celda)');
 
@@ -328,7 +327,7 @@ const REMOTO = { payload: estadoCon({}), updatedAt: '2026-07-30T10:00:00+00:00' 
     local: estadoCon({ status: { 't1|2026-07-28': 'done' } }),
     remoto: { payload: estadoCon({}), updatedAt: '2026-07-30T10:00:00+00:00' },
   });
-  const marcada = a.doc.querySelector('.cell[data-task-id="t1"][data-date="2026-07-28"]');
+  const marcada = celdaDe(a.doc, 't1', '2026-07-28');
   ok('sin marca pendiente gana lo remoto', !marcada?.classList.contains('st-done'),
     marcada?.className ?? '(sin celda)');
 }
@@ -340,7 +339,7 @@ const REMOTO = { payload: estadoCon({}), updatedAt: '2026-07-30T10:00:00+00:00' 
     remoto: { payload: estadoCon({}), updatedAt: '2026-07-30T12:00:00+00:00' },
     pendiente: '2026-07-30T09:00:00.000Z',
   });
-  const marcada = a.doc.querySelector('.cell[data-task-id="t1"][data-date="2026-07-28"]');
+  const marcada = celdaDe(a.doc, 't1', '2026-07-28');
   ok('una marca anterior al remoto no lo pisa', !marcada?.classList.contains('st-done'),
     marcada?.className ?? '(sin celda)');
 }

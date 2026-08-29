@@ -34,8 +34,8 @@
   ],
   "shortcuts": [
     {
-      "name": "Diario",
-      "short_name": "Diario",
+      "name": "Hábitos",
+      "short_name": "Hábitos",
       "url": "diario",
       "icons": [{ "src": "iconos/icon-192.png", "sizes": "192x192" }]
     },

@@ -2,7 +2,7 @@
    encima de 100%, ni en la fila, ni en el total general, ni en el análisis.
    Arnés: hoy = jueves 30/07/2026. Julio 2026 arranca miércoles: 22 días
    hábiles transcurridos y 8 de fin de semana. */
-import { montar, verVista } from '../harness.mjs';
+import { montar, verDia } from '../harness.mjs';
 
 let fallos = 0;
 const ok = (n, cond, det = '') => {

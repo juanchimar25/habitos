@@ -1,7 +1,7 @@
 /* Un usuario que ya venía usando la app abre esta versión. Su estado guardado
    no conoce `zoom` ni `controlsCollapsed`, y sus tareas tienen `start: null`,
    que era lo normal antes de que la fecha fuera obligatoria. */
-import { marcarCelda, montar, verVista } from '../harness.mjs';
+import { celdaDe, marcarCelda, montar, verDia } from '../harness.mjs';
 
 let fallos = 0;
 const ok = (n, cond, det = '') => {
@@ -38,44 +38,41 @@ const ESTADO_VIEJO = {
 // --- 1. abre sin romperse ---------------------------------------------------
 {
   const { window, doc } = await montar(ESTADO_VIEJO);
-  ok('la planilla se dibuja', doc.querySelectorAll('#grid tbody tr[data-task-id]').length === 4,
-    `${doc.querySelectorAll('#grid tbody tr[data-task-id]').length} filas`);
+  ok('la lista del día se dibuja', doc.querySelectorAll('#dia-lista .dia-fila').length === 4,
+    `${doc.querySelectorAll('#dia-lista .dia-fila').length} filas`);
   ok('los estados cargados sobreviven',
     Object.keys(guardado(window).status).length === 9,
     `${Object.keys(guardado(window).status).length} de 9`);
   ok('las tareas conservan start: null',
     guardado(window).months['2026-07'].every(t => t.start === null));
   ok('descarta el bloqueo de mes, que ya no existe', !('locked' in guardado(window)));
-  ok('respeta complianceMode guardado',
-    doc.querySelector('#grid').className.includes('cpm-both'),
-    doc.querySelector('#grid').className);
-  ok('respeta los paneles guardados', guardado(window).panels.charts === false);
+  /* Los paneles plegables del análisis se fueron. Lo que traiga un estado viejo
+     sobre ellos no rompe nada; que se descarte al guardar se comprueba abajo,
+     donde ya hubo una escritura. */
+  ok('el análisis abre igual con los campos viejos adentro',
+    Boolean(doc.querySelector('#analysis .charts')));
 }
 
 // --- 2. los campos nuevos toman su valor por omisión -----------------------
 {
   const { window, doc } = await montar(ESTADO_VIEJO);
-  ok('zoom cae en normal', doc.documentElement.dataset.zoom === 'normal',
-    doc.documentElement.dataset.zoom);
-  ok('los controles arrancan desplegados',
-    !doc.body.classList.contains('controls-collapsed'));
 
   // Al primer guardado, el estado queda completo.
-  doc.querySelector('#btn-zoom').click();
+  marcarCelda(doc, celdaDe(doc, 'a', '2026-07-10'));
   const g = guardado(window);
-  ok('el primer guardado incorpora zoom', g.zoom === 'compacto', String(g.zoom));
-  ok('y controlsCollapsed', g.controlsCollapsed === false, String(g.controlsCollapsed));
+  ok('el primer guardado incorpora los campos nuevos',
+    Array.isArray(g.trash) && typeof g.recordatorioOfrecido === 'boolean',
+    JSON.stringify({ trash: g.trash.length, ofrecido: g.recordatorioOfrecido }));
 }
 
 // --- 3. las tareas sin fecha se pueden seguir marcando ---------------------
 {
   const { window, doc } = await montar(ESTADO_VIEJO);
-  verVista(doc, 'month');
-  const celdas = [...doc.querySelectorAll('tr[data-task-id="a"] .cell')];
-  ok('ninguna celda queda apagada por falta de fecha',
-    celdas.every(c => !c.disabled), `${celdas.filter(c => c.disabled).length} apagadas`);
+  const celda = celdaDe(doc, 'a', '2026-07-10');
+  ok('la celda no queda apagada por falta de fecha', !celda.disabled,
+    `disabled=${celda.disabled}`);
 
-  marcarCelda(doc, celdas[9]);             // 10 de julio: día viejo, hay que confirmar
+  marcarCelda(doc, celda);                 // 10 de julio: día viejo, hay que confirmar
   ok('marcar sigue funcionando', Boolean(guardado(window).status['a|2026-07-10']),
     String(guardado(window).status['a|2026-07-10']));
 }
@@ -83,11 +80,10 @@ const ESTADO_VIEJO = {
 // --- 4. editar una tarea vieja no le recorta el historial ------------------
 {
   const { window, doc } = await montar(ESTADO_VIEJO);
-  verVista(doc, 'month');
-  const apagadasAntes = [...doc.querySelectorAll('tr[data-task-id="a"] .cell')]
+  const apagadasAntes = [celdaDe(doc, 'a', '2026-07-10')]
     .filter(c => c.disabled).length;
 
-  doc.querySelector('tr[data-task-id="a"] [data-action="edit"]').click();
+  doc.querySelector('.dia-fila[data-task-id="a"] [data-action="edit"]').click();
   ok('propone el 1 del mes, no hoy',
     doc.querySelector('#task-start').value === '2026-07-01',
     doc.querySelector('#task-start').value);
@@ -95,7 +91,7 @@ const ESTADO_VIEJO = {
   doc.querySelector('#task-form').dispatchEvent(
     new doc.defaultView.Event('submit', { bubbles: true, cancelable: true }));
 
-  const apagadasDespues = [...doc.querySelectorAll('tr[data-task-id="a"] .cell')]
+  const apagadasDespues = [celdaDe(doc, 'a', '2026-07-10')]
     .filter(c => c.disabled).length;
   ok('no apaga ninguna celda ya cargada', apagadasAntes === apagadasDespues,
     `${apagadasAntes} → ${apagadasDespues}`);
@@ -107,12 +103,12 @@ const ESTADO_VIEJO = {
 // --- 5. los porcentajes quedan dentro de rango ----------------------------
 {
   const { doc } = await montar(ESTADO_VIEJO);
-  for (const vista of ['day', 'week', 'month']) {
-    verVista(doc, vista);
-    const pcts = [...doc.querySelectorAll('.compliance .cp-pct')]
+  for (const dia of ['2026-07-01', '2026-07-15', '2026-07-30']) {
+    verDia(doc, dia);
+    const pcts = [...doc.querySelectorAll('#dia-resumen-valor')]
       .map(n => n.textContent).filter(t => /%$/.test(t)).map(t => Number(t.replace('%', '')));
     const fuera = pcts.filter(p => p < 0 || p > 100);
-    ok(`  ${vista}: ningún porcentaje fuera de 0-100`, fuera.length === 0,
+    ok(`  ${dia}: ningún porcentaje fuera de 0-100`, fuera.length === 0,
       fuera.length ? fuera.join(', ') : `${pcts.length} valores, máx ${Math.max(...pcts, 0)}%`);
   }
 }
@@ -121,9 +117,8 @@ const ESTADO_VIEJO = {
 {
   const { doc } = await montar(ESTADO_VIEJO);
   doc.querySelector('[data-page="indicators"]').click();
-  ok('hay tarjetas', doc.querySelectorAll('#summary .tile').length === 4,
-    `${doc.querySelectorAll('#summary .tile').length}`);
-  ok('hay gráficos', doc.querySelectorAll('#charts .chart-card').length === 3,
+  /* Uno por vez: los tres se eligen en el cajón. */
+  ok('hay gráficos', doc.querySelectorAll('#charts .chart-card').length === 1,
     `${doc.querySelectorAll('#charts .chart-card').length}`);
   ok('sin celdas de error visibles', !/NaN|undefined/.test(doc.querySelector('#analysis').innerHTML));
 }
@@ -136,16 +131,15 @@ const ESTADO_VIEJO = {
      forma vieja, y está bien —`normalize()` completa los campos nuevos en cada
      carga—. Lo que importa es qué queda cuando por fin se escribe. */
   ok('antes de guardar, el almacenamiento conserva la forma vieja',
-    guardado(window).zoom === undefined);
+    guardado(window).weekdayMode === undefined);
 
-  verVista(doc, 'month');
-  marcarCelda(doc, doc.querySelector('tr[data-task-id="a"] .cell'));   // marca → save()
+  marcarCelda(doc, celdaDe(doc, 'a', '2026-07-10'));   // marca → save()
 
   const g = guardado(window);
   ok('el guardado deja el estado completo',
     Object.keys(g).sort().join(',')
-      === 'complianceMode,controlsCollapsed,months,panels,recordatorioOfrecido,'
-        + 'removedTemplates,status,templates,theme,weekdayMode,zoom',
+      === 'months,pendientes,recordatorioOfrecido,'
+        + 'removedTemplates,status,templates,theme,trash',
     Object.keys(g).sort().join(','));
   ok('sin perder los meses', Object.keys(g.months).sort().join(',') === '2026-06,2026-07');
   ok('ni los estados previos', Object.keys(g.status).length >= 9,

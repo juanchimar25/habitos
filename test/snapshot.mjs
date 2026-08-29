@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { montar, normalizarHtml, verVista } from './harness.mjs';
+import { montar, normalizarHtml, verDia } from './harness.mjs';
 import {
   ESTADO_LLENO, ESTADO_VACIO, ESTADO_LEGADO, ESTADO_SUCIO,
 } from './escenarios.mjs';
@@ -25,21 +25,27 @@ function capturar(doc) {
   // Qué secciones quedan ocultas. Va aparte del innerHTML porque ocultar un
   // bloque no cambia su contenido: sin esto, el test no vería la diferencia.
   const visibilidad = ['.controls', '.month-nav', '#controls-center',
-    '#month-bar', '#board', '#legend', '#analysis', '#help', '#btn-page-toggle',
-    '#btn-collapse']
+    '#board', '#dia', '#legend', '#analysis', '#todos', '#settings',
+    '#help', '#btn-fab']
     .map(sel => `${sel}:${doc.querySelector(sel)?.hidden ? 'oculto' : 'visible'}`)
     .join(' ');
 
   return {
     visibilidad,
-    // «Análisis» vive acá y no en `.controls`: sin esto su marcado no lo
-    // miraría ningún escenario.
+    // El encabezado quedó con el cambio de tema y nada más; la navegación es de
+    // `#tabbar`, que se captura aparte.
     acciones: html('.header-actions'),
-    grid: html('#grid'),
-    gridClase: doc.querySelector('#grid')?.className ?? '',
-    resumen: html('#summary'),
+    // La barra del pie: cuatro entradas fijas, pero el marcado de la que está
+    // activa cambia con la sección, y eso es lo que interesa mirar.
+    barraSecciones: html('#tabbar'),
+    // El botón redondo de alta: cambia de nombre según la sección y desaparece
+    // en las que no crean nada.
+    alta: normalizarHtml(doc.querySelector('#btn-fab')?.outerHTML ?? '(ausente)'),
+    // El carrete y la lista del día, que reemplazaron a la planilla.
+    carrete: html('#carrete-pista'),
+    dia: html('#dia-lista'),
+    resumenDelDia: html('#dia-resumen'),
     graficos: html('#charts'),
-    barraMes: html('#month-bar'),
     cajon: html('#drawer'),
     controles: html('.controls'),
     // La leyenda de estados: hasta ahora solo se miraba si estaba visible, así
@@ -53,29 +59,37 @@ function capturar(doc) {
 async function recolectar() {
   const out = {};
 
-  // --- planilla en las tres vistas -------------------------------
-  for (const vista of ['day', 'week', 'month']) {
-    const { window, doc } = await montar(ESTADO_LLENO);
-    verVista(window.document, vista);
-    out[`planilla-${vista}`] = capturar(doc);
+  /* El día en tres momentos del mes: el primero, uno del medio y hoy. El
+     carrete se dibuja distinto en cada uno —al principio y al final del mes
+     asoman días del vecino— y la lista cambia con lo que cada día pide. */
+  for (const dia of ['2026-07-01', '2026-07-15', '2026-07-30']) {
+    const { doc } = await montar(ESTADO_LLENO);
+    verDia(doc, dia);
+    out[`dia-${dia}`] = capturar(doc);
   }
 
-  // --- los cuatro modos de la columna Estatus ---------------------
-  for (const modo of ['glyph', 'pct', 'both', 'none']) {
-    const { doc } = await montar({ ...ESTADO_LLENO, complianceMode: modo });
-    out[`estatus-${modo}`] = capturar(doc);
-  }
-
-  // --- selección múltiple -----------------------------------------
+  /* El cruce de mes: con el 31 al centro, el carrete ya muestra agosto. */
   {
     const { doc } = await montar(ESTADO_LLENO);
-    // Los casilleros existen solo en la postura «Eliminar tareas».
-    doc.querySelector('#btn-actions').click();
-    doc.querySelector('#btn-mode-delete').click();
-    for (const cb of [...doc.querySelectorAll('.task-pick[data-task-id]')].slice(0, 3)) {
-      cb.click();
-    }
-    out['seleccion-multiple'] = capturar(doc);
+    verDia(doc, '2026-07-31');
+    out['dia-borde-de-mes'] = capturar(doc);
+  }
+
+  // --- una tarea archivada -----------------------------------------
+  {
+    /* Archivada desde el 20: el 30 no está en la lista, y el 19 sí. Es el único
+       caso en el que la lista del día muestra menos de lo que el mes tiene sin
+       que se haya borrado nada. */
+    const { doc } = await montar(ESTADO_LLENO);
+    doc.querySelector('#dia-lista .dia-fila[data-task-id="t1"] [data-action="edit"]').click();
+    doc.querySelector('#task-archive').click();
+    doc.querySelector('#archive-date').value = '2026-07-20';
+    doc.querySelector('#archive-form').dispatchEvent(
+      new doc.defaultView.Event('submit', { bubbles: true, cancelable: true }));
+    out['tarea-archivada'] = capturar(doc);
+
+    verDia(doc, '2026-07-19');
+    out['tarea-archivada-antes-del-corte'] = capturar(doc);
   }
 
   // --- indicadores y gráficos --------------------------------------
@@ -90,6 +104,21 @@ async function recolectar() {
     const { doc } = await montar(ESTADO_LLENO);
     doc.querySelector('[data-page="help"]').click();
     out['guia'] = capturar(doc);
+  }
+
+  // --- las dos secciones nuevas de la barra del pie -------------------
+  {
+    const { doc } = await montar(ESTADO_LLENO);
+    doc.querySelector('[data-page="todos"]').click();
+    out['pendientes'] = { ...capturar(doc), seccion: normalizarHtml(doc.querySelector('#todos')?.innerHTML ?? '(ausente)') };
+  }
+  {
+    const { doc } = await montar(ESTADO_LLENO);
+    doc.querySelector('[data-page="settings"]').click();
+    /* La tarjeta de la cuenta sale vacía a propósito: el arnés no carga
+       `auth.js`, que es quien escribe el email y la fecha de alta. Lo que
+       captura el escenario es el molde. */
+    out['ajustes'] = { ...capturar(doc), seccion: normalizarHtml(doc.querySelector('#settings')?.innerHTML ?? '(ausente)') };
   }
 
   // --- sin tareas ------------------------------------------------------
@@ -130,11 +159,15 @@ async function recolectar() {
   // --- alta de tarea ----------------------------------------------------
   {
     const { doc } = await montar(ESTADO_LLENO);
-    doc.querySelector('[data-add-task]').click();
+    doc.querySelector('#btn-fab').click();
     out['dialogo-tarea'] = {
       titulo: doc.querySelector('#task-dialog-title')?.textContent ?? '',
       dias: normalizarHtml(doc.querySelector('#weekday-row')?.innerHTML ?? ''),
-      submit: doc.querySelector('#task-submit')?.textContent ?? '',
+      // El botón que remata es un tilde: lo que lo nombra es el `aria-label`.
+      submit: doc.querySelector('#task-submit')?.getAttribute('aria-label') ?? '',
+      // Las tres acciones sobre la tarea existen solo al editar.
+      acciones: [...doc.querySelectorAll('#task-tools .task-tool')]
+        .map(b => b.textContent).join(' · ') || '(ninguna)',
       // El `value` no viaja en el HTML serializado, así que se captura aparte:
       // es el que decide si la fecha obligatoria sale con un valor por omisión.
       inicio: doc.querySelector('#task-start')?.value ?? '(ausente)',
@@ -148,7 +181,11 @@ async function recolectar() {
     out['dialogo-edicion'] = {
       titulo: doc.querySelector('#task-dialog-title')?.textContent ?? '',
       nombre: doc.querySelector('#task-name')?.value ?? '',
-      submit: doc.querySelector('#task-submit')?.textContent ?? '',
+      // El botón que remata es un tilde: lo que lo nombra es el `aria-label`.
+      submit: doc.querySelector('#task-submit')?.getAttribute('aria-label') ?? '',
+      // Las tres acciones sobre la tarea existen solo al editar.
+      acciones: [...doc.querySelectorAll('#task-tools .task-tool')]
+        .map(b => b.textContent).join(' · ') || '(ninguna)',
       // Al editar, el valor por omisión NO es hoy: proponerlo recortaría los
       // días ya cargados de una tarea anterior al campo obligatorio.
       inicio: doc.querySelector('#task-start')?.value ?? '(ausente)',

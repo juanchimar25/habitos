@@ -7,7 +7,7 @@
    cerrar todo —incluido el día que acaba de terminar— sin recargar la página.
 
    `AHORA` es el jueves 30 de julio de 2026 a las 10:00. */
-import { montar, AHORA } from '../harness.mjs';
+import { montar, verDia, AHORA } from '../harness.mjs';
 import { ESTADO_LLENO } from '../escenarios.mjs';
 
 let fallos = 0;
@@ -17,17 +17,21 @@ const ok = (n, cond, det = '') => {
 };
 
 const guardado = w => JSON.parse(w.localStorage.getItem('tareas-diarias/v1/u-test'));
-const celda = (doc, fecha, tarea = 't1') =>
-  doc.querySelector(`.cell[data-task-id="${tarea}"][data-date="${fecha}"]`);
+const celda = (doc, fecha, tarea = 't1') => {
+  /* Solo se dibuja la del día elegido: la lista muestra un día por vez. Ir
+     hasta él es parte de buscarla, igual que antes lo era desplazar la
+     planilla hasta su columna. */
+  if (doc.querySelector('.carrete-dia.is-centro')?.dataset.date !== fecha) {
+    verDia(doc, fecha);
+  }
+  return doc.querySelector(`.cell[data-task-id="${tarea}"][data-date="${fecha}"]`);
+};
 const dialogo = doc => doc.querySelector('#confirm-dialog');
 const abierto = doc => dialogo(doc).hasAttribute('open');
 
-/** Pone la planilla en vista mensual, que es la que muestra el mes entero. */
+/** La lista del día, en el día que trae el arnés: hoy, 30 de julio. */
 async function planilla() {
-  const r = await montar(ESTADO_LLENO);
-  r.doc.querySelector('#btn-view').click();
-  r.doc.querySelector('.view-opt[data-view="month"]').click();
-  return r;
+  return montar(ESTADO_LLENO);
 }
 
 // --- 1. el botón de bloquear período ya no existe ---------------------------
@@ -36,11 +40,11 @@ async function planilla() {
   ok('no hay botón de bloquear', doc.querySelector('#btn-lock') === null);
   ok('ni nota de período bloqueado', doc.querySelector('#locked-note') === null);
 
-  doc.querySelector('#btn-actions').click();
-  const dentro = [...doc.querySelectorAll('#actions-options .view-opt')].map(b => b.id);
-  console.log('  opciones:', dentro.join(' · '));
+  doc.querySelector('#btn-menu').click();
+  const dentro = [...doc.querySelectorAll('#drawer .drawer-item')].map(b => b.id);
+  console.log('  cajón:', dentro.join(' · '));
   ok('el apartado «Período» desapareció del menú',
-    ![...doc.querySelectorAll('#actions-options .opt-group-title')]
+    ![...doc.querySelectorAll('#drawer .drawer-label')]
       .some(t => /período/i.test(t.textContent)));
 }
 
@@ -105,11 +109,15 @@ async function planilla() {
   ok('el clic siguiente vuelve a preguntar', abierto(doc));
   doc.querySelector('#confirm-dialog [data-close-dialog]').click();
 
-  // El tono no se queda pegado: el próximo diálogo puede ser destructivo.
-  doc.querySelector('#btn-actions').click();
-  doc.querySelector('#btn-mode-delete').click();
-  doc.querySelector('.task-pick[data-task-id="t1"]').click();
-  doc.querySelector('#btn-mode-ok').click();
+  /* El tono no se queda pegado: el próximo diálogo puede ser destructivo.
+     Se llega por donde se llega hoy — el lápiz de la fila abre «Editar tarea»,
+     y ahí adentro está «Eliminar». */
+  doc.querySelector('#dia-lista .dia-fila[data-task-id="t1"] [data-action="edit"]').click();
+  doc.querySelector('#task-delete').click();
+  // Eliminar pregunta antes desde cuándo; la confirmación viene después.
+  doc.querySelector('#delete-form input[value="inicio"]').click();
+  doc.querySelector('#delete-form').dispatchEvent(
+    new window.Event('submit', { bubbles: true, cancelable: true }));
   ok('el diálogo de eliminar vuelve al rojo',
     doc.querySelector('#confirm-ok').classList.contains('btn-danger'),
     doc.querySelector('#confirm-ok').className);
@@ -188,14 +196,16 @@ async function planilla() {
 // --- 9. el cierre es de las celdas, no de la lista de tareas ---------------
 {
   const { doc } = await planilla();
-  ok('el alta sigue habilitada', doc.querySelector('#btn-add-task').disabled === false);
-  ok('y copiar del mes anterior también',
-    doc.querySelector('#btn-copy-prev').disabled === false);
+  ok('el alta sigue a la vista', doc.querySelector('#btn-fab').hidden === false);
 
-  doc.querySelector('#btn-actions').click();
-  ok('las tres posturas de fila siguen disponibles',
-    ['delete', 'reset', 'reorder']
-      .every(m => doc.querySelector(`#btn-mode-${m}`).disabled === false));
+  /* Y las acciones de la tarea también: el candado es de las celdas de estado,
+     no de la tarea. Con un día viejo a la vista, el lápiz abre igual y las tres
+     acciones están ahí. */
+  doc.querySelector('#dia-lista [data-action="edit"]').click();
+  ok('y las acciones de la tarea siguen disponibles',
+    doc.querySelector('#task-tools').hidden === false
+    && ['task-delete', 'task-reorder', 'task-archive']
+      .every(id => doc.querySelector(`#${id}`)?.disabled === false));
 }
 
 console.log(`\n  reloj de la prueba: ${AHORA.toISOString()}`);

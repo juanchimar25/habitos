@@ -9,7 +9,7 @@
    congelaría en la versión que tuvieran ese día.
 
    Arnés: hoy = jueves 30/07/2026. */
-import { montar } from '../harness.mjs';
+import { montar, verDia } from '../harness.mjs';
 
 let fallos = 0;
 const ok = (n, cond, det = '') => {
@@ -69,6 +69,50 @@ const borrar = (doc, nombre) => {
 const guardado = window => JSON.parse(
   window.localStorage.getItem('tareas-diarias/v1/u-test') || '{}');
 
+// --- guarda las tareas del DÍA, no las del mes -----------------------------
+{
+  /* La pantalla muestra un día: lo que se guarda tiene que ser eso. Con la
+     lista del mes se guardaban tareas que ese día ni siquiera existían —las que
+     empiezan más adelante— y que no estaban a la vista al apretar el botón.
+
+     Acá «Correr» arranca el 20 y las otras dos el 1. */
+  const { window, doc } = await montar(estado({
+    months: {
+      '2026-07': [
+        tarea('t1', 'Leer', 'daily'),
+        tarea('t2', 'Correr', 'daily', { start: '2026-07-20' }),
+        tarea('t3', 'Socializar', 'daily'),
+      ],
+    },
+  }));
+
+  verDia(doc, '2026-07-15');
+  ok('la nota del diálogo nombra el día',
+    (doc.querySelector('#btn-save-template').title.match(/del .*julio/) ?? [''])[0] !== '',
+    doc.querySelector('#btn-save-template').title);
+
+  ok('se guarda sin error', guardar(doc, 'Ese día') === '');
+
+  const tpl = guardado(window).templates.at(-1);
+  console.log('  guardadas:', tpl.tasks.map(t => t.name).join(' · '));
+  ok('guarda solo las que ya existían ese día', tpl.tasks.length === 2,
+    String(tpl.tasks.length));
+  ok('sin la que arranca más adelante', !tpl.tasks.some(t => t.name === 'Correr'),
+    tpl.tasks.map(t => t.name).join(','));
+}
+{
+  /* Un día sin ninguna tarea empezada no tiene nada que guardar, y el botón lo
+     dice en vez de guardar una plantilla vacía. */
+  const { doc } = await montar(estado({
+    months: { '2026-07': [tarea('t1', 'Leer', 'daily', { start: '2026-07-20' })] },
+  }));
+
+  verDia(doc, '2026-07-15');
+  const btn = doc.querySelector('#btn-save-template');
+  ok('sin tareas ese día, el botón se apaga', btn.disabled === true);
+  ok('y dice por qué', /día no tiene tareas/i.test(btn.title), btn.title);
+}
+
 // --- el mes se guarda como plantilla ---------------------------------------
 {
   const { window, doc } = await montar(estado());
@@ -105,9 +149,10 @@ const guardado = window => JSON.parse(
     tpl.tasks.every(t => !('start' in t)), JSON.stringify(tpl.tasks));
   ok('y sin id: la plantilla crea tareas nuevas',
     tpl.tasks.every(t => !('id' in t)), JSON.stringify(tpl.tasks));
-  /* En minúscula: el mes viene así del locale y es lo correcto en medio de una
-     oración. Donde encabeza —el rótulo del mes— lo capitaliza el CSS. */
-  ok('la descripción dice de dónde salió', tpl.description === 'Guardada desde julio 2026',
+  /* Nombra el DÍA del que salió, que es de donde se tomaron las tareas. En
+     minúscula: el mes viene así del locale y es lo correcto en medio de una
+     oración. */
+  ok('la descripción dice de qué día salió', tpl.description === 'Guardada desde el 30 jul',
     tpl.description);
 }
 
@@ -271,7 +316,7 @@ const guardado = window => JSON.parse(
     String(ficha.querySelectorAll('.tpl-tasks li').length));
 
   ficha.querySelector('.tpl-add').click();
-  const filas = [...doc2.querySelectorAll('tbody tr[data-task-id] .task-name')]
+  const filas = [...doc2.querySelectorAll('#dia-lista .dia-fila .task-name')]
     .map(n => n.textContent.trim());
   console.log(`\n=== aplicada ===\n  ${filas.join(' · ')}`);
   ok('las tareas entran en el mes', filas.length === 2, filas.join(' · '));

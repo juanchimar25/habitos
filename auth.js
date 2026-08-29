@@ -34,8 +34,9 @@ const el = {
   toggle: $('#auth-toggle'),
   forgot: $('#auth-forgot'),
   title: $('#auth-title'),
-  session: $('#drawer-session'),
+  session: $('#settings-session'),
   user: $('#session-user'),
+  since: $('#session-since'),
   signOut: $('#btn-sign-out'),
   app: $('#app-root'),
 };
@@ -156,6 +157,20 @@ function faltaCliente() {
     + 'quedó desactualizado y el navegador lo bloquea. Ver <code>vendor/README.md</code>.';
 }
 
+/**
+ * Fecha de alta de la cuenta, para la tarjeta de Ajustes. La trae Supabase en
+ * `created_at`; si faltara o no se pudiera leer, el rótulo queda con su guion
+ * en vez de mostrar «Invalid Date».
+ */
+function fechaDeAlta(iso) {
+  const fecha = new Date(iso || '');
+  if (Number.isNaN(fecha.getTime())) return '—';
+
+  return new Intl.DateTimeFormat('es', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  }).format(fecha);
+}
+
 function aplicarSesion(sesion) {
   const usuario = sesion?.user || null;
   window.supabaseSession = sesion || null;
@@ -172,6 +187,7 @@ function aplicarSesion(sesion) {
   if (entrar) {
     el.user.textContent = usuario.email || 'Sesión iniciada';
     el.user.title = usuario.email || '';
+    el.since.textContent = fechaDeAlta(usuario.created_at);
     window.Habitos?.start?.({ id: usuario.id, email: usuario.email });
   } else {
     window.Habitos?.stop?.();

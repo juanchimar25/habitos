@@ -272,8 +272,8 @@ function habilitarPush(window, { permiso = 'granted' } = {}) {
      push es por navegador, así que ofrecerlo de nuevo en el teléfono cuando se
      activó en la computadora es lo correcto. */
   const guardado = JSON.parse(window.localStorage.getItem('tareas-diarias/v1/u-test'));
-  ok('  no viaja con el diario a la base', guardado.recordatorioOfrecido === true
-    && 'zoom' in prefs, JSON.stringify(Object.keys(prefs)));
+  ok('  no viaja con el diario a la base', guardado.recordatorioOfrecido === true,
+    JSON.stringify(Object.keys(prefs)));
 }
 {
   // Al volver a abrir con la marca puesta, ya no se ofrece.

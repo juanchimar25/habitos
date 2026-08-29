@@ -21,4 +21,45 @@ if ('serviceWorker' in navigator) {
       console.warn('No se pudo registrar el service worker', err);
     });
   });
+
+  /* Una versión nueva se recarga sola, UNA vez.
+
+     El service worker sirve los scripts y la hoja desde el caché y los refresca
+     de fondo, así que una versión nueva quedaba lista pero sin usar: la
+     pantalla seguía corriendo el código anterior hasta que alguien recargara a
+     mano. El síntoma no se lee como «hay una versión nueva» sino como «la app
+     no hace lo que dice»: se toca algo, no pasa nada, y recién al volver a
+     entrar funciona.
+
+     `controllerchange` avisa cuando el service worker recién activado toma el
+     control de esta página —lo que pasa apenas se instala, porque `sw.js` hace
+     `skipWaiting()` y `clients.claim()`—. Ahí ya está todo lo nuevo en el
+     caché, y recargar cuesta lo que cuesta leer del disco. */
+  /* Si la página ya venía controlada, un cambio de controlador significa que
+     hay una versión nueva. Si no había ninguno, es la primera visita: el
+     control pasa de «nadie» al recién instalado y no hay nada viejo corriendo,
+     así que recargar sería un parpadeo gratis. Se lee ANTES de registrar. */
+  const habiaControlador = Boolean(navigator.serviceWorker.controller);
+
+  let recargando = false;
+
+  const recargar = () => {
+    if (recargando) return;
+
+    /* Con un diálogo abierto, no: puede haber un nombre a medio escribir, y una
+       recarga sorpresa lo tiraría. Se espera a que se cierre — los datos ya
+       guardados no corren riesgo, porque cada cambio se escribe al instante. */
+    const dialogo = document.querySelector('dialog[open]');
+    if (dialogo) {
+      dialogo.addEventListener('close', recargar, { once: true });
+      return;
+    }
+
+    recargando = true;
+    window.location.reload();
+  };
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (habiaControlador) recargar();
+  });
 }

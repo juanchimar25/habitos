@@ -72,8 +72,7 @@ for (const [nombre, tema] of [['CLARO', claro], ['OSCURO', oscuro]]) {
    valen lo mismo —el primero referencia al segundo—; cuál se nombra depende de
    si la superficie habla del día de hoy o de la marca. */
 const superficies = [
-  ['marcador del día actual', /\.col-day\.is-today \.dnum \{[^}]*\}/, '--today'],
-  ['vista activa del desplegable', /\.view-opt\.is-active \{[^}]*\}/, '--today'],
+  ['día elegido del carrete', /\.carrete-dia\.is-centro \{[^}]*\}/, '--brand-text'],
   ['modificador .btn-brand', /\n\.btn-brand \{[^}]*\}/, '--brand-text'],
 ];
 
@@ -106,7 +105,7 @@ ok('  ninguna deja el blanco fijo', conBlancoFijo.length === 0,
   ok('  se encuentra la clase base .btn', Number.isFinite(base), `línea ${base}`);
 
   for (const [nombre, re] of [['.btn-brand', /\n\.btn-brand \{/],
-    ['.btn-primary', /\n\.btn-primary \{/], ['.btn-danger', /\n\.btn-danger \{/]]) {
+    ['.btn-danger', /\n\.btn-danger \{/]]) {
     const donde = linea(re);
     ok(`  ${nombre} se define después de .btn`, donde > base,
       `${nombre} en ${donde}, .btn en ${base}`);
@@ -116,8 +115,7 @@ ok('  ninguna deja el blanco fijo', conBlancoFijo.length === 0,
 /* --- quién lleva el relleno de marca en el HTML --------------------------- */
 {
   const html = leer('index.html');
-  for (const [nombre, id] of [['Entrar / Crear cuenta', 'auth-submit'],
-    ['Opciones del mes', 'btn-actions']]) {
+  for (const [nombre, id] of [['Entrar / Crear cuenta', 'auth-submit']]) {
     const etiqueta = html.match(new RegExp(`<button[^>]*id="${id}"[^>]*>`))?.[0]
       ?? html.match(new RegExp(`<button[^>]*id="${id}"[\\s\\S]*?>`))?.[0] ?? '';
     const clases = etiqueta.match(/class="([^"]*)"/)?.[1] ?? '';
@@ -131,8 +129,8 @@ ok('  ninguna deja el blanco fijo', conBlancoFijo.length === 0,
 /* --- y en el que se arma desde el JS -------------------------------------- */
 {
   /* «Agregar» de cada ficha de plantilla no está en el HTML: lo dibuja
-     `templateCard`. Lleva el mismo relleno que «Opciones» porque las dos son
-     la entrada a lo mismo — sumar tareas al mes. */
+     `templateCard`. Lleva el relleno de marca porque es la acción destacada
+     de su ficha — sumar esas tareas al mes. */
   const js = leer('app.js');
   const clases = js.match(/boton\('([^']*tpl-add[^']*)'/)?.[1] ?? '';
   ok('  Agregar de la plantilla lleva btn-brand', /\bbtn-brand\b/.test(clases), clases);

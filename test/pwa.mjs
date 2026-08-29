@@ -36,6 +36,21 @@ if (!/navigator\.serviceWorker\.register\(/.test(leer('pwa.js'))) {
   problemas.push('pwa.js no registra ningún service worker');
 }
 
+/* La versión nueva tiene que entrar sola. El service worker sirve los scripts
+   desde el caché, así que sin esto la pantalla sigue corriendo el código viejo
+   hasta que alguien recargue a mano — y el síntoma no se lee como «hay una
+   versión nueva» sino como «la app no hace lo que dice»: se toca algo, no pasa
+   nada, y al volver a entrar funciona. */
+if (!/controllerchange/.test(leer('pwa.js'))) {
+  problemas.push('pwa.js no recarga cuando toma el control un service worker nuevo');
+}
+
+/* Y tiene que mirar si ya había uno: en la primera visita el control pasa de
+   nadie al recién instalado, y ahí recargar es un parpadeo sin motivo. */
+if (!/serviceWorker\.controller/.test(leer('pwa.js'))) {
+  problemas.push('pwa.js recarga sin distinguir la primera visita de una versión nueva');
+}
+
 // --- 2. el manifest es válido y lo que nombra existe ----------------------
 
 let manifest = null;

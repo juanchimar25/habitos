@@ -15,7 +15,7 @@
 
 /* Subir la versión invalida el caché entero. Hay que tocarla cuando cambie
    cualquiera de los archivos de abajo; `test/pwa.mjs` avisa si se olvidó. */
-const VERSION = 'habitos-v5';
+const VERSION = 'habitos-v84';
 
 /**
  * El armazón: lo mínimo para que la app dibuje algo estando sin red.
@@ -111,8 +111,9 @@ self.addEventListener('notificationclick', evento => {
  * - Todo lo que no sea GET, y todo lo que no sea de este mismo origen, pasa
  *   derecho: ahí adentro están las llamadas a Supabase, que nunca se cachean.
  * - Las NAVEGACIONES van a la red primero y caen en `index.html` si no hay.
- *   La app es una sola página con rutas propias (`/diario`, `/analisis`), así
- *   que sin red cualquiera de las tres tiene que resolver al mismo HTML.
+ *   La app es una sola página con rutas propias (`/diario`, `/pendientes`,
+ *   `/analisis`, `/ajustes`, `/comousar`), así que sin red cualquiera de las
+ *   cinco tiene que resolver al mismo HTML.
  * - El resto —CSS, scripts, íconos— sale del caché y se refresca de fondo.
  *   Es lo que hace que abrir sea instantáneo; el precio es que una versión
  *   nueva entra recién en la carga siguiente.

@@ -18,6 +18,7 @@
   --accent-hover:  #4338ca;
   --accent-soft:   #eceafe;
 
+
   --done-bg:       #d7f5e0;
   --done-fg:       #10683a;
   --done-strong:   #16a34a;
@@ -54,8 +55,20 @@
   --chart-done:    #16a34a;   /* 3,30:1 */
   --chart-partial: #b17d05;   /* 3,62:1 */
   --chart-missed:  #dc2626;   /* 4,83:1 */
-  --chart-none:    #7c899f;   /* 3,54:1 */
   --chart-neutral: #aab4c8;   /* barras sin énfasis */
+
+  /* Los puntos de la visualización mensual. El rojo va a un paso del pastel de
+     la lista —que a 13px se aguada— hacia el color de gráfico. El amarillo no
+     sigue ese camino: el color de gráfico es un ocre oscuro, y mezclando hacia
+     él el punto se apagaba en vez de verse. Va hacia un amarillo más saturado,
+     que es lo que a este tamaño se lee como amarillo. */
+  /* El oro de la corona: brillante y aparte de los colores de estado, para
+     recortarse sobre la barra que corona —que puede ser ámbar—. */
+  --podio-oro:     #f4c020;
+
+  --dot-done:      #63c486;
+  --dot-partial:   #f7db72;
+  --dot-missed:    #f2a5a5;
   --chart-track:   #eef1f8;
 
   --radius:        12px;
@@ -63,12 +76,22 @@
 
   /* Alto único de los controles de las dos barras. Ver `.controls .btn`. */
   --ctl-h:         38px;
+  /* Lo comparten la rejilla del carrete y la de la pista: mientras sea el
+     mismo, una flecha mide exactamente lo que una ficha de día. */
+  --carrete-gap:   clamp(.15rem, 1vw, .4rem);
+
+  /* Alto de la barra de secciones del pie, sin el área segura. La barra lo usa
+     como piso —no como alto fijo: si la tipografía del sistema crece, que crezca
+     con ella— y el aviso flotante lo usa para pasar por encima en vez de quedar
+     tapado. */
+  --tabbar-h:      62px;
+
+  /* Diámetro del botón redondo de alta. Lo comparten el botón, el hueco que
+     le deja la leyenda y el aviso flotante, que le pasa por encima. */
+  --fab-size:      64px;
   --shadow:        0 1px 2px rgba(20, 30, 60, .06), 0 8px 24px rgba(20, 30, 60, .07);
   --shadow-sm:     0 1px 2px rgba(20, 30, 60, .08);
 
-  --cell-w:        44px;
-  --task-w:        274px;
-  --total-w:       76px;
 
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -89,6 +112,7 @@
   --accent:        #7c74f5;
   --accent-hover:  #8f88f8;
   --accent-soft:   #232145;
+
 
   --done-bg:       #12452a;
   --done-fg:       #86efac;
@@ -116,8 +140,14 @@
   --chart-done:    #22c55e;   /* 7,45:1 */
   --chart-partial: #eab308;   /* 8,85:1 */
   --chart-missed:  #ef4444;   /* 4,51:1 */
-  --chart-none:    #64748b;   /* 3,57:1 */
   --chart-neutral: #4a5875;
+
+  /* En oscuro el paso se da hacia el mismo lado: más color, no más claro. */
+  --podio-oro:     #fbc531;
+
+  --dot-done:      #26ad57;
+  --dot-partial:   #86640a;
+  --dot-missed:    #781c1c;
   --chart-track:   #1c2439;
 
   --shadow:        0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35);
@@ -171,7 +201,7 @@ body {
    sin importar cuánto midan el menú de la izquierda y las opciones de la derecha. */
 .app-header {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: .75rem;
   padding: .85rem clamp(.9rem, 3vw, 2rem);
@@ -191,11 +221,13 @@ body {
 
 .menu-btn { grid-column: 1; justify-self: start; font-size: 1.1rem; }
 
+/* A la izquierda: con el ☰ fuera del encabezado no hay nada que equilibrar del
+   otro lado, y un logo centrado entre un hueco y un botón se lee corrido. */
 .brand {
-  grid-column: 2;
+  grid-column: 1;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: start;
   gap: .7rem;
   min-width: 0;
 }
@@ -204,7 +236,9 @@ body {
 
 .brand-text h1 {
   margin: 0;
-  font-size: 1.35rem;
+  /* El nombre de la app dejó de compartir la fila con dos botones —el ☰ se fue
+     a la línea del mes— y puede pesar lo que le corresponde. */
+  font-size: 2.2rem;
   font-weight: 600;
   letter-spacing: -.01em;
   color: var(--brand-text);
@@ -212,7 +246,7 @@ body {
 }
 
 .header-actions {
-  grid-column: 3;
+  grid-column: 2;
   justify-self: end;
   display: flex;
   align-items: center;
@@ -487,7 +521,11 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   cursor: pointer;
   transition: background .13s ease, color .13s ease;
 }
-.drawer-item:hover { background: var(--bg-sunken); }
+.drawer-item:hover:not(:disabled) { background: var(--bg-sunken); }
+
+/* Copiar del mes anterior y guardar como plantilla se apagan cuando no hay qué
+   copiar o qué guardar; su `title` dice por qué. */
+.drawer-item:disabled { opacity: .45; cursor: not-allowed; }
 
 .drawer-item.is-active {
   background: var(--accent-soft);
@@ -507,50 +545,143 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 }
 .drawer-item.is-active .drawer-icon { color: var(--accent); }
 
-/* Cerrar sesión no lleva tamaño propio: la cruz usa la misma caja que el resto
-   de los íconos del menú.
+/* ---------------- Barra de secciones (pie) ---------------- */
 
-   El ícono original era U+23FB (símbolo de encendido) y sí llevaba acá un
-   cuerpo más grande, para compensar lo chico que se dibujaba. Ese glifo falta
-   en Roboto y en SF, así que en Android y en iOS salía como caja vacía.
-   Cualquier reemplazo tiene que venir de un bloque con cobertura real en
-   fuentes de sistema; U+2715 la tiene, y además ya se usa para cerrar el menú
-   y en la leyenda de estados. */
+/* La última franja del armazón, como el encabezado es la primera: `flex: none`
+   y nada de `position: fixed`. Fijo lo queda igual —el que desplaza es el
+   contenido, entre las dos franjas—, y de paso no hay que reservarle lugar con
+   padding ni recordar su alto en ningún otro lado.
 
-/* La sesión queda anclada al fondo del cajón */
-.drawer-session {
-  /* El espacio libre lo absorbe .drawer-group-bottom; con dos `auto` se repartiría */
-  margin-top: 0;
-  padding-top: .75rem;
+   El `z-index` es el mismo del encabezado (5): por encima del contenido y por
+   debajo del velo del cajón (35), que también tiene que atenuar a la barra. */
+.tabbar {
+  flex: none;
+  /* Centra la fila cuando el piso de alto sobra. */
+  display: flex;
+  align-items: center;
+  position: relative;
+  z-index: 5;
+  background: var(--bg-elev);
   border-top: 1px solid var(--border);
+
+  /* La franja llega de borde a borde para que el borde superior también lo
+     haga; los cuatro botones, en cambio, se agrupan al medio: estirados sobre
+     1500px quedarían a un palmo unos de otros. */
+  padding: .3rem clamp(.4rem, 2vw, 1rem);
+  padding-bottom: calc(.3rem + env(safe-area-inset-bottom, 0px));
+  min-height: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
 }
 
-.session-info {
+.tabbar-inner {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .2rem;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.tab {
   display: flex;
   flex-direction: column;
-  gap: .1rem;
-  padding: 0 .6rem .5rem;
-  min-width: 0;
-}
-.session-label {
-  font-size: .68rem;
+  align-items: center;
+  justify-content: center;
+  gap: .18rem;
+  padding: .4rem .2rem;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: .7rem;
   font-weight: 600;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--text-faint);
+  line-height: 1.2;
+  text-align: center;
+  transition: background .13s ease, color .13s ease;
 }
-.session-user {
-  font-size: .85rem;
-  font-weight: 600;
-  color: var(--text);
+.tab:hover { background: var(--bg-sunken); color: var(--text); }
+
+.tab.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* Los cuatro dibujos comparten grosor y caja, así que las propiedades del trazo
+   viven acá y cada `<svg>` solo trae su forma. */
+.tab-icon {
+  width: 23px;
+  height: 23px;
+  flex: none;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* El tilde del Diario es el gesto de la app —es el que se marca en la planilla
+   y el que está en el logo—: va un punto más grueso que el resto para que se
+   lea como tal y no como una flecha. */
+.tab[data-page="home"] .tab-icon { stroke-width: 2.2; }
+
+/* El rótulo largo no puede empujar al de al lado ni partirse en dos líneas: la
+   barra tiene un alto y las cuatro columnas miden lo mismo. */
+.tab-text {
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.session-out { color: var(--missed-fg); }
-.session-out:hover { background: var(--missed-bg); }
-.session-out .drawer-icon { color: var(--missed-fg); }
+/* ---------------- Alta flotante (esquina inferior derecha) ---------------- */
+
+/* Lo único de la app que flota sobre el contenido. Se lo gana por ser la acción
+   principal de su sección: en una planilla que se recorre de arriba abajo, el
+   alta tiene que estar donde termina la mano, no al final del scroll.
+
+   `position: fixed` acá sí —y no una franja del armazón como el encabezado o la
+   barra de secciones—: no ocupa una banda propia, se apoya sobre la que ya hay.
+   Se ancla contra la barra del pie usando su misma medida (`--tabbar-h`), así
+   los dos se mueven juntos si esa cambia. */
+.fab {
+  position: fixed;
+  right: clamp(.9rem, 3vw, 1.6rem);
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + .9rem);
+
+  /* Por encima del contenido y de la barra del pie (5), y por DEBAJO del velo
+     del menú lateral (35): al abrir el menú tiene que atenuarse como todo lo
+     demás y no quedar flotando iluminado sobre el velo. */
+  z-index: 6;
+
+  width: var(--fab-size);
+  height: var(--fab-size);
+  display: grid;
+  place-items: center;
+  padding: 0;
+
+  appearance: none;
+  border: 0;
+  border-radius: 50%;
+  background: var(--brand-text);
+  color: var(--brand-fg);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: filter .13s ease, transform .06s ease;
+}
+.fab:hover { filter: brightness(1.08); }
+.fab:active { transform: translateY(1px); }
+
+/* El «+» dibujado y no el carácter: así el grosor del trazo es el mismo que el
+   de los íconos de la barra del pie, que están justo al lado. */
+.fab-icon {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
 
 /* ---------------- Botones ---------------- */
 
@@ -571,13 +702,6 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .btn:hover:not(:disabled)  { background: var(--bg-sunken); border-color: var(--text-faint); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
-
-.btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-.btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
 
 .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn-danger:hover { filter: brightness(1.08); background: var(--danger); border-color: var(--danger); }
@@ -701,23 +825,51 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
 }
-.month-nav .month-label  { grid-column: 2; }
-.month-nav .collapse-btn { grid-column: 3; justify-self: end; }
+.month-nav .month-label { grid-column: 2; }
+/* El ☰ va en la primera columna, contra el borde: es de esta pantalla y de esta
+   fila, que es la de sus controles. */
+.month-nav .menu-btn { grid-column: 1; justify-self: start; }
 
-/* Fila 2: la vista contra la izquierda y, en la otra punta, la confirmación de
-   la postura junto a «Opciones» — las dos entradas a todo lo demás, una en cada
-   extremo. */
-.controls-center { grid-column: 1; justify-self: start; }
+/* Y el orden en la tercera, del otro lado del mes. Comparte columna con «Hoy» y
+   con el remate de la selección masiva, que son de Hábitos: nunca coinciden. */
+.month-nav .month-orden { grid-column: 3; justify-self: end; }
 
-/* Vive DENTRO de `.controls` justamente para poder compartir fila con el
-   selector de vista. */
-.month-bar { grid-column: 3; justify-self: end; }
+/* Los tres dibujos del orden viven en el mismo botón y se muestra el del orden
+   puesto, como el cambio de tema: el botón enseña dónde está. */
+.orden-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+.orden-icon[hidden] { display: none; }
 
-/* Columna del medio: en escritorio se apoya contra «Opciones», que es donde
-   termina la mirada al recorrer la fila. En móvil se invierte — ver el bloque
-   de 640px—, porque ahí el recorrido es corto y conviene tenerlo pegado a lo
-   que se acaba de tocar. */
-.mode-confirm { grid-column: 2; justify-self: end; }
+/* Las tres opciones, una debajo de la otra y a lo ancho del diálogo: son
+   alternativas de una misma pregunta y ninguna es más corta que las otras. */
+.orden-opciones {
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+.orden-opcion { text-align: left; }
+
+/* La puesta, con el relleno de la marca: es la que está, no la que se ofrece. */
+.orden-opcion[aria-pressed="true"] {
+  background: var(--brand-text);
+  border-color: transparent;
+  color: var(--brand-fg);
+  font-weight: 650;
+}
+
+/* «Hoy» va en la tercera columna, contra el borde: el mes queda centrado igual
+   —los dos costados de la rejilla miden lo mismo— y el botón no lo corre. */
+.month-nav .month-hoy {
+  grid-column: 3;
+  justify-self: end;
+  font-weight: 600;
+}
 
 /* El nombre del mes es el botón que abre el calendario de meses. Lleva la clase
    `btn`, así que trae el recuadro, el hover y el foco del resto: es un control
@@ -738,145 +890,94 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 }
 
 
-/* ---- Selector de vista ----
-   Un botón con la vista activa, abrazado por las flechas que mueven la ventana.
-   Antes eran cuatro botones en un carril («Hoy» y las tres vistas) más una fila
-   aparte con las flechas: dos filas y siete controles para decir en qué ventana
-   estoy y cómo me muevo. */
-
-.view-menu { position: relative; }
-
-/* El ancho no lo decide el rótulo: los tres tienen que medir lo mismo, o el
-   botón —y con él las flechas que lo abrazan— se corre al cambiar de vista.
-
-   Sin el chevron, el más ancho —«Semanal»— mide 81,1px: 53,9 de texto más los
-   27,2 de padding. El piso queda apenas por encima, así que los tres lo
-   alcanzan y ninguno lo pasa. Antes eran 7,5em, dimensionados CON el chevron:
-   sobraban 24px de aire adentro del recuadro.
-
-   En `em` y no en `px`: se mide contra la tipografía del propio botón, así que
-   si cambia el cuerpo la reserva lo acompaña. */
-.view-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 6em;
-  font-weight: 600;
+/* ---- El cambio de tema ----
+   Dos dibujos en el mismo botón: se muestra el del tema al que se va. Con un
+   glifo de texto —«☾», «☀»— el dibujo lo decidía la fuente, y salía de otro
+   grosor y de otro tamaño que el resto de los íconos. */
+.theme-icon {
+  width: 18px;
+  height: 18px;
+  display: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
+/* La luna es una silueta, no un objeto con partes adentro: va maciza. De
+   contorno quedaba flaca y hueca al lado de los íconos del cajón, que son de
+   línea porque tienen algo que mostrar por dentro. */
+.icon-luna { fill: currentColor; stroke: none; }
 
-/* El menú flota sobre la planilla, así que va por encima de la columna de
-   tareas y de los encabezados, que son sticky y tienen z-index propio. */
-.view-options {
-  position: absolute;
-  top: calc(100% + .35rem);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 30;
-  min-width: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: .3rem;
-  background: var(--bg-elev);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
+/* Y el sol la acompaña: disco macizo y rayos de línea, que sí son líneas. */
+.icon-sol circle { fill: currentColor; }
+
+/* En claro se ofrece el oscuro, y al revés. El tema sin elegir es el claro, así
+   que la luna es la que va por omisión. */
+.icon-luna { display: block; }
+:root[data-theme="dark"] .icon-luna { display: none; }
+:root[data-theme="dark"] .icon-sol { display: block; }
+
+/* ---- Íconos dibujados del cajón ----
+   Un emoji trae su propia paleta y no obedece al `color` de la entrada, así que
+   el que viene en color se lee como si dijera algo más importante que sus
+   vecinos. Estos van con trazo de `currentColor`: siguen al tema y se apagan
+   con la entrada. Comparten caja y trazo con los de la barra del pie. */
+.drawer-svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-.view-opt {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: .85rem;
-  font-weight: 550;
-  text-align: left;
-  white-space: nowrap;
-  padding: .45rem .7rem;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background .13s ease, color .13s ease;
-  /* En fila: varios llevan glifo o ícono delante del rótulo. */
-  display: flex;
-  align-items: center;
-  gap: .4rem;
-}
-.view-opt:hover { background: var(--bg-sunken); }
-
-/* La vista activa se pinta con el color de la marca, igual que «+ Agregar
-   tarea» y que el día de hoy en el encabezado. */
-.view-opt.is-active {
-  background: var(--today);
-  color: var(--brand-fg);
-  font-weight: 620;
-}
-.view-opt.is-active:hover { filter: brightness(1.08); }
-
-/* Ranura de ancho fijo para el ícono de cada acción. Los glifos no miden lo
-   mismo —un emoji es bastante más ancho que una flecha—, así que sin ranura
-   cada renglón arrancaba su texto en un lugar distinto. Con ella, los íconos
-   quedan centrados en una columna y todos los textos empiezan en la misma
-   vertical. El `+` del alta pasó a ser un ícono más, en vez de vivir dentro
-   del texto. */
-.opt-icon {
-  flex: none;
-  width: 1.15rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: .88rem;
-  line-height: 1;
-}
-
-/* «Ir a hoy» es una acción, no una vista: la línea lo separa de las tres. */
-.view-opt-sep {
-  height: 1px;
-  margin: .3rem .35rem;
-  background: var(--border);
-}
-
-/* ---- Anclaje de los desplegables ----
-   Cada uno crece hacia adentro, del lado en que está su botón: «Opciones» contra
-   el borde derecho y el de vista contra el izquierdo. Anclados al revés se salen
-   de la pantalla y aparecen cortados.
-
-   El de vista va por id y no por `.view-options`: el de opciones comparte esa
-   clase, y una regla por clase le pisaría el ancla. Con `left` y `right` en 0 a
-   la vez, el menú se encoge al ancho del botón y su contenido `nowrap` se
-   derrama fuera. */
-.actions-options { left: auto; right: 0; transform: none; }
-#view-options    { left: 0; transform: none; }
-
-.opt-group { display: flex; flex-direction: column; }
-
-.opt-group-title {
-  margin: .35rem .7rem .2rem;
-  font-size: .68rem;
-  font-weight: 650;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-
-/* Mismo trato que el resto de los botones destructivos de la app. */
-.view-opt-danger { color: var(--missed-fg); }
-.view-opt-danger:hover:not(:disabled) { background: var(--missed-bg); }
-
-.view-opt:disabled { opacity: .45; cursor: not-allowed; }
-.view-opt:disabled:hover { background: transparent; }
-
 
 
 /* Los triángulos de navegación van a cuerpo reducido: rellenos pesan mucho más
-   que el `‹` que reemplazaron, y a cuerpo pleno se comían el botón. Así ocupan
-   lo mismo que antes. */
-#prev-range, #next-range,
+   que el `‹` que reemplazaron, y a cuerpo pleno se comían el botón. */
 #jump-prev, #jump-next { font-size: .62rem; }
 
-/* ---- Cierre de la postura ----
-   Aparecen solo con una puesta, entre el selector de vista y «Opciones». Se
-   pintan como lo que hacen: el ✓ con el color de la marca, porque es la acción
-   destacada del momento, y el ✕ apenas como salida. */
-.mode-confirm { display: flex; align-items: center; gap: .35rem; }
+/* Las del carrete, un poco más grandes: su botón dejó de medir 34px y pasó a
+   medir lo que una ficha de día, y en esa caja el triángulo chico se perdía. */
+#prev-range, #next-range { font-size: .82rem; }
+
+/* Los íconos heredan el color del botón, así que siguen al tema sin reglas aparte. */
+.cal-icon { width: 17px; height: 17px; display: block; }
+
+/* ---- «Selección masiva», el grupo plegable ----
+   Un `<details>`: el resumen se ve como una entrada más del cajón y trae gratis
+   el teclado y el `aria-expanded` que habría que escribir a mano. */
+.drawer-sub { display: contents; }
+.drawer-sub > summary { list-style: none; cursor: pointer; }
+.drawer-sub > summary::-webkit-details-marker { display: none; }
+
+/* La flecha que dice que hay algo adentro, y que gira al abrirlo. */
+.drawer-sub > summary::after {
+  content: '▸';
+  margin-left: auto;
+  font-size: .7rem;
+  color: var(--text-faint);
+  transition: transform .13s ease;
+}
+.drawer-sub[open] > summary::after { transform: rotate(90deg); }
+
+/* Lo de adentro va corrido: la sangría es lo que dice de qué depende. */
+.drawer-item.is-sub { padding-left: 2.4rem; font-size: .85rem; }
+
+/* La postura puesta queda marcada mientras dura. */
+.drawer-item.is-active { background: var(--accent-soft); color: var(--brand-text); font-weight: 650; }
+
+/* El remate de la postura, en la tercera columna de la línea del mes: el mismo
+   lugar que ocupa «Hoy», con el que se turnan. */
+.mode-confirm {
+  grid-column: 3;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+}
 .mode-confirm[hidden] { display: none; }
 
 .mode-ok {
@@ -895,31 +996,6 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .mode-cancel { color: var(--text-muted); }
 .mode-cancel:hover:not(:disabled) { background: var(--missed-bg); color: var(--missed-fg); }
 
-/* Los íconos heredan el color del botón, así que siguen al tema sin reglas aparte. */
-.cal-icon { width: 17px; height: 17px; display: block; }
-
-/* Apunta hacia abajo con los controles desplegados y gira a la izquierda al
-   plegarlos: el giro dice hacia dónde se fueron. Una sola forma para los dos
-   estados, en vez de dos glifos que no combinan entre sí. */
-.chevron-icon {
-  width: 16px;
-  height: 16px;
-  display: block;
-  transition: transform .18s ease;
-}
-.collapse-btn.is-collapsed .chevron-icon { transform: rotate(90deg); }
-.zoom-icon { width: 15px; height: 15px; flex: none; }
-
-/* El zoom responde a la falta de espacio: en escritorio la planilla entra y no
-   hay densidad que elegir, así que el apartado no existe. */
-.zoom-group { display: none; }
-
-/* Plegado: se van las dos zonas que hay entre la línea del mes y la planilla.
-   Va por clase en el body y no por `hidden`, que ya lo usa el router para
-   ocultarlas según la sección; así las dos condiciones conviven. */
-body.controls-collapsed #controls-center,
-body.controls-collapsed #month-bar { display: none; }
-
 /* ---------------- Ir a un día o a un mes ---------------- */
 
 .jump-head { display: flex; align-items: center; gap: .5rem; }
@@ -933,19 +1009,8 @@ body.controls-collapsed #month-bar { display: none; }
   text-transform: capitalize;
 }
 
-.jump-dows,
-.jump-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-
-.jump-dows {
-  font-size: .68rem;
-  font-weight: 650;
-  color: var(--text-faint);
-  text-align: center;
-  text-transform: uppercase;
-}
-
 /* doce meses entran de a tres, con nombre completo */
-.jump-grid.is-months { grid-template-columns: repeat(3, 1fr); }
+.jump-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 
 .jump-cell {
   appearance: none;
@@ -960,7 +1025,6 @@ body.controls-collapsed #month-bar { display: none; }
   transition: background .13s ease, color .13s ease;
 }
 .jump-cell:hover { background: var(--accent-soft); color: var(--accent); }
-.jump-cell.is-weekend { color: var(--text-muted); }
 
 /* el período que ya se está mirando: contorno, sin robarle el relleno a hoy */
 .jump-cell.is-current { border-color: var(--today); font-weight: 650; }
@@ -976,75 +1040,22 @@ body.controls-collapsed #month-bar { display: none; }
   filter: brightness(1.08);
 }
 
-.jump-grid.is-months .jump-cell { padding: .65rem .2rem; text-transform: capitalize; }
+.jump-grid .jump-cell { padding: .65rem .2rem; text-transform: capitalize; }
 
 /* los huecos previos al día 1 no son botones, solo ocupan su lugar */
-.jump-blank { visibility: hidden; }
-
-/* ---------------- Barra de opciones del mes ---------------- */
-
-/* Sin `margin-top` negativo: compensaba la separación entre secciones hermanas,
-   y ahora que es un ítem más de la rejilla de `.controls` solo lo desalineaba
-   de sus vecinos de fila. El espaciado lo pone el `gap`. */
-.month-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: .4rem;
-}
-
-.month-bar .btn { font-size: .82rem; padding: .4rem .7rem; }
-.month-bar .btn:disabled { opacity: .45; cursor: not-allowed; }
-.month-bar .btn:disabled:hover { background: transparent; }
-
-/* El `opacity` de la barra alcanzaría, pero el hover general de .btn pinta el
-   fondo transparente y se perdería el color. */
-.month-bar .btn-brand:disabled:hover { background: var(--brand-text); }
 
 .btn-ghost-danger { color: var(--missed-fg); }
 .btn-ghost-danger:hover:not(:disabled) { background: var(--missed-bg); color: var(--missed-fg); }
 
-/* ---------------- Análisis: paneles plegables ---------------- */
+/* ---------------- Análisis ---------------- */
 
 /* Estas dos sí desplazan por dentro: son largas y no tienen una planilla que
    se quede con el alto. */
-.analysis, .help { flex: 1; min-height: 0; overflow-y: auto; }
+/* Las secciones que no son la planilla desplazan por dentro, igual que ella:
+   el armazón no desplaza y el alto sobrante es de acá. */
+.analysis, .help, .todos, .settings { flex: 1; min-height: 0; overflow-y: auto; }
 
 .analysis { display: flex; flex-direction: column; gap: 1rem; }
-
-.panel {
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-}
-
-.panel-head {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  padding: .8rem 1rem;
-  font-size: .78rem;
-  font-weight: 650;
-  letter-spacing: .05em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  cursor: pointer;
-  user-select: none;
-  list-style: none;   /* se reemplaza el triángulo nativo por el chevron propio */
-}
-.panel-head::-webkit-details-marker { display: none; }
-.panel-head:hover { color: var(--text); }
-
-.panel-caret { display: inline-block; transition: transform .15s ease; }
-.panel:not([open]) .panel-caret { transform: rotate(-90deg); }
-
-.panel > .summary,
-.panel > .charts { padding: 0 1rem 1rem; }
-
-/* Dentro del panel las tarjetas van hundidas: si conservaran el fondo del
-   panel no se distinguirían de él. */
-.panel .tile { background: var(--bg); box-shadow: none; }
 
 /* ---------------- Gráficos ---------------- */
 
@@ -1058,42 +1069,18 @@ body.controls-collapsed #month-bar { display: none; }
   align-items: stretch;
 }
 
+/* Con el fondo de las tarjetas de la lista del día: son tarjetas de la app y
+   conviene que se lean con el mismo lenguaje. */
 .chart-card {
   margin: 0;
   padding: .9rem 1rem 1rem;
-  background: var(--bg);
+  background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   /* columna flexible para que el contenido pueda ocupar el alto sobrante
      cuando la tarjeta se estira hasta igualar a sus vecinas */
   display: flex;
   flex-direction: column;
-  /* ancla del botón de medida, que va en la esquina */
-  position: relative;
-}
-
-/* Botón de la esquina del análisis diario: alterna entre `123` y `%`.
-   Absoluto para no robarle ancho al título, que sigue centrado en la tarjeta
-   entera y no en lo que sobra al costado del botón. */
-.chart-mode {
-  position: absolute;
-  top: .55rem;
-  right: .6rem;
-  min-width: 2rem;
-  padding: .12rem .4rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elev);
-  color: var(--text-muted);
-  font-size: .72rem;
-  font-weight: 620;
-  line-height: 1.5;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-}
-.chart-mode:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
 }
 
 /* El encabezado va centrado, como el de las tarjetas de indicadores. El hint
@@ -1118,112 +1105,165 @@ body.controls-collapsed #month-bar { display: none; }
   color: var(--text-faint);
 }
 
-/* --- torta --- */
+/* Sin recuadro: la visualización mensual no es un dibujo enmarcado sino una
+   lista de tarjetas. La caja de `.chart-card` la envolvía en otra tarjeta y le
+   comía el ancho de dos bordes y dos padding. */
+.chart-card.is-plana {
+  background: none;
+  border: 0;
+  padding-inline: 0;
+}
 
-/* La torta y sus referencias quedan centradas en el espacio que sobra:
-   `flex: 1` toma el alto libre, y los tres centrados cubren tanto el caso de
-   una sola línea como el envuelto en pantallas angostas. */
-.pie-wrap {
+/* --- puntos: el mes día por día --- */
+
+/* Una fila por tarea, con el mismo bloque de nombre y frecuencia que la lista
+   del día: es la misma tarea y conviene que se lea igual. */
+.dots-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+}
+
+/* Con el mismo fondo que las tarjetas de la lista del día: es la misma tarea
+   mirada de otra manera, y el hundido la hacía ver como una sub-lista de otra
+   cosa. El fondo de la tarjeta del gráfico es el de la app, así que las filas
+   quedan igual que en Hábitos — blancas sobre el gris. */
+.dots-row {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  padding: .5rem .6rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* El nombre se lleva un ancho fijo para que los puntos arranquen en la misma
+   vertical en todas las filas: con ancho por contenido, cada tarea empezaba su
+   mes en un lugar distinto y no se podían comparar dos rachas de un vistazo. */
+.dots-row .task-info { flex: none; width: 8.5rem; min-width: 0; }
+
+/* Los puntos envuelven: un mes no entra en una línea en un teléfono, y forzarlo
+   pediría achicarlos hasta que dejen de leerse. */
+.dots {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
-  justify-content: center;
-  align-items: center;
+  gap: 4px;
   align-content: center;
 }
-.pie { width: 148px; height: 148px; flex: none; }
 
-/* el número grande va con cifras proporcionales, no tabulares */
-.pie-value { font-size: 25px; font-weight: 680; fill: var(--text); }
-.pie-label { font-size: 10px; fill: var(--text-faint); }
+/* Sin borde: el color ya separa un punto del de al lado, y el contorno sumaba
+   una retícula gris sobre una fila de treinta y uno. La excepción es el blanco
+   —abajo—, que sin contorno se confundiría con el fondo de la fila. */
+.dot {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--bg-elev);
+  border: 0;
+}
+
+/* Los tres a media asta entre el pastel de la lista —que a 13px se aguada— y el
+   color de gráfico, que a treinta y un puntos por fila satura. El verde es el
+   que más se repite, así que es el que más lo pedía: al máximo pintaba la fila
+   entera de verde y tapaba a los otros dos. */
+.dot.st-done    { background: var(--dot-done); }
+.dot.st-partial { background: var(--dot-partial); }
+.dot.st-missed  { background: var(--dot-missed); }
+
+/* No requerido: gris de verdad, no un gris que se lee como casi blanco. Son
+   los días que la frecuencia no pide —los martes y jueves de una tarea de lunes,
+   miércoles y viernes— y los que se eximieron a mano. Tiene que distinguirse del
+   día que sí se pedía y quedó vacío. */
+.dot.st-skip { background: var(--text-faint); }
+
+/* Los dos que no llevan color van huecos y con borde, que es lo único que los
+   hace visibles contra el fondo blanco de la fila. Lo que los separa es el peso
+   del contorno: el día que se pedía y quedó vacío pesa más que el día del que no
+   hay nada que decir. */
+
+/* Sin cargar: el día pasó y quedó vacío. Es un dato, así que se ve. */
+.dot.st-none { background: var(--bg-elev); border: 1px solid var(--border-strong); }
+
+/* Apagado: fuera de vigencia o todavía sin llegar. El borde es más tenue —no
+   hay nada que decir de ese día—, pero está: sin él la fila terminaba en un
+   hueco que se leía como que ahí no había nada, y lo que hay es un día que
+   todavía no pasó. */
+.dot.is-off { background: transparent; border: 1px solid var(--border); }
 
 /* --- barras verticales --- */
 
 .bars { width: 100%; height: auto; }
 .axis-line { stroke: var(--border-strong); stroke-width: 1; }
 .axis-text { font-size: 11px; font-weight: 600; fill: var(--text-faint); }
+
+/* El podio: quién ganó y quién perdió, arriba de su barra. Va aparte del color
+   de la barra —que dice cuánto se cumplió— porque son dos preguntas distintas:
+   el mejor día de un mes flojo sigue siendo el mejor. */
+.podio-mejor path { fill: var(--podio-oro); stroke: none; }
+.podio-peor path {
+  fill: none;
+  stroke: var(--chart-missed);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
 .bar-value { font-size: 11px; font-weight: 650; fill: var(--text-muted); }
 
 /* --- barras horizontales --- */
 
-.hbars {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+/* La barra de cumplimiento de una tarea, en el lugar donde la visualización
+   mensual pone sus puntos: mismo ancho sobrante, mismo alto de fila. */
+.meter {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: .3rem;
-  max-height: 15rem;
-  overflow-y: auto;
-}
-.hbars li {
-  display: grid;
-  grid-template-columns: minmax(0, 7.5rem) 1fr 3rem;
   align-items: center;
-  gap: .5rem;
+  gap: .6rem;
 }
-.hb-name {
-  font-size: .76rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.hb-track {
-  height: 12px;
-  border-radius: 3px;
+
+/* Riel y relleno con las puntas redondeadas: es una medida que avanza, no una
+   columna. El riel va del gris hundido de la app, el mismo que el punto sin
+   cargar usa de fondo. */
+.meter-track {
+  flex: 1;
+  min-width: 0;
+  height: 14px;
+  border-radius: 99px;
   background: var(--chart-track);
   overflow: hidden;
 }
-.hb-fill {
+.meter-fill {
   display: block;
   height: 100%;
-  border-radius: 0 4px 4px 0;   /* extremo redondeado, cuadrado en la base */
+  border-radius: 99px;
   transition: width .25s ease;
 }
-.hb-fill.st-done    { background: var(--chart-done); }
-.hb-fill.st-partial { background: var(--chart-partial); }
-.hb-fill.st-missed  { background: var(--chart-missed); }
-/* superó la meta: llega al borde en escuadra, y el número dice cuánto */
 
-.hb-value {
-  font-size: .74rem;
-  font-weight: 620;
-  color: var(--text-muted);
-  text-align: right;
-  font-variant-numeric: tabular-nums;   /* alinean en columna */
-}
-
-/* --- leyenda --- */
-
-.chart-legend {
-  margin: .75rem 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: .3rem;
-  min-width: 0;
-}
-.chart-legend li {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  font-size: .76rem;
-  color: var(--text-muted);
-}
-.lg-swatch {
-  width: 14px; height: 14px;
+/* El número al costado, con cifras de ancho fijo para que las filas se lean en
+   columna aunque los porcentajes tengan distinta cantidad de dígitos. */
+.meter-value {
   flex: none;
-  border-radius: 4px;
-}
-.lg-name { flex: 1; min-width: 0; }
-.lg-value {
-  color: var(--text-faint);
+  width: 2.6rem;
+  text-align: right;
+  font-size: .78rem;
+  font-weight: 650;
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
+/* Los mismos colores que los puntos, no el pastel de la lista del día: los dos
+   gráficos son la misma lista de tareas mirada de dos maneras, y con tonos
+   distintos parecían medir cosas distintas. Las columnas de «Barras» sí se
+   quedan con el pastel: ahí el área es grande y no hay puntos al lado con qué
+   compararla. */
+.meter-fill.st-done    { background: var(--dot-done); }
+.meter-fill.st-partial { background: var(--dot-partial); }
+.meter-fill.st-missed  { background: var(--dot-missed); }
 
 .help-card {
   display: grid;
@@ -1282,682 +1322,759 @@ body.controls-collapsed #month-bar { display: none; }
   margin-bottom: .35rem;
 }
 
-/* ---------------- Resumen ---------------- */
+/* ---------------- Pendientes ---------------- */
 
-.summary {
+.todos { display: flex; flex-direction: column; gap: .7rem; }
+
+/* La línea de arriba: cómo se mira a la izquierda, qué se crea a la derecha. */
+/* Dos filas: el par de vistas centrado arriba, y debajo el control que le toca
+   a la vista puesta. En una sola fila el par se corría de lugar según qué
+   botón lo acompañara. */
+.pend-barra {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: .7rem;
+  justify-items: center;
+  gap: .5rem;
 }
 
-/* Columna flexible para poder repartir el alto sobrante. En la grilla del
-   panel todas las tarjetas miden lo que la más alta, así que a casi todas les
-   sobra alto: sin esto el contenido queda clavado bajo el rótulo y el hueco
-   entero cae abajo. El rótulo se queda arriba y lo que sigue se centra —ver
-   los `auto` de `.tile-value`, `.tile-sub`, `.tile-list` y `.tile-ranks`. */
-.tile {
+/* Un par de botones pegados, que se leen como un interruptor de dos posiciones
+   y no como dos acciones sueltas. Las dos columnas miden igual: son
+   alternativas de la misma pregunta, y una más ancha que la otra la haría
+   parecer la principal. */
+.pend-vistas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.pend-vista {
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 600;
+  padding: .4rem .9rem;
+  border: 0;
+  background: var(--bg-elev);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pend-vista + .pend-vista { border-left: 1px solid var(--border); }
+.pend-vista.is-activa { background: var(--brand-text); color: var(--brand-fg); }
+
+/* Contra la izquierda: encabeza la lista que viene abajo, no acompaña al par
+   de vistas de arriba. */
+.pend-nueva-cat {
+  justify-self: start;
+  font-size: .82rem;
+  padding: .4rem .8rem;
+}
+
+/* La línea del mes, mudada acá adentro mientras se mira el calendario: pierde
+   el hueco que tenía como encabezado y queda como una fila más de la barra. */
+#todos .controls { margin: 0; padding: 0; }
+
+/* La lista y el calendario comparten el hueco de abajo para el «+», que flota
+   fijo sobre esa esquina: sin él tapa la última fila. */
+.pend-lista, .pend-calendario {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: calc(var(--fab-size) - .8rem);
+}
+.pend-lista { display: flex; flex-direction: column; gap: .6rem; }
+
+.pend-bloque { display: flex; flex-direction: column; gap: .35rem; }
+
+/* La sangría es lo único que distingue a una subcategoría de su padre: alcanza
+   para leer la jerarquía sin cargar la fila con adornos. */
+.pend-nivel-1 { margin-left: 1.1rem; }
+
+.pend-cat {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .1rem 0;
+}
+.pend-cat-toggle {
+  font: inherit;
+  width: 1.4rem;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+}
+.pend-cat-nombre {
+  font: inherit;
+  font-size: .95rem;
+  font-weight: 650;
+  padding: .1rem .2rem;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.pend-cat-nombre:hover { text-decoration: underline; }
+
+/* La cuenta es lo único que queda a la vista con la categoría plegada. */
+.pend-cat-cuenta {
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-sunken);
+  border-radius: 999px;
+  padding: .05rem .45rem;
+}
+
+.pend-cat-vacia, .pend-cal-nota {
+  margin: 0 0 0 1.8rem;
+  font-size: .78rem;
+  color: var(--text-faint);
+}
+.pend-cal-nota { margin: .6rem 0 0; }
+
+.pend-sueltos {
+  margin: 0;
+  font-size: .78rem;
+  font-weight: 650;
+  color: var(--text-muted);
+}
+
+.pend-items {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 1.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+
+/* La misma fila que la lista del día: recuadro de estado a la izquierda,
+   nombre al medio, dato al final. */
+.pend-item {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .45rem .7rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.pend-item.est-finalizada .pend-nombre {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+/* El estado dice su nombre y no lo cifra en un color. Ancho fijo para los tres:
+   con el ancho del texto, los nombres de al lado bailaban de lugar cada vez que
+   se tocaba uno. */
+.pend-estado {
+  flex: none;
+  min-width: 6.4rem;
+  font: inherit;
+  font-size: .72rem;
+  font-weight: 600;
+  text-align: center;
+  padding: .25rem .5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.pend-nombre {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: .9rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pend-fecha {
+  flex: none;
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-sunken);
+  border-radius: 999px;
+  padding: .1rem .5rem;
+}
+/* Rojo solo mientras quede algo por hacer: una finalizada con fecha vieja es
+   lo esperable, no un problema. */
+.pend-fecha.is-vencida { color: var(--missed-fg); background: var(--missed-bg); }
+
+/* ---- el calendario ---- */
+
+.pend-cal-dows, .pend-cal-rejilla {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: .25rem;
+}
+.pend-cal-dow {
+  text-align: center;
+  font-size: .7rem;
+  font-weight: 650;
+  color: var(--text-muted);
+  padding-bottom: .2rem;
+}
+.pend-cal-dia {
+  min-height: 4.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  padding: .25rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.pend-cal-dia.is-hoy { border-color: var(--today); box-shadow: inset 0 0 0 1px var(--today); }
+/* Toda la celda es el botón de «agregar acá», así que el cursor lo dice. */
+.pend-cal-dia { cursor: pointer; }
+/* El día sobre el que se está por soltar. */
+.pend-cal-dia.is-destino { border-color: var(--brand-text); background: var(--accent-soft); }
+.pend-cal-hueco { border: 0; }
+.pend-cal-num { font-size: .72rem; font-weight: 650; color: var(--text-muted); }
+
+/* El nombre entero no entra en una celda de calendario: se recorta y el título
+   lo dice completo al apoyar el dedo o el puntero. */
+.pend-cal-item {
+  font: inherit;
+  font-size: .7rem;
+  line-height: 1.2;
+  text-align: left;
+  padding: .12rem .3rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-sunken);
+  color: var(--text);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* `touch-action: none` para que arrastrar un pendiente con el dedo no sea
+   además un desplazamiento de la pantalla. Va solo en los chips: el resto del
+   calendario se sigue desplazando como siempre. */
+.pend-cal-item { cursor: grab; touch-action: none; }
+.pend-cal-item.is-llevado { opacity: .45; cursor: grabbing; }
+.pend-cal-item.est-en-proceso { background: var(--partial-bg); border-color: var(--partial-fg); }
+.pend-cal-item.est-finalizada { background: var(--done-bg); border-color: var(--done-fg); }
+
+.pend-vacio {
+  margin: 1.5rem auto 0;
+  max-width: 26rem;
+  text-align: center;
+  font-size: .9rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* Tres opciones cortas en una línea: son alternativas de la misma pregunta y
+   entran las tres sin apretarse. */
+.radio-tres { grid-template-columns: repeat(3, auto); }
+
+.field-select {
+  font: inherit;
+  padding: .55rem .7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  width: 100%;
+}
+.field-select:focus {
+  outline: 2px solid var(--brand-text);
+  outline-offset: 1px;
+  border-color: var(--brand-text);
+}
+
+/* «(opcional)» al lado del rótulo: aclara sin ocupar una línea propia. */
+.field-nota { font-weight: 500; color: var(--text-faint); }
+
+/* ---------------- Ajustes ---------------- */
+
+.settings { display: flex; flex-direction: column; gap: 1rem; }
+
+.settings-card {
+  display: grid;
+  gap: .5rem;
+  padding: 1.1rem 1.25rem;
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: .75rem .9rem;
   box-shadow: var(--shadow-sm);
-  display: flex;
-  flex-direction: column;
 }
 
-.tile-label {
-  /* Separación del contenido: antes la ponía un `gap` del contenedor, que ya
-     no sirve porque el `auto` de los hijos se lleva todo el espacio libre. */
-  margin: 0 0 .35rem;
+.settings-card h2 {
+  margin: 0 0 .3rem;
+  font-size: 1.05rem;
+}
+
+/* Rótulo a la izquierda y dato a la derecha, con la línea al medio. Se apila en
+   angosto: un email largo contra un rótulo no entra en una fila de teléfono. */
+.settings-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .5rem 1rem;
+  flex-wrap: wrap;
+  padding: .45rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-row:last-of-type { border-bottom: 0; }
+
+.settings-label {
   font-size: .72rem;
   font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.settings-value {
+  min-width: 0;
+  font-size: .9rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.settings-note {
+  margin: .2rem 0 0;
+  font-size: .8rem;
+  color: var(--text-faint);
+}
+
+.plan-chip {
+  display: inline-block;
+  padding: .18rem .6rem;
+  border-radius: 99px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: .8rem;
+  font-weight: 700;
+}
+
+.plan-list {
+  margin: .2rem 0 0;
+  padding-left: 1.15rem;
+  font-size: .87rem;
+  color: var(--text-muted);
+}
+.plan-list li { margin-bottom: .25rem; }
+
+/* Cerrar sesión: contorno rojo y no relleno. No destruye nada —se vuelve a
+   entrar—, así que el relleno sólido de `.btn-danger` le quedaba grande; el
+   color alcanza para que no se confunda con el resto de la tarjeta. */
+.session-out {
+  justify-self: start;
+  margin-top: .5rem;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.session-out:hover:not(:disabled) {
+  background: var(--missed-bg);
+  border-color: var(--danger);
+  color: var(--missed-fg);
+}
+
+/* ---------------- Carrete y día ---------------- */
+
+/* El cuerpo del Diario: el carrete arriba, la lista del día debajo. Se queda
+   con todo el alto sobrante y la lista es la que desplaza. */
+.board {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .7rem;
+
+  /* Una columna, no una planilla: estirada sobre 1500px cada fila queda con el
+     nombre en una punta y su estado en la otra, y el ojo tiene que cruzar la
+     pantalla entera para saber qué marcó. */
+  width: 100%;
+  max-width: 820px;
+  align-self: center;
+}
+
+/* ---- el carrete ---- */
+
+/* Las flechas abrazan la pista, que es la que reparte los días. Todo mide por
+   columnas iguales y no por contenido: así el día del centro cae SIEMPRE en el
+   mismo punto de la pantalla, que es lo que hace que moverse no se sienta como
+   que el carrete salta.
+
+   Nueve columnas: una flecha, siete días y la otra flecha. La pista se lleva
+   siete y adentro las vuelve a repartir con el MISMO `gap`, así que una ficha
+   mide igual que una flecha — que es lo que hace que la tira se lea pareja. */
+.carrete {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  align-items: stretch;
+  gap: var(--carrete-gap);
+}
+
+.carrete-pista {
+  grid-column: span 7;
+  min-width: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--carrete-gap);
+}
+
+/* Las flechas son una ficha más: misma caja, mismo fondo, mismo radio. Lo que
+   traen de `.btn` —ancho fijo, alto propio, borde marcado— se deshace acá. */
+#prev-range,
+#next-range {
+  width: auto;
+  height: auto;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: var(--bg-elev);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+/* Solo donde hay un puntero de verdad. En una pantalla táctil el `:hover` se
+   queda pegado al último elemento tocado hasta que se toca otro, así que la
+   flecha se veía apretada mucho después de haberla soltado. */
+@media (hover: hover) {
+  #prev-range:hover:not(:disabled),
+  #next-range:hover:not(:disabled) {
+    background: var(--bg-sunken);
+    border-color: transparent;
+  }
+}
+
+/* Cada día es una ficha: el día de la semana arriba y el número abajo, como en
+   el encabezado que tenía la planilla. */
+.carrete-dia {
+  appearance: none;
+  border: 1px solid transparent;
+  background: var(--bg-elev);
+  color: var(--text);
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .1rem;
+  padding: .4rem .2rem .45rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background .13s ease, color .13s ease, border-color .13s ease;
+}
+.carrete-dia:hover { background: var(--bg-sunken); }
+
+.carrete-dow {
+  font-size: .6rem;
+  font-weight: 650;
   letter-spacing: .04em;
   text-transform: uppercase;
   color: var(--text-faint);
-  text-align: center;
 }
 
-/* `auto` arriba acá y abajo en el subtítulo: el espacio libre se reparte en
-   partes iguales a los dos lados, así el par valor + explicación queda
-   centrado sin que se separen entre sí. */
-.tile-value {
-  margin: auto 0 0;
-  font-size: 1.5rem;
-  font-weight: 680;
-  line-height: 1.15;
-  letter-spacing: -.02em;
-  text-align: center;
-  /* Cifras proporcionales: es un número grande y suelto, no una columna.
-     Con `tabular-nums` cada dígito ocupa el ancho de un 0 y a este tamaño
-     un "121" se ve desarmado. Las tabulares quedan donde sí alinean:
-     la planilla, la columna de porcentajes y las etiquetas de eje. */
-}
-
-.tile-sub {
-  margin: .15rem 0 auto;
-  font-size: .78rem;
-  line-height: 1.3;
-  color: var(--text-muted);
-  text-align: center;
-  /* hasta dos líneas; el texto completo queda en el title */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-/* Caja con el contenido de la tarjeta, hermana de `.rank`: mismo fondo
-   hundido, mismo borde y mismo radio, para que el panel se lea con un solo
-   lenguaje. Se estira hasta llenar el alto que queda bajo el rótulo —de ahí
-   el `flex: 1 1 auto`— y adentro sigue siendo columna, así los `auto` de
-   `.tile-value` y `.tile-list` centran el contenido dentro de la caja igual
-   que lo centraban dentro de la tarjeta. */
-.tile-box {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  padding: .7rem .8rem;
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) + 4px);
-  background: var(--bg-sunken);
-}
-
-/* varios datos en una tarjeta van listados, no de corrido.
-   Con muchos ítems la lista scrollea para no estirar toda la fila.
-
-   La lista se mide por su contenido y va centrada COMO BLOQUE, igual que la
-   leyenda del pie en móvil: así las viñetas quedan alineadas entre sí en lugar
-   de que cada ítem se centre por su cuenta, que dejaría los renglones en
-   diagonal. `max-width` la frena en el ancho de la tarjeta cuando un nombre de
-   tarea es largo. */
-.tile-list {
-  margin: .35rem auto auto;
-  padding-left: 1rem;
-  width: max-content;
-  max-width: 100%;
-  max-height: 7.5rem;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: .12rem;
-  font-size: .78rem;
-  line-height: 1.3;
-  color: var(--text-muted);
-}
-.tile-list li::marker { color: var(--text-faint); }
-
-/* Un listado de nombres, no un par de datos: son muchos y scrollean. Ocupa el
-   ancho entero de la tarjeta, así los nombres arrancan contra el margen
-   izquierdo y la barra de scroll queda contra el derecho. Centrada como bloque
-   la barra caía al final del texto, en el medio de la tarjeta y encima del
-   nombre más largo. */
-.tile-list.is-nombres {
-  width: auto;
-  margin-inline: 0;
-}
-
-/* tonos según lo que informa la tarjeta */
-.tile.tone-alert .tile-value { color: var(--missed-strong); }
-.tile.tone-up    .tile-value { color: var(--done-strong); }
-.tile.tone-down  .tile-value { color: var(--missed-strong); }
-
-/* nombres de días: son texto y no números, y llevan el color del extremo
-   que representan — verde el mejor, rojo el peor */
-.tile.tone-best  .tile-value,
-.tile.tone-worst .tile-value { font-size: 1.15rem; line-height: 1.25; }
-.tile.tone-best  .tile-value { color: var(--done-strong); }
-.tile.tone-worst .tile-value { color: var(--missed-strong); }
-
-/* ---- Días productivos: una subtarjeta por medida ----
-   Cada medida es una caja hundida dentro de la tarjeta: el criterio a la
-   izquierda y el resultado —día y cifra— a la derecha. Encerrar cada una
-   separa las dos lecturas de un vistazo, que en una lista corrida se leían
-   como cuatro renglones sueltos.
-
-   `--bg-sunken` es el token para esto: en claro queda apenas más gris que el
-   blanco de la tarjeta, y en oscuro apenas más negro. La jerarquía se sostiene
-   en los dos temas sin definir colores nuevos. */
-.tile-ranks {
-  /* Ancho de la columna del criterio. Fijo y COMPARTIDO por las dos
-     subtarjetas: es lo que deja los días alineados entre sí, que con un ancho
-     por contenido quedarían corridos según lo que midiera cada rótulo.
-     `subgrid` lo resolvería sin número, pero pide Chrome 117 y la app declara
-     soporte desde el 105 — la misma razón por la que `.month-nav` lleva su
-     propia rejilla. */
-  --rank-criterio: 7.75rem;
-
-  margin-block: auto;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: .45rem;
-}
-
-.rank {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: .2rem .6rem;
-  padding: .45rem .7rem;
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) + 4px);
-  background: var(--bg-sunken);
-}
-
-.rank-label {
-  margin: 0;
-  position: relative;
-  padding-left: .75rem;
-  /* `min-width` y no `flex-basis`: si un rótulo llegara a pasarse del ancho
-     de la columna, crece en vez de recortarse. */
-  flex: 0 1 auto;
-  min-width: var(--rank-criterio);
-  font-size: .76rem;
-  line-height: 1.3;
-  color: var(--text-muted);
-}
-
-/* La viñeta va dibujada y no con `list-style`, que la pondría afuera de la
-   subtarjeta en lugar de adentro, contra el rótulo. */
-.rank-label::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: .5em;
-  width: .3rem;
-  height: .3rem;
-  border-radius: 50%;
-  background: var(--text-faint);
-}
-
-/* Ocupa lo que sobra después de la columna del criterio, que mide igual en las
-   dos subtarjetas: por eso los días comparten centro en vez de arrancar cada
-   uno donde termine su rótulo.
-
-   `flex-basis` chico para que, cuando el criterio y el resultado no entren en
-   la misma línea —una tarjeta angosta en móvil, o un empate de varios días—,
-   el resultado baje solo y quede centrado a lo ancho en su renglón. */
-.rank-result {
-  margin: 0;
-  flex: 1 1 4rem;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-}
-
-.rank-day {
+.carrete-num {
   font-size: 1.05rem;
-  font-weight: 680;
-  line-height: 1.2;
-  letter-spacing: -.01em;
-}
-
-.rank-value {
-  font-size: .78rem;
-  line-height: 1.35;
-  color: var(--text-muted);
-}
-
-.tile.tone-best  .rank-day { color: var(--done-strong); }
-.tile.tone-worst .rank-day { color: var(--missed-strong); }
-
-/* ---------------- Tabla ---------------- */
-
-/* Se queda con todo el alto sobrante: la planilla es lo que crece, y la leyenda
-   de abajo mantiene su lugar en vez de irse de la pantalla.
-
-   `isolation: isolate` encierra el apilado de la planilla. Sin eso sus capas
-   internas —el encabezado de días en 4, las columnas fijas en 2 y 5— salen a
-   competir de igual a igual con las de la barra de controles, que está en 4: al
-   empatar decide el orden del documento, y como el tablero va después, el
-   encabezado de la tabla tapaba los desplegables. Encerrarlo es más sólido que
-   subirle el número a la barra, que solo mueve el empate de lugar. */
-.board {
-  position: relative;
-  isolation: isolate;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: .6rem;
-}
-
-/* El único que desplaza. Al ser ÉL el contenedor de scroll, el `sticky` del
-   encabezado de la planilla se ancla a su borde superior —`top: 0`— y las filas
-   pasan por debajo. Antes el contenedor no tenía alto propio y ese mismo
-   `sticky` no tenía contra qué anclarse: el encabezado se iba con la página. */
-.table-wrap {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-.table-wrap:empty { display: none; }
-
-/* `fixed` y no `auto`: los anchos los fija la primera fila y el contenido de las
-   celdas no los mueve. Con `auto`, una celda con glifo (✓ ~ ✕ –) mide más que
-   una vacía, y cuando la tabla desborda —el caso normal en un teléfono— cada
-   columna terminaba con el ancho de lo que le tocó adentro: marcar unos días
-   dejaba la planilla con columnas de cinco anchos distintos.
-
-   No se notaba en escritorio porque ahí `--cell-w` (38px en la vista mes) es más
-   ancha que el glifo, así que el contenido nunca empujaba. En móvil son 29px y
-   sí empuja. Todas las columnas declaran su ancho, que es justo lo que este
-   modo necesita. */
-.grid {
-  border-collapse: separate;
-  border-spacing: 0;
-  table-layout: fixed;
-  width: 100%;
+  font-weight: 620;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
 
-.grid th, .grid td {
-  border-bottom: 1px solid var(--border);
-  border-right: 1px solid var(--border);
-  padding: 0;
-  text-align: center;
-  font-weight: 500;
+.carrete-dia.is-weekend { background: var(--weekend-bg); }
+
+/* De otro mes: se ve y se puede elegir, pero apagado. Elegirlo muda el mes de
+   trabajo, y eso tiene que anunciarse antes de tocarlo. */
+.carrete-dia.is-fuera { opacity: .45; }
+
+/* Hoy, cuando no es el día elegido: un punto debajo del número, del color de
+   la marca — el mismo que lo marcaba en el encabezado de la planilla.
+
+   El lugar del punto lo reservan TODAS las fichas, se vea o no. Si solo lo
+   ocupara la de hoy, esa ficha sería más alta y las hermanas se estirarían para
+   igualarla: al navegar, la tira entera cambiaba de alto según dónde cayera
+   hoy. Reservado, lo único que cambia es el color del punto. */
+.carrete-dia::after {
+  content: '';
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: transparent;
 }
-.grid tr > *:last-child { border-right: 0; }
-.grid tbody tr:last-child > * { border-bottom: 1px solid var(--border-strong); }
-.grid tfoot tr > * { border-bottom: 0; }
+.carrete-dia.is-today:not(.is-centro) .carrete-num { color: var(--today); }
+.carrete-dia.is-today:not(.is-centro)::after { background: var(--today); }
 
-/* columna de tareas (sticky izquierda)
-   Va calificada con `.grid` para ganarle en especificidad al `text-align: center`
-   de `.grid th, .grid td`, que si no centra el nombre de las tareas. */
-.grid .col-task {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  width: var(--task-w);
-  min-width: var(--task-w);
-  max-width: var(--task-w);
-  background: var(--bg-elev);
-  text-align: left;
-  border-right: 1px solid var(--border-strong);
+/* El del centro es el que se está cargando: relleno de marca, como el día de
+   hoy en la planilla. */
+.carrete-dia.is-centro {
+  background: var(--brand-text);
+  border-color: transparent;
+  color: var(--brand-fg);
+  opacity: 1;
+}
+.carrete-dia.is-centro .carrete-dow { color: var(--brand-fg); opacity: .8; }
+.carrete-dia.is-centro:hover { background: var(--brand-text); filter: brightness(1.08); }
+
+/* ---- la lista del día ---- */
+
+/* La que desplaza. El resumen queda fuera, así que el cumplimiento no se va de
+   la pantalla al recorrer una lista larga. */
+.dia {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
 }
 
-/* columna de totales (sticky derecha) */
-.col-total {
-  position: sticky;
-  right: 0;
-  z-index: 2;
-  width: var(--total-w);
-  min-width: var(--total-w);
-  background: var(--bg-elev);
-  border-left: 1px solid var(--border-strong);
+.dia-lista {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+
+  /* Hueco abajo para el «+», que flota fijo sobre esa esquina: sin él la última
+     fila queda debajo del botón, y justo ahí está su recuadro de estado. Es el
+     mismo motivo por el que la leyenda reserva lugar a la derecha.
+
+     Solo se nota cuando hay algo que desplazar: en una lista que entra entera no
+     cambia nada. */
+  padding: 0 0 calc(var(--fab-size) - .8rem);
+
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
 }
 
-/* encabezado */
-/* Tercera banda fija: los días quedan a la vista mientras se recorren las
-   tareas, que es cuando hacen falta. Se pega al borde superior de `.table-wrap`.
-
-   El `z-index` tiene que superar al 2 de la columna de tareas del cuerpo: si no,
-   los nombres se dibujarían POR ENCIMA del encabezado al desplazar. */
-.grid thead th {
-  position: sticky;
-  /* Un píxel MÁS ARRIBA del borde, no pegado a él.
-
-     El contenedor no siempre cae en una posición entera —medido: 178,97px—, y
-     ahí el encabezado pegado y las filas que se desplazan por detrás terminan
-     rasterizados en bordes de píxel distintos. Por esa costura de subpíxel
-     asomaban las tareas al desplazar. Subiéndolo un píxel, su fondo la tapa.
-
-     Sin compensar con `padding`: eso lo agrandaría también en reposo, y el
-     corrimiento solo hace falta mientras está pegado. Lo que se pierde es un
-     píxel de fondo recortado contra el borde, que no se ve. */
-  top: -1px;
-  z-index: 4;
-  background: var(--bg-sunken);
-  border-bottom: 1px solid var(--border-strong);
-  font-size: .72rem;
-  font-weight: 600;
+/* «Todas» encabeza la lista mientras haya casilleros. */
+.dia-todas {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .2rem .7rem .1rem;
+  font-size: .78rem;
+  font-weight: 650;
   color: var(--text-muted);
-  padding: .45rem .25rem;
-  vertical-align: middle;
 }
-/* Las esquinas quedan fijas en los dos ejes a la vez, por encima del resto del
-   encabezado, que ya está en 4. */
-.grid thead th.col-task,
-.grid thead th.col-total { background: var(--bg-sunken); z-index: 5; }
 
-.grid thead th.col-total { padding-inline: .2rem; }
-
-.col-day {
-  width: var(--cell-w);
-  min-width: var(--cell-w);
+.dia-fila {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .5rem .7rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
-.col-day.is-weekend { background: var(--weekend-bg); }
+.dia-fila.is-selected { border-color: var(--accent); background: var(--accent-soft); }
 
-.dow {
-  display: block;
-  font-size: .62rem;
-  letter-spacing: .05em;
-  text-transform: uppercase;
+/* Apagada: hoy no cuenta para esta tarea. Pasa cuando la frecuencia no pide
+   este día, cuando la tarea no tiene días propios y todavía no se la cargó, y
+   cuando se la eximió a mano. Encendida queda lo que hoy cuenta: lo que la
+   frecuencia pide y lo que se cargó igual. */
+.dia-fila.is-optional { background: var(--bg-sunken); }
+.dia-fila.is-optional .task-name { color: var(--text-muted); }
+
+/* El bloque de la tarea viene de la planilla, donde era una celda de ancho
+   fijo; acá se estira con la fila. */
+.dia-fila .task-cell { flex: 1; min-width: 0; width: auto; padding: 0; }
+
+/* El botón de estado: el mismo ciclo de la planilla, con un blanco de dedo.
+   Los colores los ponen las clases `st-*`, compartidas con la leyenda. */
+.dia-fila .cell {
+  flex: none;
+  width: 46px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter .13s ease;
+}
+.dia-fila .cell:hover:not(:disabled) { filter: brightness(.97); }
+.dia-fila .cell:disabled { opacity: .5; cursor: not-allowed; }
+
+/* El estado ES el recuadro: sin símbolo adentro, el color pastel ocupa el botón
+   entero. Son los mismos rellenos que tenían las celdas de la planilla —los
+   --*-bg—, que a este tamaño se leen de un vistazo sin pesar como un bloque de
+   color saturado.
+
+   El borde se va con el relleno: un contorno sobre un fondo de color lo único
+   que hace es recortarlo. Queda solo en el recuadro vacío, que sin él no se
+   vería. */
+.dia-fila .cell.st-done    { background: var(--done-bg);    border-color: transparent; }
+.dia-fila .cell.st-partial { background: var(--partial-bg); border-color: transparent; }
+.dia-fila .cell.st-missed  { background: var(--missed-bg);  border-color: transparent; }
+
+/* «No requerido» es la ausencia de exigencia, no un estado con carácter: va de
+   gris. No del gris de la leyenda —ese está pensado contra el fondo de la app y
+   acá, sobre la superficie más clara de la fila, quedaba MÁS oscuro que ella y
+   se leía como un agujero—, sino del gris de los bordes, que sobre la fila se
+   ve como un recuadro lleno y neutro en los dos temas. */
+.dia-fila .cell.st-skip    { background: var(--border); border-color: transparent; }
+
+/* Sin cargar: el recuadro va VACÍO, con el borde marcado. Hueco contra el
+   relleno gris de «no requerido» es una diferencia que no depende del color, y
+   hace falta: en tema oscuro esos dos grises son casi el mismo, y quien no
+   distingue tonos no tendría cómo separarlos. */
+.dia-fila .cell.st-none {
+  background: transparent;
+  border-color: var(--border-strong);
+}
+
+/* ---- el resumen del día ---- */
+
+/* Sin tarjeta: ni fondo ni borde. Es el rótulo de la lista, no una fila de
+   ella, y el aire de arriba lo separa del carrete.
+
+   El padding de los costados es el MISMO que el de las filas, que es lo que
+   deja su recuadro en la misma vertical que los de las tareas. */
+.dia-resumen {
+  flex: none;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  padding: .1rem .7rem .2rem;
+}
+
+/* Por encima del nombre de una tarea (.9rem): es un total, no un ítem. */
+.dia-resumen-rotulo {
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--text);
+}
+
+/* El mismo recuadro que el estado de cada tarea, en la misma vertical: así se
+   lee como el total de esa columna. Va con el relleno pastel del nivel y el
+   número en su color de texto — el par que ya usa la leyenda. */
+.dia-resumen-valor {
+  flex: none;
+  width: 46px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: .95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.dia-resumen.cp-done    .dia-resumen-valor { background: var(--done-bg);    color: var(--done-fg); }
+.dia-resumen.cp-partial .dia-resumen-valor { background: var(--partial-bg); color: var(--partial-fg); }
+.dia-resumen.cp-missed  .dia-resumen-valor { background: var(--missed-bg);  color: var(--missed-fg); }
+
+/* Sin nada que medir, el mismo recuadro vacío de una tarea sin cargar. */
+.dia-resumen.cp-empty .dia-resumen-valor {
+  border-color: var(--border-strong);
   color: var(--text-faint);
 }
-.dnum { display: block; font-size: .95rem; font-weight: 650; color: var(--text); }
 
-.col-day.is-today .dnum {
-  color: var(--brand-fg);
-  background: var(--today);
-  border-radius: 99px;
-  width: 22px;
-  height: 22px;
-  line-height: 22px;
-  margin: 0 auto;
-  font-size: .78rem;
-}
-.col-day.is-today .dow { color: var(--today); }
+/* ---- lo que la lista hereda de la planilla ---- */
 
-.grid thead th.col-task { text-align: left; padding-left: .85rem; }
-
-/* fila de tarea */
+/* Estos bloques los dibuja `taskCellContent`, que era la columna «Tareas». */
 .task-cell {
   display: flex;
   align-items: center;
-  gap: .45rem;
-  padding: .4rem .5rem .4rem .85rem;
-  min-height: 44px;
+  gap: .5rem;
+  min-width: 0;
 }
 
-/* el casillero de "todas" se alinea con los de cada fila */
-.task-head { display: flex; align-items: center; gap: .45rem; }
-
-/* casillero de selección múltiple */
-.task-pick {
-  flex: none;
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  accent-color: var(--accent);
-  cursor: pointer;
+.task-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .1rem;
+  cursor: grab;
 }
-.task-pick:disabled { cursor: not-allowed; opacity: .4; }
-
-.task-info { min-width: 0; flex: 1; }
-.task-info[data-drag-handle] { cursor: grab; }
-.task-info[data-drag-handle]:active { cursor: grabbing; }
-
-/* --- reordenar arrastrando --- */
-
-.grid tbody tr.is-dragging > * { opacity: .4; }
-
-/* La línea de inserción va como sombra interior: no ocupa espacio, así que la
-   tabla no se mueve un píxel mientras se arrastra. */
-.grid tbody tr.drop-before > * { box-shadow: inset 0 2px 0 var(--accent); }
-.grid tbody tr.drop-after  > * { box-shadow: inset 0 -2px 0 var(--accent); }
 
 .task-name {
-  display: block;
-  text-align: left;
-  font-size: .875rem;
-  font-weight: 580;
-  color: var(--text);
-  white-space: nowrap;
+  font-size: .9rem;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-freq {
-  display: block;
-  text-align: left;
-  font-size: .7rem;
-  color: var(--text-faint);
-  white-space: nowrap;
+  font-size: .72rem;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.task-actions { display: flex; gap: .1rem; flex: none; opacity: .35; transition: opacity .13s ease; }
-tbody tr:hover .task-actions,
-.task-actions:focus-within { opacity: 1; }
+.task-pick { flex: none; width: 18px; height: 18px; cursor: pointer; accent-color: var(--brand-text); }
 
-/* Reordenar: el par de chevrones, uno al lado del otro.
-
-   Antes iban apilados tipo spinner, chiquitos y a media opacidad: estaban en
-   todas las filas siempre, así que tenían que estorbar lo menos posible. Ahora
-   aparecen solo en la postura «Reordenar tareas» —y sin el casillero al lado—,
-   así que pueden ocupar lugar y ser un objetivo cómodo al tacto. */
-.move-stack {
-  display: flex;
-  gap: .2rem;
-  flex: none;
-}
+/* Las dos flechas de reordenar, en el lugar del recuadro de estado: en fila y
+   grandes. En la planilla eran diminutas y apiladas contra el nombre, porque
+   convivían con todo lo demás de la fila; ordenando, la fila no tiene nada más
+   que ellas, así que pueden ocupar lo que necesitan para el dedo. */
+.move-stack { flex: none; display: flex; gap: .3rem; }
 
 .move-btn {
   appearance: none;
-  border: 0;
-  background: transparent;
+  width: 44px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
   color: var(--text-muted);
-  cursor: pointer;
-  font-size: .9rem;
+  font-size: .7rem;
   line-height: 1;
-  padding: .35rem .4rem;
-  border-radius: 6px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
 }
-.move-btn:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
-.move-btn:disabled { opacity: .25; cursor: default; }
+.move-btn:hover:not(:disabled) { background: var(--bg); color: var(--text); }
+.move-btn:disabled { opacity: .3; cursor: not-allowed; }
 
-/* fila tildada */
-.grid tbody tr.is-selected .col-task { background: var(--accent-soft); }
-.grid tbody tr.is-selected .task-name { color: var(--accent); }
+.task-actions { flex: none; display: flex; gap: .2rem; }
 
 .mini-btn {
   appearance: none;
   border: 0;
   background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
+  color: var(--text-faint);
   font-size: .85rem;
-  line-height: 1;
-  padding: .3rem;
-  border-radius: 6px;
-}
-.mini-btn:hover:not(:disabled) { background: var(--bg-sunken); color: var(--text); }
-.mini-btn:disabled { opacity: .3; cursor: not-allowed; }
-
-/* celdas de estado */
-/* La altura declarada es simbólica: en una tabla actúa como mínimo, así que no
-   encoge la fila, pero le da al `height: 100%` del botón contra qué resolver.
-   Sin esto el botón se queda en sus 44px y la fila —más alta por el nombre y la
-   frecuencia de la tarea— deja franjas en blanco arriba y abajo del color. */
-.cell-td { padding: 0; height: 1px; }
-/* Día que la frecuencia de la tarea no pide. Sigue siendo marcable. */
-.cell-td.is-optional { background: var(--weekend-bg); }
-
-/* El día de hoy se marca SOLO en el encabezado, con la píldora del número. Las
-   celdas del cuerpo llevaban además un filete vertical del color de la marca a
-   los dos lados de la columna, que competía con los colores de estado —que son
-   los que hay que leer— y recortaba el verde o el rojo de cada celda. */
-
-.cell {
-  appearance: none;
-  border: 0;
-  margin: 0;
-  width: 100%;
-  height: 100%;
-  min-height: 44px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  color: var(--text-faint);
-  font: inherit;
-  font-size: .95rem;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  transition: background .1s ease, box-shadow .1s ease;
-}
-.cell:hover { box-shadow: inset 0 0 0 2px var(--border-strong); }
-
-.cell.st-none    { background: transparent; }
-.cell.st-done    { background: var(--done-bg);    color: var(--done-fg); }
-.cell.st-partial { background: var(--partial-bg); color: var(--partial-fg); }
-.cell.st-missed  { background: var(--missed-bg);  color: var(--missed-fg); }
-
-/* No requerido a mano: mismo gris que el tinte automático, pero con un guion
-   que lo delata como una decisión y no como una consecuencia de la frecuencia.
-   El fondo lo pone la propia celda y no se delega en `.is-optional` del `td`,
-   así el estado se ve igual sin depender de cómo quedó clasificado el día. */
-.cell.st-skip {
-  background: var(--weekend-bg);
-  color: var(--text-faint);
-  font-weight: 600;
-}
-
-/* Deshabilitada por período cerrado: conserva su color, solo deja de responder. */
-.cell:disabled { cursor: default; }
-.cell:disabled:hover { box-shadow: none; }
-
-
-/* ---- columna de cumplimiento ----
-   Símbolo y porcentaje se dibujan siempre; el modo activo (clase `cpm-*` en la
-   tabla, que cicla al clickear el encabezado) decide cuál de los dos se ve. */
-.compliance { padding: .3rem .35rem; }
-
-.compliance .cp-glyph,
-.compliance .cp-pct {
-  display: block;
-  font-weight: 800;
-  line-height: 1.2;
-  color: var(--text-faint);
-}
-
-.compliance .cp-glyph { font-size: 1.25rem; }
-.compliance .cp-pct   { font-size: .92rem; font-weight: 700; }
-
-/* solo símbolos */
-.grid.cpm-glyph .cp-pct { display: none; }
-
-/* solo porcentajes */
-.grid.cpm-pct .cp-glyph { display: none; }
-
-/* ambos: el símbolo manda y el porcentaje va debajo, más chico */
-.grid.cpm-both .cp-glyph { font-size: 1.05rem; }
-.grid.cpm-both .cp-pct   { font-size: .68rem; font-weight: 600; opacity: .85; }
-/* sin nada que medir, un solo guion en vez de dos */
-.grid.cpm-both .compliance.cp-empty .cp-pct { display: none; }
-
-/* en blanco: sin símbolo ni número, y con el gris de los días no requeridos.
-   Va después de las reglas de color para ganarles por orden. */
-.grid.cpm-none .cp-glyph,
-.grid.cpm-none .cp-pct { display: none; }
-
-/* el encabezado es un botón que cicla los modos */
-.col-total-btn {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  color: inherit;
-  padding: .2rem .1rem;
-  width: 100%;
+  padding: .25rem .35rem;
   border-radius: 6px;
   cursor: pointer;
-  transition: background .13s ease, color .13s ease;
 }
-.col-total-btn:hover { background: var(--border); color: var(--text); }
-
-/* modo activo de la columna, debajo del rótulo.
-   En versales, igual que el resto de las etiquetas chicas de la app. */
-.col-total-btn .cp-mode {
-  display: block;
-  margin-top: .15rem;
-  font-size: .55rem;
-  font-weight: 600;
-  letter-spacing: .04em;
-  line-height: 1.25;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-
-/* Se califica con .grid para ganarle al fondo de .grid .col-total, que es
-   opaco porque la columna queda fija al hacer scroll horizontal. */
-.grid .compliance.cp-done    { background: var(--done-bg); }
-.grid .compliance.cp-partial { background: var(--partial-bg); }
-.grid .compliance.cp-missed  { background: var(--missed-bg); }
-
-/* el color acompaña tanto al símbolo como al porcentaje, en cualquier modo */
-.compliance.cp-done    .cp-glyph, .compliance.cp-done    .cp-pct { color: var(--done-fg); }
-.compliance.cp-partial .cp-glyph, .compliance.cp-partial .cp-pct { color: var(--partial-fg); }
-.compliance.cp-missed  .cp-glyph, .compliance.cp-missed  .cp-pct { color: var(--missed-fg); }
-
-/* modo en blanco: se neutraliza el fondo de color, también en el pie */
-.grid.cpm-none .compliance,
-.grid.cpm-none .compliance.cp-done,
-.grid.cpm-none .compliance.cp-partial,
-.grid.cpm-none .compliance.cp-missed { background: var(--weekend-bg); }
-
-/* pie: totales por día */
-.grid tfoot th, .grid tfoot td {
-  background: var(--bg-sunken);
-  border-top: 1px solid var(--border-strong);
-  padding: .5rem .25rem;
-}
-/* Esquina inferior izquierda. Ya no lleva el rótulo «Cumplimiento diario»
-   —ahora vive en el `aria-label`, para los lectores de pantalla— sino el botón
-   de alta, al pie de la columna que va a crecer. */
-.grid tfoot .col-task {
-  text-align: left;
-  padding: .3rem .5rem .3rem .85rem;
-  background: var(--bg-sunken);
-}
-.grid tfoot .col-total { background: var(--bg-sunken); }
-
-/* el cumplimiento global mantiene su color sobre el fondo del pie */
-.grid tfoot .compliance.cp-done    { background: var(--done-bg); }
-.grid tfoot .compliance.cp-partial { background: var(--partial-bg); }
-.grid tfoot .compliance.cp-missed  { background: var(--missed-bg); }
-.grid tfoot .col-day.is-weekend { background: var(--weekend-bg); }
-
-/* Total de cada día: el símbolo arriba y el porcentaje abajo, apilados como en
-   el encabezado, donde el nombre del día va sobre el número. Lado a lado no
-   entran: la columna mide 29px en móvil y 23,8 en «compacto».
-
-   Los dos se ven siempre, así que no llevan las clases `cp-glyph`/`cp-pct`: el
-   modo que cicla la columna `Estatus` las esconde, y ese modo es de esa columna
-   y no del pie. */
-.day-total {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1.1;
-}
-.day-total .dt-glyph { font-size: .95rem; font-weight: 650; }
-.day-total .dt-pct   { font-size: .6rem;  font-weight: 600; }
-
-.day-total.cp-done    { color: var(--done-fg); }
-.day-total.cp-partial { color: var(--partial-fg); }
-.day-total.cp-missed  { color: var(--missed-fg); }
-.day-total.cp-empty   { color: var(--text-faint); font-weight: 500; }
-
-/* el total global va un punto más grande que las filas, en cualquier modo */
-.grid .grand-total .cp-glyph { font-size: 1.35rem; }
-.grid .grand-total .cp-pct   { font-size: 1rem; }
-.grid.cpm-both .grand-total .cp-glyph { font-size: 1.15rem; }
-.grid.cpm-both .grand-total .cp-pct   { font-size: .72rem; }
+.mini-btn:hover { background: var(--bg-sunken); color: var(--text); }
 
 /* ---------------- Estado vacío ---------------- */
 
 .empty {
   background: var(--bg-elev);
-  border: 1px dashed var(--border-strong);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   padding: 3rem 1.5rem;
   text-align: center;
 }
 .empty-title { margin: 0 0 .25rem; font-size: 1.05rem; font-weight: 620; }
-.empty-sub   { margin: 0 0 1.1rem; color: var(--text-muted); font-size: .9rem; }
+.empty-sub   { margin: 0; color: var(--text-muted); font-size: .9rem; }
 
 /* ---------------- Referencias ---------------- */
 
@@ -1969,22 +2086,26 @@ tbody tr:hover .task-actions,
   gap: .5rem 1.1rem;
   font-size: .78rem;
   color: var(--text-muted);
+
+  /* La referencia de la derecha termina antes de la esquina: ahí flota el alta,
+     y sin este hueco el botón le caía encima al texto. */
+  padding-right: calc(var(--fab-size) + 1rem);
 }
 .legend-item { display: inline-flex; align-items: center; gap: .4rem; }
 
+/* Una muestra de color, sin nada adentro: es exactamente lo que se ve en la
+   lista, donde el estado también es el recuadro y nada más. Un símbolo acá y no
+   allá describiría algo que no está. */
 .chip {
-  display: grid;
-  place-items: center;
-  width: 20px; height: 20px;
-  border-radius: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
   border: 1px solid var(--border);
-  font-size: .72rem;
-  font-weight: 700;
 }
-.chip.st-done    { background: var(--done-bg);    color: var(--done-fg);    border-color: transparent; }
-.chip.st-partial { background: var(--partial-bg); color: var(--partial-fg); border-color: transparent; }
-.chip.st-missed  { background: var(--missed-bg);  color: var(--missed-fg);  border-color: transparent; }
-.chip.is-optional { background: var(--weekend-bg); color: var(--text-faint); font-weight: 700; }
+.chip.st-done    { background: var(--done-bg);    border-color: transparent; }
+.chip.st-partial { background: var(--partial-bg); border-color: transparent; }
+.chip.st-missed  { background: var(--missed-bg);  border-color: transparent; }
+.chip.is-optional { background: var(--border); border-color: transparent; }
 .legend-hint { margin-left: auto; color: var(--text-faint); }
 
 @media (max-width: 640px) {
@@ -1992,14 +2113,42 @@ tbody tr:hover .task-actions,
      ocupan dos renglones y no cuatro. Las columnas se miden por su contenido y
      el par va centrado como bloque, así los rótulos arrancan alineados entre sí
      en lugar de quedar cada uno centrado por su cuenta. */
+  /* Las cuatro referencias en UNA fila, también acá. Antes se apilaban de a dos
+     y ocupaban dos renglones al pie de la planilla, que es donde menos alto
+     sobra.
+
+     Para que entren: el cuerpo y la separación se miden contra el ancho de la
+     pantalla —así el teléfono más angosto las achica en vez de partirlas— y
+     nada se parte en dos líneas. El `overflow-x` es la red de seguridad: si aun
+     así no entraran, la fila se corre en vez de romperse. */
   .legend {
-    display: grid;
-    grid-template-columns: repeat(2, max-content);
-    justify-content: center;
-    gap: .45rem 1.25rem;
+    flex-wrap: nowrap;
+
+    /* Arrancan contra el margen izquierdo y quedan juntas, en vez de repartirse
+       el ancho: separadas de punta a punta se leían como cuatro cosas sueltas y
+       no como una sola referencia. Lo que sobra queda a la derecha, que es donde
+       está el botón flotante. */
+    justify-content: flex-start;
+    gap: clamp(.3rem, 1.5vw, .55rem);
+    font-size: clamp(.56rem, 2.4vw, .78rem);
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    /* Le sigue haciendo lugar al botón flotante, que acá cae justo sobre la
+       última referencia. Tiene que cubrir el diámetro MÁS su separación del
+       borde, o el «No requerido» pasa por debajo del círculo. */
+    padding-right: calc(var(--fab-size) + .9rem);
   }
-  .legend-item { justify-content: flex-start; }
-  .legend-item .chip { margin-right: .25rem; }
+  .legend::-webkit-scrollbar { display: none; }
+
+  /* Los cuadraditos bajan con el texto: a cuerpo reducido, los de 20px pesaban
+     más que el rótulo que explican. */
+  .legend-item { flex: none; gap: .25rem; white-space: nowrap; }
+  .legend-item .chip {
+    width: 15px; height: 15px;
+    border-radius: 4px;
+    font-size: .58rem;
+  }
   .legend-hint { display: none; }
 }
 
@@ -2019,7 +2168,11 @@ tbody tr:hover .task-actions,
 
 /* ---------------- Plantillas ---------------- */
 
-.tpl-list {
+/* Las archivadas se listan con la misma caja y las mismas fichas que las
+   plantillas: son dos listas de lo mismo —cosas guardadas que se pueden traer
+   de vuelta—, y compartir el molde es lo que las hace leerse igual. */
+.tpl-list,
+.arch-list {
   display: flex;
   flex-direction: column;
   gap: .7rem;
@@ -2027,14 +2180,16 @@ tbody tr:hover .task-actions,
   overflow-y: auto;
 }
 
-.tpl {
+.tpl,
+.arch {
   padding: .8rem .9rem;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
 
-.tpl-head {
+.tpl-head,
+.arch-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2042,7 +2197,26 @@ tbody tr:hover .task-actions,
 }
 /* El nombre se lleva el espacio sobrante y empuja los dos botones al borde,
    así quedan alineados entre fichas por más que los nombres midan distinto. */
-.tpl-name { margin: 0; margin-right: auto; font-size: .95rem; font-weight: 650; }
+/* Los dos remates del Archivo, en columnas iguales: son las dos cosas que se
+   pueden hacer con la lista y ninguna manda más que la otra. Lo que las
+   distingue es el relleno, no el tamaño. */
+.archived-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .5rem;
+}
+
+/* El casillero abre la ficha y el nombre se lleva el espacio sobrante. */
+.arch-pick {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--brand-text);
+}
+
+.tpl-name,
+.arch-name { margin: 0; margin-right: auto; font-size: .95rem; font-weight: 650; }
 
 /* Los dos botones de la ficha comparten cuerpo, interlínea y padding vertical
    para que midan LO MISMO DE ALTO. El ✕ heredaba las medidas de `.icon-btn`,
@@ -2050,7 +2224,8 @@ tbody tr:hover .task-actions,
    quedaba más alto que «Agregar». Las medidas van juntas a propósito: separarlas
    es cómo se vuelven a desalinear. */
 .tpl-add,
-.tpl-del {
+.tpl-del,
+.arch-undo {
   padding-block: .35rem;
   font-size: .8rem;
   line-height: 1.25;
@@ -2141,17 +2316,18 @@ tbody tr:hover .task-actions,
 
 /* Casilla y rótulo en una línea, que es como se lee un interruptor. El resto
    de los `.field` apila el rótulo sobre el control. */
-.field-check {
-  flex-direction: row;
-  align-items: center;
-  gap: .55rem;
-  cursor: pointer;
-}
-.field-check input { width: 1.05rem; height: 1.05rem; accent-color: var(--accent); }
+.field-check input { width: 1.05rem; height: 1.05rem; accent-color: var(--brand-text); }
 .field-check .field-label { cursor: pointer; }
 
 /* Aclaración al pie del encabezado de un diálogo: qué va a pasar, antes de
    los campos. */
+.arch-empty {
+  margin: 0;
+  font-size: .85rem;
+  color: var(--text-muted);
+}
+.arch-empty[hidden] { display: none; }
+
 .dialog-note {
   margin: -.2rem 0 .2rem;
   font-size: .8rem;
@@ -2159,7 +2335,8 @@ tbody tr:hover .task-actions,
   color: var(--text-muted);
 }
 
-.tpl-desc {
+.tpl-desc,
+.arch-desc {
   margin: .15rem 0 .6rem;
   font-size: .76rem;
   color: var(--text-faint);
@@ -2183,12 +2360,107 @@ tbody tr:hover .task-actions,
   color: var(--text-muted);
 }
 
-.dialog-form { padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
-.dialog-form h2 { margin: 0; font-size: 1.05rem; font-weight: 650; }
+/* Las tres acciones sobre la tarea: una línea, tres columnas iguales. El ancho
+   lo reparte la rejilla y no el texto de cada una, porque ninguna manda más que
+   las otras — son alternativas, no una principal con dos accesorias.
+
+   Cuerpo un punto más chico que el resto: con «Desarchivar» adentro, a 360px
+   los tres rótulos no entran a `.875rem`. */
+.task-tools {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .4rem;
+}
+.task-tools[hidden] { display: none; }
+.task-tool {
+  font-size: .8rem;
+  padding-inline: .35rem;
+  min-width: 0;
+}
+
+/* Las flechas de reordenar, centradas bajo las tres. La posición va en el medio
+   y es la que dice qué acaba de pasar: «3 de 5». */
+.task-move {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .6rem;
+}
+.task-move[hidden] { display: none; }
+.task-move-pos {
+  font-size: .8rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 4.5rem;
+  text-align: center;
+}
+
+/* El que remata un formulario: un cuadrado con un tilde, contra la derecha. Sin
+   rótulo —el título del diálogo ya dice de qué se habla— y por eso el nombre
+   accesible lo lleva el `aria-label`, no el texto. */
+.btn-ok {
+  width: var(--ctl-h);
+  height: var(--ctl-h);
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+.ok-icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dialog-form {
+  position: relative;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+/* Deja lugar a la ✕ de la esquina: el título es corto, pero uno largo se le
+   metería debajo. */
+.dialog-form h2 { margin: 0; padding-right: 2rem; font-size: 1.05rem; font-weight: 650; }
+
+/* Cierra el diálogo desde la esquina, fuera de la fila de acciones. Sin
+   recuadro: el aspecto de botón lo reservan los que hacen algo. */
+.dialog-close {
+  position: absolute;
+  top: .55rem;
+  right: .55rem;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: .95rem;
+  line-height: 1;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background .13s ease, color .13s ease;
+}
+.dialog-close:hover { background: var(--bg-sunken); color: var(--text); }
 /* recibe el foco al abrir el diálogo, pero sin dibujar el anillo */
 .dialog-form h2:focus { outline: none; }
 
 .field { display: flex; flex-direction: column; gap: .4rem; border: 0; padding: 0; margin: 0; }
+
+/* La casilla y su rótulo van en fila, no apilados. Va DESPUÉS de `.field`
+   —misma especificidad, gana la última— o el `column` de arriba la pisa. */
+.field-check {
+  flex-direction: row;
+  align-items: center;
+  gap: .55rem;
+  cursor: pointer;
+}
 .field-label {
   font-size: .78rem;
   font-weight: 600;
@@ -2202,6 +2474,10 @@ tbody tr:hover .task-actions,
 .field input[type="email"],
 .field input[type="password"],
 .field input[type="date"],
+/* La hora del recordatorio se completa como cualquier otro campo: sin esto
+   Chrome la deja con su recuadro nativo, y el único formulario que la usa se
+   veía distinto de los demás. */
+.field input[type="time"],
 .field input[type="number"] {
   font: inherit;
   padding: .55rem .7rem;
@@ -2211,7 +2487,13 @@ tbody tr:hover .task-actions,
   color: var(--text);
   width: 100%;
 }
-.field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+/* Adentro de un formulario todo lo que se toca pertenece a la misma acción, y
+   esa acción es del color de la marca — el mismo del botón que la remata. */
+.field input:focus {
+  outline: 2px solid var(--brand-text);
+  outline-offset: 1px;
+  border-color: var(--brand-text);
+}
 
 /* Aclaración al pie de un campo. Va en el tono tenue del resto de los textos
    secundarios: explica, no compite con la etiqueta. */
@@ -2232,10 +2514,22 @@ tbody tr:hover .task-actions,
 .count-row span { font-size: .85rem; color: var(--text-muted); }
 
 /* frecuencias en dos columnas: por día a la izquierda, por período a la derecha */
-.radio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem 1rem; }
+/* Columnas por contenido y el par centrado en el cuadro. Con `1fr 1fr` se
+   repartían todo el ancho y, como los rótulos son cortos, cada columna quedaba
+   con un hueco a la derecha y las opciones se apoyaban en el borde izquierdo. */
+.radio-grid {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: center;
+  gap: .35rem 1.75rem;
+}
+
+/* Tres opciones que se leen como una lista de una sola columna: son alternativas
+   de una misma pregunta y ninguna es más corta que las otras. */
+.radio-grid-una { grid-template-columns: auto; justify-content: start; }
 .radio-col  { display: flex; flex-direction: column; gap: .35rem; }
 .radio { display: flex; align-items: center; gap: .5rem; font-size: .875rem; cursor: pointer; }
-.radio input { accent-color: var(--accent); width: 16px; height: 16px; }
+.radio input { accent-color: var(--brand-text); width: 16px; height: 16px; }
 
 .weekday-row { display: flex; flex-wrap: wrap; gap: .35rem; }
 .weekday-row[hidden], .count-row[hidden] { display: none !important; }
@@ -2256,8 +2550,14 @@ tbody tr:hover .task-actions,
 }
 .wd input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
 .wd:hover { background: var(--bg-sunken); }
-.wd:has(input:checked) { background: var(--accent); border-color: var(--accent); color: #fff; }
-.wd:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Los días elegidos llevan el relleno de la marca, igual que el botón que
+   remata el formulario. */
+.wd:has(input:checked) {
+  background: var(--brand-text);
+  border-color: var(--brand-text);
+  color: var(--brand-fg);
+}
+.wd:has(input:focus-visible) { outline: 2px solid var(--brand-text); outline-offset: 2px; }
 
 .form-error { margin: 0; font-size: .8rem; color: var(--danger); font-weight: 550; }
 .confirm-text { margin: 0; font-size: .9rem; color: var(--text-muted); }
@@ -2275,6 +2575,20 @@ tbody tr:hover .task-actions,
   color: var(--text);
 }
 .confirm-list li { padding-left: .15rem; }
+
+/* Con un dato por fila, el nombre va a la izquierda y el dato contra la derecha:
+   así se leen las dos columnas de corrido en vez de buscar el dato adentro de
+   cada renglón. Sin viñeta, que acá solo separaría mal las dos mitades. */
+.confirm-list.is-pares { padding-left: 0; list-style: none; }
+.confirm-list.is-pares li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .75rem;
+  padding-left: 0;
+}
+.confirm-izq { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.confirm-der { flex: none; color: var(--text-muted); font-size: .85rem; }
 .confirm-list li::marker { color: var(--text-faint); }
 
 .confirm-note { margin: 0; font-size: .82rem; color: var(--text-faint); }
@@ -2283,10 +2597,13 @@ tbody tr:hover .task-actions,
 
 /* ---------------- Toast ---------------- */
 
+/* Por encima de la barra del pie y del botón de alta, no tapado por ellos: la
+   barra es una franja del armazón y el botón flota, pero el aviso es fijo
+   contra la ventana y no lo empuja nada. */
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 1.25rem;
+  bottom: calc(1.4rem + var(--tabbar-h) + var(--fab-size) + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   background: var(--text);
   color: var(--bg-elev);
@@ -2305,22 +2622,7 @@ tbody tr:hover .task-actions,
 
 /* ---------------- Responsive ---------------- */
 
-/* vista mes: celdas más angostas para que entren 31 columnas */
-.grid.view-month { --cell-w: 38px; }
-
-/* vista diaria: la única columna de día ocupa el ancho sobrante.
-   El `table-layout: fixed` que esto pedía ahora lo trae `.grid` para todas las
-   vistas; acá solo queda soltarle el mínimo para que pueda estirarse. */
-.grid.view-day .col-day { min-width: 0; }
-.grid.view-day thead .col-day:not(.is-today) .dnum { font-size: 1.05rem; }
-/* el "hoy" es una píldora: crecen círculo y número juntos para que no se desborde */
-.grid.view-day thead .col-day.is-today .dnum {
-  width: 26px; height: 26px; line-height: 26px; font-size: .9rem;
-}
-
 @media (max-width: 900px) {
-  :root { --task-w: 212px; --total-w: 70px; --cell-w: 42px; }
-  .grid.view-month { --cell-w: 38px; }
   .legend-hint { margin-left: 0; flex-basis: 100%; }
 }
 
@@ -2336,111 +2638,40 @@ tbody tr:hover .task-actions,
 @media (max-width: 640px) {
   body { font-size: 14px; }
 
-  /* Zoom de la planilla, solo en móvil. Las medidas base las fija el
-     breakpoint y `--zoom` las multiplica, así el nivel elegido y el ajuste por
-     ancho de pantalla conviven: si los niveles fijaran medidas propias le
-     ganarían por especificidad al bloque de 380px y lo dejarían sin efecto.
-
-     El punto de partida es un escalón más chico que antes (era 190/66/40),
-     porque en un teléfono entraban tres días y poco más. */
-  :root {
-    --zoom:      1;
-    --zoom-task: 1;
-    --task-w:    calc(152px * var(--zoom-task));
-    --total-w:   calc(56px * var(--zoom));
-    --cell-w:    calc(33px * var(--zoom));
-
-    /* Alto de fila FIJO, no mínimo: todas las filas miden lo mismo entre el
-       nombre en una línea o en dos. Si lo decidiera el contenido, la planilla
-       quedaría escalonada y las columnas de día perderían el ritmo vertical.
-
-       Se arma con las mismas piezas que ocupa la celda —dos líneas de nombre,
-       una de frecuencia y el padding— para que siga al zoom sin números
-       sueltos que se desincronicen. */
-    --row-h: calc(2.44 * .875rem * var(--zoom)   /* dos líneas de nombre */
-                + 1.45 * .7rem * var(--zoom)     /* una de frecuencia */
-                + .8rem);                        /* padding arriba y abajo */
-  }
-  .grid.view-month { --cell-w: calc(29px * var(--zoom)); }
-
-  /* Dos multiplicadores, no uno. La columna de tareas se mueve MUCHO menos que
-     las celdas de día: es la que tiene que seguir siendo legible, y achicarla
-     al mismo ritmo era lo que dejaba los nombres irreconocibles. Zoom out gana
-     días apretando los días, no el nombre. */
-  :root[data-zoom="comodo"]   { --zoom: 1.25; --zoom-task: 1.12; }
-  :root[data-zoom="compacto"] { --zoom: .82;  --zoom-task: .94; }
-
-  /* El encabezado entra en una sola fila: menú, logo centrado y tema. */
+  /* El encabezado tiene dos cosas: el logo y el tema. El nombre baja un punto
+     respecto del escritorio y nada más — el ☰ se fue a la línea del mes, así
+     que ya no hay que hacerle lugar a un tercero. */
   .app-header { padding: .7rem .8rem; gap: .5rem; }
   .brand { gap: .5rem; }
-  .brand-mark { width: 34px; height: 34px; }
-  .brand-text h1 { font-size: 1.05rem; }
+  .brand-mark { width: 36px; height: 36px; }
+  .brand-text h1 { font-size: 1.5rem; }
 
 
-  /* En el encabezado, «Análisis» va sin rótulo: el ancho no da para el texto y
-     el título y el aria-label lo siguen nombrando. Sin texto queda como el
-     cambio de tema, así que toma la misma geometría que `.icon-btn` —no puede
-     llevar esa clase directamente porque en escritorio sí muestra el rótulo y
-     el ancho fijo lo cortaría—. */
-  #btn-page-toggle .nav-text { display: none; }
-  #btn-page-toggle {
-    width: 34px;
-    padding: .4rem 0;
-    display: grid;
-    place-items: center;
-    font-size: 1rem;
-    line-height: 1;
-  }
+  /* La barra del pie sí ocupa todo el ancho en el teléfono: acá no hay 1500px
+     que repartir, y cuatro botones al medio dejarían aire muerto en los
+     costados justo donde va el pulgar. Los rótulos se quedan —«Pendientes» es
+     el más largo y entra—, apenas un punto más chicos. */
+  :root { --tabbar-h: 58px; --fab-size: 58px; }
+  .tabbar-inner { max-width: none; }
+  .tab { font-size: .66rem; padding: .35rem .15rem; }
+  .tab-icon { width: 21px; height: 21px; }
 
 
-  /* La confirmación va centrada en el hueco que queda entre el selector de
-     vista y «Opciones», sin pegarse a ninguno de los dos: en angosto ese hueco
-     es chico, y apoyarla contra un extremo la hacía leer como parte de él. */
-  .mode-confirm { justify-self: center; }
-
-  /* El apartado «Visualización» del desplegable de opciones solo existe acá:
-     en escritorio la planilla entra y no hay densidad que elegir. */
-  .zoom-group { display: flex; }
-
-  /* El total de cada día sigue al zoom como el resto de las medidas. Con cuerpo
-     fijo, «100%» pide 24px y en «compacto» la columna mide 23,8: se desbordaba
-     por dos décimas. */
-  .day-total .dt-glyph { font-size: calc(.95rem * var(--zoom)); }
-  .day-total .dt-pct   { font-size: calc(.6rem * var(--zoom)); }
-
-  /* La rejilla de dos columnas que acomodaba los seis botones ya no hace
-     falta: la barra es un solo botón. */
-  .month-bar .btn { font-size: .78rem; padding: .38rem .55rem; }
+  /* El carrete se aprieta: siete fichas en 360px pide números más chicos. */
+  .carrete-num { font-size: .95rem; }
+  .carrete-dia { padding: .35rem .1rem .4rem; }
 
   .summary { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
   .tile { padding: .6rem .7rem; }
   .tile-value { font-size: 1.25rem; }
 
-  .task-actions { opacity: 1; }
-  .move-btn { padding: 3px; }
-  .grid thead th.col-task,
-  .grid tfoot .col-task { padding-left: .5rem; }
-
-  /* El zoom no es solo ancho de columnas: baja también el alto de las filas y
-     el cuerpo del nombre de la tarea. Como la columna casi no se achica, una
-     tipografía más chica entra MÁS texto, no menos: por eso zoom out mejora la
-     lectura del nombre en vez de empeorarla.
-
-     La frecuencia acompaña al nombre para que el bloque no se desbalancee —si
-     solo se achicara el nombre, quedarían casi del mismo tamaño—. */
-  /* `height` en la celda de tarea y `min-height` en las de día: la primera es
-     la que fija el alto de la fila, las segundas se estiran hasta él. */
-  .task-cell { height: var(--row-h); }
-  .cell { min-height: var(--row-h); }
-
-  .task-freq { font-size: calc(.7rem * var(--zoom)); }
 
   /* El nombre se parte en dos líneas en vez de cortarse. En un teléfono sobra
      alto y falta ancho, y con una sola línea el ellipsis se comía la mitad del
      nombre por más que la columna creciera. El `title` sigue teniendo el texto
      completo, pero al tacto no hay hover que lo muestre. */
   .task-name {
-    font-size: calc(.875rem * var(--zoom));
+    font-size: .875rem;
     line-height: 1.22;
     white-space: normal;
     display: -webkit-box;
@@ -2451,25 +2682,20 @@ tbody tr:hover .task-actions,
     overflow-wrap: anywhere;
   }
 
-  /* Cada píxel que no gasta el cromo de la fila es ancho para el nombre: entre
-     casillero, chevrones y editar se iban unos 86px de 152. */
-  .task-cell { gap: .25rem; padding-left: .5rem; padding-right: .35rem; }
+  .task-cell { gap: .35rem; }
 
   .toast { bottom: .75rem; }
 }
 
 @media (max-width: 380px) {
-  :root {
-    --task-w: calc(132px * var(--zoom-task));
-    --total-w: calc(52px * var(--zoom));
-    /* Sin la línea de frecuencia, el alto de fila deja de reservarle lugar. */
-    --row-h: calc(2.44 * .875rem * var(--zoom) + .8rem);
-  }
   /* en pantallas muy angostas las dos columnas se apilan */
-  .radio-grid { grid-template-columns: 1fr; }
+  .radio-grid { grid-template-columns: auto; }
+  /* La pastilla del estado se achica para dejarle lugar al nombre, que es lo
+     que se busca al recorrer la lista. */
+  .pend-estado { min-width: 5.4rem; font-size: .68rem; padding: .2rem .35rem; }
   .task-freq { display: none; }
-  .brand-mark { width: 30px; height: 30px; }
-  .brand-text h1 { font-size: .95rem; }
+  .brand-mark { width: 32px; height: 32px; }
+  .brand-text h1 { font-size: 1.3rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2477,20 +2703,19 @@ tbody tr:hover .task-actions,
 }
 
 @media print {
-  .app-header, .controls, .month-bar, .legend, .header-actions,
-  .drawer, .drawer-backdrop,
+  .app-header, .controls, .legend, .header-actions, .carrete,
+  .drawer, .drawer-backdrop, .tabbar, .fab,
   .task-actions, .move-stack, .task-pick { display: none !important; }
 
-  /* El armazón de alto fijo es para la pantalla: en papel la planilla tiene que
+  /* El armazón de alto fijo es para la pantalla: en papel la lista tiene que
      poder ocupar las hojas que haga falta. Sin esto se imprime solo lo que
      entraba en una ventana. */
   body { background: #fff; padding: 0; height: auto; overflow: visible; }
-  #app-root, .app-main, .board, .analysis, .help {
+  #app-root, .app-main, .board, .dia, .dia-lista,
+  .analysis, .help, .todos, .settings {
     height: auto;
     min-height: 0;
     overflow: visible;
     display: block;
   }
-  .table-wrap { overflow: visible; box-shadow: none; max-height: none; }
-  .grid thead th { position: static; }
 }

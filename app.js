@@ -40,16 +40,8 @@
    */
   const COMPLIANCE = [
     { min: 75, status: 'done' },
-    { min: 45, status: 'partial' },
+    { min: 50, status: 'partial' },
     { min: 0,  status: 'missed' },
-  ];
-
-  /** Modos de la columna de cumplimiento, en el orden en que los cicla su encabezado. */
-  const CP_MODES = [
-    { id: 'glyph', label: 'iconos' },
-    { id: 'pct',   label: '%' },
-    { id: 'both',  label: 'iconos + %' },
-    { id: 'none',  label: 'oculto' },
   ];
 
   /** Días de la semana en orden lunes→domingo. `js` es el índice de Date#getDay. */
@@ -176,26 +168,8 @@
    */
   const MAX_PLANTILLAS = 5;
 
-  /**
-   * Niveles de zoom de la planilla, en el orden en que los cicla su botón.
-   * Solo tienen efecto en móvil: el CSS los aplica dentro del breakpoint
-   * angosto, que es donde el ancho escasea. `normal` es el punto de partida.
-   */
-  const ZOOM_LEVELS = [
-    { id: 'normal',   label: 'Normal' },
-    { id: 'compacto', label: 'Compacto' },
-    { id: 'comodo',   label: 'Cómodo' },
-  ];
-
-  /** Días que abarca cada vista. La mensual se resuelve aparte, como el mes entero. */
-  const VIEW_SIZE = { day: 1, week: 7 };
-
-  /** Rótulo de cada vista, para el botón que abre el desplegable. */
-  const VIEW_LABEL = { day: 'Diario', week: 'Semanal', month: 'Mensual' };
-
-  /* Qué mueve una flecha en cada vista, para nombrarlas por lo que hacen. Lleva
-     el artículo porque «semana» es femenino: «a la semana anterior», no «al». */
-  const VIEW_STEP = { day: 'al día', week: 'a la semana', month: 'al mes' };
+  /** Cuántos días muestra el carrete: el elegido al medio y los de al lado. */
+  const CARRETE = 7;
 
   const LOCALE = 'es-AR';
 
@@ -249,10 +223,22 @@
      * cosa, y dejarían de mejorar con la app.
      */
     removedTemplates: /** @type {string[]} */ ([]),
+    /**
+     * Lo que hay que hacer una vez, sin frecuencia ni puntaje.
+     *
+     * Va aparte de `months`: un pendiente no se repite, no se mide y no
+     * arrastra historial, así que meterlo entre las tareas obligaría a que todo
+     * el cálculo de cumplimiento lo esquive.
+     *
+     * `categorias` admite UN nivel de anidado —una categoría con `padre` es una
+     * subcategoría— y `items` cuelga de cualquiera de los dos, o de ninguna.
+     */
+    pendientes: /** @type {{ categorias: {id:string,name:string,padre:string|null}[],
+     *   items: {id:string,name:string,categoria:string|null,
+     *   estado:'sin-iniciar'|'en-proceso'|'finalizada',fecha:string|null}[] }} */
+      ({ categorias: [], items: [] }),
     /** Qué muestra la columna de estatus: 'glyph' | 'pct' | 'both' | 'none'. */
-    complianceMode: 'glyph',
     /** Qué miden las barras del análisis diario: 'tareas' | 'pct'. */
-    weekdayMode: 'tareas',
     /**
      * Si ya se ofreció el recordatorio en ESTE aparato, se haya aceptado o no.
      *
@@ -263,41 +249,67 @@
      */
     recordatorioOfrecido: false,
     /** Densidad de la planilla en móvil: 'normal' | 'compacto' | 'comodo'. */
-    zoom: 'normal',
     /** Controles del período plegados (solo tiene efecto en móvil). */
-    controlsCollapsed: false,
     /** Paneles desplegados de la sección Análisis. */
-    panels: { tiles: true, charts: true },
     theme: /** @type {'light'|'dark'|null} */ (null),
   };
 
   /** Estado de navegación (no se persiste). */
   const ui = {
     /** Sección visible: la planilla, los indicadores o la ayuda. */
-    page: /** @type {'home'|'indicators'|'help'} */ ('home'),
+    page: /** @type {'home'|'todos'|'indicators'|'settings'|'help'} */ ('home'),
     year: today.getFullYear(),
     month: today.getMonth(),
-    view: /** @type {'day'|'week'|'month'} */ ('week'),
-    windowIndex: 0,
+    /**
+     * El día elegido: el que va al centro del carrete y el que se carga abajo.
+     * Se guarda como clave `YYYY-MM-DD` para que comparar sea comparar texto.
+     */
+    day: '',
     editingId: /** @type {string|null} */ (null),
+    /** Cómo se miran los pendientes: por categoría o por fecha. */
+    vistaPendientes: /** @type {'lista'|'calendario'} */ ('lista'),
+    /** Categorías plegadas. Es una postura de pantalla: no se persiste. */
+    pendPlegadas: /** @type {Set<string>} */ (new Set()),
+    /** Qué pendiente y qué categoría están abiertos en su diálogo. */
+    editandoPendiente: /** @type {string|null} */ (null),
+    editandoCategoria: /** @type {string|null} */ (null),
     onConfirm: /** @type {(() => void)|null} */ (null),
-    /** Ids tildados para el borrado múltiple. No se persiste. */
+    /** Ids tildados para las acciones sobre varias. No se persiste. */
     selected: /** @type {Set<string>} */ (new Set()),
     /**
-     * Qué controles muestra cada fila, elegido desde «Opciones». En reposo las
-     * filas van limpias: ni casilleros ni chevrones. No se persiste — es una
-     * postura momentánea, no una preferencia.
-     * @type {null|'eliminar'|'resetear'|'reordenar'}
+     * Qué controles muestra cada fila, elegido en «Selección masiva». En reposo
+     * las filas van limpias. No se persiste: es una postura momentánea.
+     * @type {null|'eliminar'|'archivar'|'reordenar'}
      */
     rowMode: null,
     /**
-     * Orden de las tareas al entrar en la postura de reordenar, para poder
-     * volver atrás con ✕. Los chevrones aplican en el acto —hay que ver el
-     * movimiento para saber si quedó bien—, así que lo que hace cancelable al
-     * reordenado es guardar de dónde se salió.
+     * Orden de las tareas al entrar a reordenar, para poder volver atrás con ✕.
+     * Los chevrones aplican en el acto —hay que ver el movimiento para saber si
+     * quedó bien—, así que lo cancelable es de dónde se salió.
      * @type {string[]|null}
      */
     ordenPrevio: null,
+    /**
+     * Qué gráfico se está mirando en Análisis, nombrado por su forma. No se
+     * persiste: cada visita abre en el primero, que es el que muestra el mes
+     * día por día.
+     * @type {'puntos'|'porcentajes'|'barras'}
+     */
+    chart: 'puntos',
+    /**
+     * Cómo se ordenan las tareas en «Puntos» y en «Porcentajes». `lista` es el
+     * orden que uno armó —el mismo que en Hábitos—; los otros dos son por
+     * cumplimiento. Tampoco se persiste: es una manera de mirar, no una
+     * preferencia.
+     * @type {'lista'|'desc'|'asc'}
+     */
+    orden: 'lista',
+    // Las tareas que el diálogo de archivo tiene entre manos, y de qué lado.
+    archivingIds: /** @type {string[]} */ ([]),
+    // Las tareas que el diálogo de borrado tiene entre manos.
+    deletingIds: /** @type {string[]} */ ([]),
+    /** @type {'archivar'|'desarchivar'} */
+    archiveMode: 'archivar',
     /**
      * Días ya transcurridos que se habilitaron a mano en esta sesión, por
      * `YYYY-MM-DD`. No se persiste, y la medianoche lo vacía: el permiso vale
@@ -349,12 +361,26 @@
      `index.html` ante cualquier ruta — ver `_redirects`, `vercel.json` y
      `404.html`. */
 
-  const PAGE_DE_RUTA = { diario: 'home', analisis: 'indicators', comousar: 'help' };
-  const RUTA_DE_PAGE = { home: 'diario', indicators: 'analisis', help: 'comousar' };
+  const PAGE_DE_RUTA = {
+    diario: 'home',
+    pendientes: 'todos',
+    analisis: 'indicators',
+    ajustes: 'settings',
+    comousar: 'help',
+  };
+  const RUTA_DE_PAGE = {
+    home: 'diario',
+    todos: 'pendientes',
+    indicators: 'analisis',
+    settings: 'ajustes',
+    help: 'comousar',
+  };
 
   const TITULO_DE_PAGE = {
-    home: 'Diario · Hábitos',
+    home: 'Hábitos',
+    todos: 'Pendientes · Hábitos',
     indicators: 'Análisis · Hábitos',
+    settings: 'Ajustes · Hábitos',
     help: 'Cómo usar · Hábitos',
   };
 
@@ -384,7 +410,7 @@
 
   /**
    * Cambia de sección y deja la URL en sintonía.
-   * @param {'home'|'indicators'|'help'} page
+   * @param {'home'|'todos'|'indicators'|'settings'|'help'} page
    * @param {{ reemplazar?: boolean }} [opciones] `reemplazar` no agrega entrada
    *   al historial: se usa al abrir la app, para no dejar un paso atrás vacío.
    */
@@ -459,46 +485,48 @@
     return Math.floor((date.getDate() - 1 + offsetToMonday) / 7);
   }
 
+  /** El día elegido, como `Date`. Sin nada guardado, hoy. */
+  function diaActual() {
+    return ui.day ? parseDateKey(ui.day) : today;
+  }
+
   /**
-   * Divide el mes en ventanas según la vista activa: una por día (diaria),
-   * una por semana alineada al lunes (semanal) o una sola con todo el mes (mensual).
-   * Siempre se recortan a los límites del mes, para que ningún total mezcle
-   * datos de dos meses distintos.
+   * Los días del carrete: el elegido al medio y los de los costados.
+   *
+   * Es CONTINUO — no se corta en el borde del mes. Los del mes vecino se
+   * dibujan atenuados y llevan a su propio mes al elegirlos, que es lo que
+   * mantiene el modelo mensual en pie: el día del centro decide qué mes se
+   * está trabajando y de qué lista salen las tareas.
    */
-  function getWindows() {
-    const all = monthDays();
-    if (ui.view === 'month') return [all];
-
-    const size = VIEW_SIZE[ui.view];
-    const first = all[0];
-    const offsetToMonday = (first.getDay() + 6) % 7;
-    let cursor = addDays(first, -offsetToMonday);
-    const last = all[all.length - 1];
-    const windows = [];
-
-    while (cursor <= last) {
-      const block = [];
-      for (let k = 0; k < size; k++) {
-        const d = addDays(cursor, k);
-        if (d.getFullYear() === ui.year && d.getMonth() === ui.month) block.push(d);
-      }
-      if (block.length) windows.push(block);
-      cursor = addDays(cursor, size);
-    }
-    return windows;
+  function diasDelCarrete() {
+    const centro = diaActual();
+    const lado = (CARRETE - 1) / 2;
+    return Array.from({ length: CARRETE }, (_, i) => addDays(centro, i - lado));
   }
 
+  /**
+   * Lo que está a la vista, que ahora es un solo día. Sigue devolviendo una
+   * lista porque todo lo que calcula totales —`taskTotals`, `rangeTotals`,
+   * `statusKeysIn`— trabaja sobre un conjunto de días, y con uno solo la cuenta
+   * es la misma.
+   */
   function visibleDays() {
-    const windows = getWindows();
-    ui.windowIndex = Math.min(Math.max(ui.windowIndex, 0), windows.length - 1);
-    return { days: windows[ui.windowIndex] || [], count: windows.length };
+    return { days: [diaActual()], count: 1 };
   }
 
-  /** Ubica la ventana que contiene `date`, o 0 si no cae en el mes visible. */
-  function windowIndexFor(date) {
-    const windows = getWindows();
-    const idx = windows.findIndex(w => w.some(d => sameDay(d, date)));
-    return idx >= 0 ? idx : 0;
+  /**
+   * Elige un día. Si cae en otro mes, el mes de trabajo lo sigue: las tareas
+   * son listas por mes.
+   */
+  function irAlDia(date) {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    // Las tareas son listas por mes, así que lo tildado no puede cruzar.
+    if (year !== ui.year || month !== ui.month) ui.selected.clear();
+    ui.year = year;
+    ui.month = month;
+    ui.day = dateKey(date);
+    render();
   }
 
   // ---------------------------------------------------------
@@ -529,6 +557,11 @@
   const fmtDow = new Intl.DateTimeFormat(LOCALE, { weekday: 'short' });
   const fmtFull = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' });
   const fmtShort = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short' });
+  /* Con año y en números: para una lista de fechas que se comparan entre sí,
+     donde el año importa y «20 jul» se lee más lento que 20/07. */
+  const fmtNumerica = new Intl.DateTimeFormat(LOCALE, {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  });
   const fmtDayLong = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric' });
 
   /** 4 → "4"; 4.5 → "4,5" */
@@ -589,12 +622,6 @@
     return tasksOf(ui.year, ui.month);
   }
 
-  /** Mes calendario anterior al visible. */
-  function previousMonth() {
-    const d = new Date(ui.year, ui.month - 1, 1);
-    return { year: d.getFullYear(), month: d.getMonth() };
-  }
-
 
 
   /**
@@ -630,6 +657,50 @@
   }
 
   /**
+   * Los tramos en los que la tarea estuvo archivada: `from` es el primer día
+   * archivado y `to` el día en que volvió —ya fuera del tramo—, o null si sigue
+   * archivada. Vienen ordenados y sin pisarse; de eso se ocupa `saneaArchivado`.
+   *
+   * Es una lista y no una fecha sola porque una tarea puede irse y volver más de
+   * una vez, y cada ida deja un hueco propio en el historial.
+   */
+  function tramosArchivados(task) {
+    return Array.isArray(task.archived) ? task.archived : [];
+  }
+
+  /** El tramo sin fecha de vuelta: existe solo si la tarea está archivada HOY. */
+  function tramoAbierto(task) {
+    return tramosArchivados(task).find(tramo => !tramo.to) ?? null;
+  }
+
+  /** Ese día cae adentro de alguno de los tramos archivados. */
+  function archivada(task, date) {
+    const dia = dateKey(date);
+    return tramosArchivados(task)
+      .some(tramo => dia >= tramo.from && (!tramo.to || dia < tramo.to));
+  }
+
+  /**
+   * La tarea se eliminó desde ese día. `end` es el espejo de `start`: el primer
+   * día en que ya no existe. Lo anterior queda como estaba.
+   *
+   * Es distinto de un tramo archivado: archivar se deshace y la tarea figura en
+   * el Archivo; esto no vuelve. Por eso es un campo aparte.
+   */
+  function terminada(task, date) {
+    return Boolean(task.end) && dateKey(date) >= task.end;
+  }
+
+  /**
+   * Fuera de vigencia: antes de empezar, mientras estuvo archivada, o desde que
+   * se eliminó. En los tres casos la tarea no se ve, no se marca y no suma, y en
+   * los tres lo cargado ANTES se conserva.
+   */
+  function fueraDeVigencia(task, date) {
+    return beforeStart(task, date) || archivada(task, date) || terminada(task, date);
+  }
+
+  /**
    * Si la tarea admite marcar un día como «no requerido».
    *
    * Solo tiene sentido donde la obligación está atada a un día concreto. En una
@@ -647,7 +718,7 @@
   }
 
   function countsTowardGoal(task, date) {
-    if (beforeStart(task, date)) return false;
+    if (fueraDeVigencia(task, date)) return false;
     if (allowsSkip(task) && isSkipped(task, date)) return false;
     const g = date.getDay();
     if (task.freq === 'weekdays') return g >= 1 && g <= 5;
@@ -664,7 +735,7 @@
    * ninguno figura como requerido y la fila entera queda teñida.
    */
   function isRequiredDay(task, date) {
-    if (beforeStart(task, date)) return false;   // todavía no arrancó
+    if (fueraDeVigencia(task, date)) return false;   // todavía no, o ya no
     if (FREQ[task.freq]?.period) return false;   // sirve cualquier día del período
     if (isCountMode(task)) return false;         // meta mensual sin días fijos
     return countsTowardGoal(task, date);         // incluye el «no requerido» manual
@@ -723,12 +794,13 @@
   }
 
   /**
-   * Antes de la fecha de inicio la tarea no existe: no se puede marcar y lo que
-   * hubiera quedado cargado de antes no se muestra ni suma. El dato igual se
-   * conserva, así que vuelve a aparecer si se corre o se quita la fecha.
+   * Fuera de vigencia la tarea no existe: no se puede marcar y lo que hubiera
+   * quedado cargado no se muestra ni suma. El dato igual se conserva, así que
+   * vuelve a aparecer si se corre o se quita la fecha —la de inicio o la de
+   * archivo, las dos funcionan igual.
    */
   function getStatus(task, date) {
-    if (beforeStart(task, date)) return null;
+    if (fueraDeVigencia(task, date)) return null;
     return state.status[statusKey(task.id, date)] || null;
   }
 
@@ -832,8 +904,8 @@
   }
 
   /* ---- Preferencias de pantalla ----------------------------------------
-     Tema, zoom, plegado, paneles y modo de la columna de estatus describen
-     cómo se ve la app en ESTE aparato, no qué hizo el usuario. Se guardan
+     El tema y el aviso del recordatorio describen cómo se ve la app en ESTE
+     aparato, no qué hizo el usuario. Se guardan
      solo acá y no viajan a la base: antes iban en el mismo payload, así que
      elegir tema claro en la compu lo cambiaba también en el teléfono — y
      subía el diario entero para hacerlo.
@@ -842,8 +914,7 @@
      anti-parpadeo de `index.html`, antes de que exista `app.js`. */
 
   const PREFS_KEY = 'tareas-diarias/prefs';
-  const CAMPOS_PREF = ['complianceMode', 'weekdayMode', 'zoom', 'controlsCollapsed',
-    'panels', 'recordatorioOfrecido'];
+  const CAMPOS_PREF = ['recordatorioOfrecido'];
 
   /** Guarda una preferencia. No toca la red: no hay nada que sincronizar. */
   function savePrefs() {
@@ -863,22 +934,8 @@
     } catch { return; }
     if (!esDiccionario(prefs)) return;
 
-    if (CP_MODES.some(m => m.id === prefs.complianceMode)) {
-      state.complianceMode = prefs.complianceMode;
-    }
-    if (MEDIDAS.some(m => m.campo === prefs.weekdayMode)) state.weekdayMode = prefs.weekdayMode;
-    if (ZOOM_LEVELS.some(z => z.id === prefs.zoom)) state.zoom = prefs.zoom;
     if (typeof prefs.recordatorioOfrecido === 'boolean') {
       state.recordatorioOfrecido = prefs.recordatorioOfrecido;
-    }
-    if (typeof prefs.controlsCollapsed === 'boolean') {
-      state.controlsCollapsed = prefs.controlsCollapsed;
-    }
-    if (esDiccionario(prefs.panels)) {
-      state.panels = {
-        tiles: prefs.panels.tiles !== false,
-        charts: prefs.panels.charts !== false,
-      };
     }
   }
 
@@ -1104,6 +1161,101 @@
     return Number.isFinite(n) ? Math.min(99, Math.max(1, n)) : 1;
   }
 
+  /**
+   * Los tramos archivados de una tarea, saneados: ordenados, sin pisarse y sin
+   * los que no describen nada.
+   *
+   * Acepta también el formato viejo —una fecha suelta, que era «archivada desde
+   * ahí y sin vuelta»— porque eso es exactamente un tramo abierto.
+   *
+   * Se descarta un tramo que empiece antes de que la tarea exista (nunca estuvo
+   * viva), uno que vuelva antes de irse, y uno que se pise con el anterior. Esto
+   * último es lo que garantiza que haya COMO MUCHO UN TRAMO ABIERTO y que sea el
+   * último: cualquier cosa que empiece después de uno sin vuelta cae adentro de
+   * él, y se descarta.
+   */
+  function saneaArchivado(valor, start) {
+    const crudos = typeof valor === 'string'
+      ? [{ from: valor, to: null }]
+      : Array.isArray(valor) ? valor : [];
+
+    const candidatos = [];
+    for (const tramo of crudos) {
+      if (!tramo || typeof tramo !== 'object') continue;
+      const from = typeof tramo.from === 'string' && RE_DIA.test(tramo.from) ? tramo.from : null;
+      if (!from) continue;
+      if (start && from <= start) continue;
+      const to = typeof tramo.to === 'string' && RE_DIA.test(tramo.to) ? tramo.to : null;
+      if (to && to <= from) continue;
+      candidatos.push({ from, to });
+    }
+    candidatos.sort((a, b) => (a.from < b.from ? -1 : 1));
+
+    const limpios = [];
+    for (const tramo of candidatos) {
+      const previo = limpios[limpios.length - 1];
+      if (previo && (!previo.to || tramo.from < previo.to)) continue;
+      limpios.push(tramo);
+    }
+    return limpios;
+  }
+
+  /** Cuántos días vive una tarea eliminada antes de perderse. */
+  const DIAS_PAPELERA = 7;
+
+  /**
+   * Sanea la papelera. Cada entrada es el CAMBIO que hizo una eliminación: la
+   * copia de la tarea en cada mes que tocó —con el índice donde estaba— y los
+   * estados que borró. Sin eso no se puede devolver la tarea a donde estaba.
+   *
+   * Se descarta lo vencido acá mismo: es el único lugar por el que pasan los
+   * datos al entrar, así que una copia vieja no puede colarse por un archivo
+   * importado.
+   */
+  function cleanTrash(lista) {
+    const limpias = [];
+    for (const item of Array.isArray(lista) ? lista : []) {
+      if (!item || typeof item !== 'object') continue;
+      if (typeof item.taskId !== 'string' || !item.taskId) continue;
+      if (!RE_DIA.test(item.fecha || '')) continue;
+      if (diasDesde(item.fecha) >= DIAS_PAPELERA) continue;
+
+      const meses = {};
+      for (const [mes, guardado] of Object.entries(comoObjeto(item.meses))) {
+        if (!RE_MES.test(mes) || !guardado || typeof guardado !== 'object') continue;
+        const [task] = cleanTaskList([guardado.task]);
+        if (!task) continue;
+        const indice = Number(guardado.indice);
+        meses[mes] = { indice: Number.isFinite(indice) && indice >= 0 ? indice : 0, task };
+      }
+      if (!Object.keys(meses).length) continue;
+
+      const estados = {};
+      for (const [key, value] of Object.entries(comoObjeto(item.estados))) {
+        if (!['done', 'partial', 'missed', 'skip'].includes(value)) continue;
+        const [taskId, iso] = String(key).split('|');
+        if (taskId !== item.taskId || !RE_DIA.test(iso || '')) continue;
+        estados[key] = value;
+      }
+
+      limpias.push({
+        taskId: item.taskId,
+        nombre: typeof item.nombre === 'string' ? item.nombre.slice(0, 80) : '',
+        frecuencia: typeof item.frecuencia === 'string' ? item.frecuencia.slice(0, 60) : '',
+        desde: RE_DIA.test(item.desde || '') ? item.desde : null,
+        fecha: item.fecha,
+        meses,
+        estados,
+      });
+    }
+    return limpias;
+  }
+
+  /** Días enteros transcurridos desde una fecha en clave hasta hoy. */
+  function diasDesde(clave) {
+    return Math.round((today - parseDateKey(clave)) / 86400000);
+  }
+
   /** Valida y sanea una lista de tareas suelta. */
   function cleanTaskList(list) {
     const clean = [];
@@ -1118,9 +1270,16 @@
       const start = typeof t.start === 'string' && RE_DIA.test(t.start)
         ? t.start
         : null;
+      const archived = saneaArchivado(t.archived, start);
+      /* El corte de eliminación. Uno anterior o igual al inicio no deja ni un
+         día vivo: esa tarea no debería estar en la lista, así que se descarta
+         entera más abajo. */
+      const end = typeof t.end === 'string' && RE_DIA.test(t.end) ? t.end : null;
 
       // Un personalizado por días sin días elegidos no describe nada: se descarta.
       if (freq === 'custom' && customMode === 'weekdays' && !weekdays.length) continue;
+      // Eliminada desde antes de empezar: no le queda un solo día vivo.
+      if (end && start && end <= start) continue;
 
       clean.push({
         id: typeof t.id === 'string' && t.id ? t.id : newId(),
@@ -1130,6 +1289,8 @@
         weekdays,
         target,
         start,
+        archived,
+        end,
       });
     }
     return clean;
@@ -1216,6 +1377,70 @@
   }
 
   /** Valida y sanea datos que vienen de localStorage o de un archivo importado. */
+  /**
+   * Sanea la lista de pendientes que viene de afuera —de la base o de un
+   * archivo importado—.
+   *
+   * El anidado se corta en dos niveles a propósito: con una cadena libre habría
+   * que dibujar una sangría sin fondo, y un padre que apunte a un descendiente
+   * dejaría la lista sin poder recorrerse. Una categoría cuyo padre no existe,
+   * o cuyo padre ya es subcategoría, queda de primer nivel: se conserva el dato
+   * en vez de tirarlo.
+   */
+  function cleanPendientes(valor) {
+    if (!esDiccionario(valor)) return { categorias: [], items: [] };
+
+    const crudas = [];
+    const vistas = new Set();
+    for (const cruda of Array.isArray(valor.categorias) ? valor.categorias : []) {
+      if (!esDiccionario(cruda)) continue;
+      const id = String(cruda.id ?? '');
+      const name = String(cruda.name ?? '').trim().slice(0, 60);
+      if (!id || !name || vistas.has(id)) continue;
+      vistas.add(id);
+      crudas.push({ id, name, pedido: String(cruda.padre ?? '') });
+    }
+
+    /* Primero quiénes son raíz —las que no piden padre válido—, y recién
+       después quién puede colgar de quién: al revés, el orden del arreglo
+       decidiría el resultado.
+
+       Una que se pide a sí misma es raíz y además se queda SIN padre: dejarle
+       el suyo la sacaría de la lista de raíces sin ponerla en ninguna otra
+       parte, y al dibujarla sería su propia hija. */
+    const esRaiz = c => c.pedido === c.id || !vistas.has(c.pedido);
+    const raices = new Set(crudas.filter(esRaiz).map(c => c.id));
+    const categorias = crudas.map(({ id, name, pedido }) => ({
+      id,
+      name,
+      padre: pedido !== id && raices.has(pedido) ? pedido : null,
+    }));
+    const porId = new Set(categorias.map(c => c.id));
+
+    const items = [];
+    const idsVistos = new Set();
+    for (const crudo of Array.isArray(valor.items) ? valor.items : []) {
+      if (!esDiccionario(crudo)) continue;
+      const id = String(crudo.id ?? '');
+      const name = String(crudo.name ?? '').trim().slice(0, 80);
+      if (!id || !name || idsVistos.has(id)) continue;
+      idsVistos.add(id);
+
+      const categoria = String(crudo.categoria ?? '');
+      const fecha = String(crudo.fecha ?? '');
+      items.push({
+        id,
+        name,
+        // Una categoría borrada deja al pendiente suelto, no lo borra con ella.
+        categoria: porId.has(categoria) ? categoria : null,
+        estado: esEstadoPendiente(crudo.estado) ? crudo.estado : 'sin-iniciar',
+        fecha: RE_DIA.test(fecha) ? fecha : null,
+      });
+    }
+
+    return { categorias, items };
+  }
+
   function normalize(data) {
     if (!data || typeof data !== 'object') throw new Error('Formato inválido');
 
@@ -1263,19 +1488,11 @@
     return {
       months,
       status,
+      trash: cleanTrash(data.trash),
       templates: cleanTemplates(data.templates, deFabrica.size - removedTemplates.length),
       removedTemplates,
-      complianceMode: CP_MODES.some(m => m.id === data.complianceMode)
-        ? data.complianceMode
-        : 'glyph',
-      weekdayMode: MEDIDAS.some(m => m.campo === data.weekdayMode) ? data.weekdayMode : 'tareas',
-      zoom: ZOOM_LEVELS.some(z => z.id === data.zoom) ? data.zoom : 'normal',
-      controlsCollapsed: data.controlsCollapsed === true,
+      pendientes: cleanPendientes(data.pendientes),
       recordatorioOfrecido: data.recordatorioOfrecido === true,
-      panels: {
-        tiles: data.panels?.tiles !== false,
-        charts: data.panels?.charts !== false,
-      },
       theme,
     };
   }
@@ -1429,22 +1646,6 @@
   }
 
   /**
-   * Puntos que se marcaron ese día, cuenten o no para la meta de cada tarea.
-   * Es la medida de cuánto se HIZO, y la usan los indicadores de días más y
-   * menos productivos: marcar una semanal un lunes hace al lunes más
-   * productivo, aunque el lunes no la pidiera.
-   */
-  function dayPoints(date) {
-    let points = 0;
-    for (const task of tasksOf(date.getFullYear(), date.getMonth())) {
-      if (beforeStart(task, date)) continue;
-      const s = getStatus(task, date);
-      if (s) points += POINTS[s];
-    }
-    return points;
-  }
-
-  /**
    * Cumplimiento de un día: lo que ese día pedía, más lo que se hizo sin que lo
    * pidiera. Entran al conteo, cada una sumando uno al techo:
    *
@@ -1542,17 +1743,14 @@
 
   const el = {
     monthLabel: $('#month-label'),
-    viewBtn: $('#btn-view'),
-    viewText: $('#view-text'),
-    viewOptions: $('#view-options'),
-    actionsBtn: $('#btn-actions'),
-    actionsOptions: $('#actions-options'),
-    pickDay: $('#btn-pick-day'),
     prevRange: $('#prev-range'),
     nextRange: $('#next-range'),
-    summary: $('#summary'),
-    grid: $('#grid'),
-    tableWrap: $('#table-wrap'),
+    hoy: $('#btn-hoy'),
+    carretePista: $('#carrete-pista'),
+    dia: $('#dia'),
+    diaLista: $('#dia-lista'),
+    diaResumen: $('#dia-resumen'),
+    diaResumenValor: $('#dia-resumen-valor'),
     empty: $('#empty'),
     taskDialog: $('#task-dialog'),
     taskForm: $('#task-form'),
@@ -1572,27 +1770,93 @@
     confirmOk: $('#confirm-ok'),
     toast: $('#toast'),
     theme: $('#btn-theme'),
-    zoom: $('#btn-zoom'),
-    zoomText: $('#zoom-text'),
-    collapse: $('#btn-collapse'),
-    addTask: $('#btn-add-task'),
-    copyPrev: $('#btn-copy-prev'),
+    taskTools: $('#task-tools'),
+    taskDelete: $('#task-delete'),
+    taskReorder: $('#task-reorder'),
+    taskArchive: $('#task-archive'),
+    taskMove: $('#task-move'),
+    taskMoveUp: $('#task-move-up'),
+    taskMoveDown: $('#task-move-down'),
+    taskMovePos: $('#task-move-pos'),
+    archived: $('#btn-archived'),
+    trash: $('#btn-trash'),
+    trashDialog: $('#trash-dialog'),
+    trashList: $('#trash-list'),
+    trashEmpty: $('#trash-empty'),
+    trashAll: $('#trash-all'),
+    trashRestore: $('#trash-restore'),
+    grupoMasiva: $('#grupo-masiva'),
     modeDelete: $('#btn-mode-delete'),
-    modeReset: $('#btn-mode-reset'),
+    modeArchive: $('#btn-mode-archive'),
     modeReorder: $('#btn-mode-reorder'),
     modeConfirm: $('#mode-confirm'),
     modeOk: $('#btn-mode-ok'),
     modeCancel: $('#btn-mode-cancel'),
+    archivedDialog: $('#archived-dialog'),
+    archivedList: $('#archived-list'),
+    archivedEmpty: $('#archived-empty'),
+    archivedUndo: $('#archived-undo'),
+    archivedAll: $('#archived-all'),
+    deleteDialog: $('#delete-dialog'),
+    deleteForm: $('#delete-form'),
+    deleteTitle: $('#delete-title'),
+    deleteNote: $('#delete-note'),
+    deleteDateField: $('#delete-date-field'),
+    deleteDate: $('#delete-date'),
+    deleteError: $('#delete-error'),
+    archiveDialog: $('#archive-dialog'),
+    archiveTitle: $('#archive-title'),
+    archiveLabel: $('#archive-label'),
+    archiveSubmit: $('#archive-submit'),
+    archiveForm: $('#archive-form'),
+    archiveNote: $('#archive-note'),
+    archiveDate: $('#archive-date'),
+    archiveError: $('#archive-error'),
     controls: $('.controls'),
-    controlsCenter: $('#controls-center'),
-    monthBar: $('#month-bar'),
     board: $('#board'),
     legend: $('#legend'),
     drawer: $('#drawer'),
     drawerBackdrop: $('#drawer-backdrop'),
     menu: $('#btn-menu'),
-    pageToggle: $('#btn-page-toggle'),
+    tabbar: $('#tabbar'),
+    grupoTareas: $('#grupo-tareas'),
+    mesResumen: $('#mes-resumen'),
+    mesResumenValor: $('#mes-resumen-valor'),
+    orden: $('#btn-orden'),
+    ordenDialog: $('#orden-dialog'),
+    grupoGraficos: $('#grupo-graficos'),
+    grupoRecordatorio: $('#grupo-recordatorio'),
+    grupoDatos: $('#grupo-datos'),
+    grupoGuia: $('#grupo-guia'),
+    fab: $('#btn-fab'),
     analysis: $('#analysis'),
+    todos: $('#todos'),
+    main: $('.app-main'),
+    pendBarra: $('#pend-barra'),
+    pendLista: $('#pend-lista'),
+    pendCalendario: $('#pend-calendario'),
+    pendVacio: $('#pend-vacio'),
+    pendCategoriaBtn: $('#btn-pend-categoria'),
+    pendienteDialog: $('#pendiente-dialog'),
+    pendienteDialogTitle: $('#pendiente-dialog-title'),
+    pendienteForm: $('#pendiente-form'),
+    pendienteName: $('#pendiente-name'),
+    pendienteCategoria: $('#pendiente-categoria'),
+    pendienteFecha: $('#pendiente-fecha'),
+    pendienteError: $('#pendiente-error'),
+    pendienteTools: $('#pendiente-tools'),
+    pendienteDelete: $('#pendiente-delete'),
+    pendienteSubmit: $('#pendiente-submit'),
+    categoriaDialog: $('#categoria-dialog'),
+    categoriaDialogTitle: $('#categoria-dialog-title'),
+    categoriaForm: $('#categoria-form'),
+    categoriaName: $('#categoria-name'),
+    categoriaPadre: $('#categoria-padre'),
+    categoriaError: $('#categoria-error'),
+    categoriaTools: $('#categoria-tools'),
+    categoriaDelete: $('#categoria-delete'),
+    categoriaSubmit: $('#categoria-submit'),
+    settings: $('#settings'),
     help: $('#help'),
     charts: $('#charts'),
     templates: $('#btn-templates'),
@@ -1619,12 +1883,9 @@
     templatesList: $('#templates-list'),
     templatesStart: $('#templates-start'),
     templatesStartHint: $('#templates-start-hint'),
-    panelTiles: $('#panel-tiles'),
-    panelCharts: $('#panel-charts'),
     jumpDialog: $('#jump-dialog'),
     jumpTitle: $('#jump-title'),
     jumpLabel: $('#jump-label'),
-    jumpDows: $('#jump-dows'),
     jumpGrid: $('#jump-grid'),
   };
 
@@ -1634,312 +1895,327 @@
 
   function render() {
     const onHome = ui.page === 'home';
+    const onIndicators = ui.page === 'indicators';
     const onHelp = ui.page === 'help';
     const { days } = visibleDays();
 
     // El selector de mes se muestra en la planilla y en los indicadores: ambos
-    // son mensuales. En la guía no hay período que elegir, así que la barra de
-    // controles entera desaparece — si no, quedaría sola con las flechas de mes.
-    el.controls.hidden = onHelp;
+    // son mensuales. En las otras tres no hay período que elegir, así que la
+    // barra de controles entera desaparece — si no, quedaría sola con las
+    // flechas de mes.
+    /* El calendario de Pendientes es mensual como la planilla, así que usa la
+       MISMA línea de mes: dos selectores de mes en la misma app serían dos
+       cosas que aprender para lo mismo. */
+    const enCalendario = ui.page === 'todos' && ui.vistaPendientes === 'calendario';
+    el.controls.hidden = !(onHome || onIndicators || enCalendario);
+
+    /* En el calendario el mes va DEBAJO del par de vistas y no arriba de todo:
+       ahí es un control de esa pantalla, no el encabezado de la app. Se MUEVE
+       el nodo en vez de tener un segundo botón de mes, que sería un segundo
+       lugar donde arreglar lo mismo. Vuelve a su lugar al salir. */
+    if (enCalendario) {
+      if (el.controls.previousElementSibling !== el.pendBarra) el.pendBarra.after(el.controls);
+    } else if (el.controls.parentElement !== el.main) {
+      el.main.prepend(el.controls);
+    }
     el.monthLabel.textContent = labelDeMes();
 
-    // El atajo del encabezado alterna entre planilla e indicadores. En la guía
-    // no aparece: ahí se sale por el menú.
-    el.pageToggle.hidden = onHelp;
-    el.pageToggle.querySelector('.nav-icon').textContent = onHome ? '◔' : '▦';
-    el.pageToggle.querySelector('.nav-text').textContent = onHome ? 'Análisis' : 'Diario';
-    el.pageToggle.title = onHome
-      ? 'Ver el análisis de este mes'
-      : 'Volver a la planilla';
-    el.pageToggle.setAttribute('aria-label', el.pageToggle.title);
+    /* El ☰ está donde hay algo que elegir: en Hábitos, lo que se le hace a las
+       tareas; en Análisis, qué gráfico se mira. En Pendientes y en Ajustes no
+       hay nada sobre lo que obrar, y ahí no está.
 
-    // Solo hay algo que plegar en la planilla: en los indicadores esas tres
-    // zonas ya están ocultas y el botón no tendría sobre qué actuar.
-    el.collapse.hidden = !onHome;
-    applyCollapse();
+       Cada sección muestra lo suyo y comparten lo que es de la app entera: el
+       recordatorio, los datos y la guía. */
+    el.menu.hidden = !(onHome || onIndicators);
 
-    /* Vista y navegación del rango solo aplican a la planilla. El desplegable
-       es el mismo en las tres vistas: «Ir a…» no se apaga en la mensual —ahí
-       elegir un día lleva a SU mes, que es un salto tan válido como los otros—,
-       y un menú que cambia de opciones según dónde estés obliga a recordar
-       cuáles hay en cada una. */
-    el.controlsCenter.hidden = !onHome;
-    el.monthBar.hidden = !onHome;
+    /* Cada sección abre el cajón con lo suyo y nada más. En Análisis eso es
+       elegir qué gráfico se mira; el recordatorio, los datos y la guía son de la
+       app entera, pero se llega a ellos desde Hábitos —que es donde se pasa el
+       tiempo—, y repetirlos acá obliga a buscar la única entrada que viene al
+       caso entre seis que no. */
+    el.grupoGraficos.hidden = !onIndicators;
+    // Fuera de Análisis no hay gráfico que ordenar.
+    if (!onIndicators) el.orden.hidden = true;
+    for (const grupo of [el.grupoRecordatorio, el.grupoDatos, el.grupoGuia]) {
+      grupo.hidden = !onHome;
+    }
+
+    /* Las acciones del mes viven en el cajón, que se abre desde cualquier
+       sección; pero operan sobre las tareas del día, así que fuera del Diario
+       no hay sobre qué actuar y el apartado entero se va. */
+    el.grupoTareas.hidden = !onHome;
+
+    // El carrete y la lista del día son el Diario y solo viven ahí.
     el.board.hidden = !onHome;
+
+    /* «Hoy» solo cuando el carrete está parado en otro día: en hoy no llevaría
+       a ningún lado, y un botón que no hace nada es peor que no tenerlo. Va
+       ACÁ y no más abajo porque el render corta antes de llegar allá cuando la
+       sección no es el Diario, y el botón se quedaba prendido en Análisis. */
+    /* «Hoy» y el remate de la postura comparten el lugar de la fila. Con una
+       postura puesta manda el remate: volver a hoy en medio de una elección
+       movería la lista debajo de lo que se está tildando. */
+    el.hoy.hidden = !onHome || Boolean(ui.rowMode) || sameDay(diaActual(), today);
+    el.hoy.title = `Volver a hoy, ${fmtFull.format(today)}`;
+    el.hoy.setAttribute('aria-label', el.hoy.title);
     renderNudge();
     el.legend.hidden = !onHome;
-    el.analysis.hidden = onHome || onHelp;
+    el.analysis.hidden = !onIndicators;
+    el.todos.hidden = ui.page !== 'todos';
+    if (ui.page === 'todos') renderPendientes();
+    renderFab();
+    el.settings.hidden = ui.page !== 'settings';
     el.help.hidden = !onHelp;
 
-    for (const item of el.drawer.querySelectorAll('[data-page]')) {
+    /* La sección activa se marca en los dos lugares desde donde se navega: la
+       barra del pie y lo que quede en el cajón. Por eso el recorrido va sobre
+       el documento y no sobre uno de ellos. */
+    for (const item of document.querySelectorAll('[data-page]')) {
       item.classList.toggle('is-active', item.dataset.page === ui.page);
       item.setAttribute('aria-current', item.dataset.page === ui.page ? 'page' : 'false');
     }
 
     if (!onHome) {
-      el.panelTiles.open = state.panels.tiles;
-      el.panelCharts.open = state.panels.charts;
-      if (ui.page === 'indicators') {
-        renderSummary();
+      if (onIndicators) {
         renderCharts();
       }
       return;
     }
 
-    el.viewText.textContent = VIEW_LABEL[ui.view];
-    el.viewBtn.title = `Vista ${VIEW_LABEL[ui.view].toLowerCase()} · clic para cambiarla`;
-    for (const opt of el.viewOptions.querySelectorAll('[data-view]')) {
-      const activa = opt.dataset.view === ui.view;
-      opt.setAttribute('aria-checked', String(activa));
-      opt.classList.toggle('is-active', activa);
-    }
-
-    // Las flechas se nombran por lo que mueven, que cambia con la vista.
-    const paso = VIEW_STEP[ui.view];
-    el.prevRange.title = `Ir ${paso} anterior`;
-    el.nextRange.title = `Ir ${paso} siguiente`;
+    // Las flechas mueven el carrete de a una vuelta, en los dos sentidos.
+    el.prevRange.title = `Ver los ${CARRETE} días anteriores`;
+    el.nextRange.title = `Ver los ${CARRETE} días siguientes`;
     for (const btn of [el.prevRange, el.nextRange]) {
       btn.setAttribute('aria-label', btn.title);
     }
 
-    renderMonthBar();
+    renderCarrete();
+    renderAccionesDelMes();
 
-    const tasks = currentTasks();
-    // La selección no puede sobrevivir a tareas que ya no están.
-    const ids = new Set(tasks.map(t => t.id));
-    for (const id of ui.selected) if (!ids.has(id)) ui.selected.delete(id);
-
-    const hasTasks = tasks.length > 0;
-    el.tableWrap.hidden = !hasTasks;
+    /* El aviso de «todavía no hay tareas» mira el DÍA, no el mes: si todas
+       arrancan más adelante, ese día no tiene ninguna y decirlo es lo honesto. */
+    const hasTasks = tareasDelDia(days[0]).length > 0;
+    el.dia.hidden = !hasTasks;
     el.empty.hidden = hasTasks;
 
-    if (hasTasks) renderTable(days);
-    else el.grid.innerHTML = '';
+    if (hasTasks) renderDia(days[0]);
+    else el.diaLista.innerHTML = '';
   }
 
-  /** Barra de opciones del mes: copiar del anterior, cerrar/abrir y mostrar indicadores. */
-  function renderMonthBar() {
-    const prev = previousMonth();
-    const prevTasks = tasksOf(prev.year, prev.month);
-    const prevName = labelDeMes(prev.year, prev.month);
+  // ---------------------------------------------------------
+  // El carrete de días
+  // ---------------------------------------------------------
 
-    el.addTask.disabled = false;
-    el.addTask.title = 'Crear una tarea nueva (atajo: N)';
+  /**
+   * La tira de días de arriba: el elegido al medio y tres a cada lado. Cada uno
+   * es una ficha con su día de la semana y su número.
+   *
+   * Los del mes vecino se atenúan pero se pueden elegir: al hacerlo, el mes de
+   * trabajo los sigue. Es lo que vuelve continua la navegación sin romper el
+   * modelo mensual de las tareas.
+   */
+  function renderCarrete() {
+    const centro = diaActual();
+    const frag = document.createDocumentFragment();
 
-    el.copyPrev.disabled = prevTasks.length === 0;
-    el.copyPrev.title = prevTasks.length === 0
-      ? `${prevName} no tiene tareas para copiar`
-      : `Reemplaza las tareas de este mes por las ${prevTasks.length} de ${prevName}`;
+    for (const d of diasDelCarrete()) {
+      const ficha = boton('carrete-dia', {
+        title: capitalizeFirstLetter(fmtFull.format(d)),
+        label: capitalizeFirstLetter(fmtFull.format(d)),
+      });
+      ficha.dataset.date = dateKey(d);
 
+      ficha.append(
+        elem('span', 'carrete-dow', fmtDow.format(d).replace('.', '').slice(0, 3)),
+        elem('span', 'carrete-num', String(d.getDate())),
+      );
+
+      const esCentro = sameDay(d, centro);
+      ficha.classList.toggle('is-centro', esCentro);
+      // De otro mes: se ve, se elige, y avisa que va a mudar el mes de trabajo.
+      ficha.classList.toggle('is-fuera',
+        d.getFullYear() !== ui.year || d.getMonth() !== ui.month);
+      ficha.classList.toggle('is-today', sameDay(d, today));
+      ficha.classList.toggle('is-weekend', isWeekend(d));
+      if (esCentro) ficha.setAttribute('aria-current', 'date');
+
+      frag.appendChild(ficha);
+    }
+
+    el.carretePista.replaceChildren(frag);
+  }
+
+  // ---------------------------------------------------------
+  // La lista del día
+  // ---------------------------------------------------------
+
+  /**
+   * Las tareas que existen ESE día: las del mes que ya empezaron.
+   *
+   * Una tarea creada el 28 no existía el 27, así que ese día no aparece. Antes
+   * se dibujaba con el recuadro apagado —«anterior a la fecha de inicio»—, que
+   * es contar una historia que no pasó: la lista de un día tiene que ser lo que
+   * había ese día.
+   */
+  function tareasDelDia(date) {
+    return currentTasks().filter(task => !fueraDeVigencia(task, date));
+  }
+
+  /**
+   * ¿Este día cuenta para esta tarea? Es lo que decide si la tarjeta va
+   * encendida o apagada, y hay dos maneras de que cuente:
+   *
+   * - **la frecuencia lo pide** — una tarea diaria cualquier día, una de días
+   *   fijos los suyos;
+   * - **está cargado igual** — lo hiciste un día que no tocaba, o es una tarea
+   *   sin días propios («8 veces al mes», «una vez por semana»), donde ningún
+   *   día es «el» día hasta que se marca.
+   *
+   * «No requerido» queda afuera de las dos: es justamente eximirse del día.
+   * `isRequiredDay` ya lo contempla —devuelve false para el día eximido a mano,
+   * para las tareas de período y para las de meta por cuenta—.
+   */
+  function cuentaHoy(task, date) {
+    const marca = getStatus(task, date);
+    return isRequiredDay(task, date) || Boolean(marca && marca !== 'skip');
+  }
+
+  /**
+   * Lo que se carga: una fila por tarea del mes, con el estado de ESE día.
+   *
+   * Reusa `.task-cell` —el mismo bloque que tenía la columna de tareas de la
+   * planilla— para no tener dos marcados distintos del mismo contenido: ahí
+   * viven el nombre, la frecuencia, el lápiz y, con una postura puesta, los
+   * casilleros o los chevrones.
+   */
+  function renderDia(date) {
+    const tasks = tareasDelDia(date);
+    const frag = document.createDocumentFragment();
+
+    /* «Todas» encabeza la lista mientras haya casilleros: elegir todas es lo
+       primero que se quiere cuando la acción es sobre varias. */
+    if (modoConCasilleros() && tasks.length) {
+      const cabecera = elem('li', 'dia-todas');
+      const todas = elem('input', 'task-pick');
+      todas.type = 'checkbox';
+      todas.dataset.pickAll = '';
+      todas.title = 'Seleccionar todas las tareas';
+      todas.setAttribute('aria-label', 'Seleccionar todas las tareas');
+      cabecera.append(todas, elem('span', 'dia-todas-rotulo', 'Todas'));
+      frag.appendChild(cabecera);
+    }
+
+    tasks.forEach((task, i) => {
+      const fila = elem('li', 'dia-fila');
+      fila.dataset.taskId = task.id;
+      if (ui.selected.has(task.id)) fila.classList.add('is-selected');
+      if (!cuentaHoy(task, date)) fila.classList.add('is-optional');
+
+      fila.appendChild(taskCellContent(task, i, tasks.length));
+
+      /* Con una postura puesta no se carga el día: ordenando, en el lugar del
+         recuadro de estado van las flechas —que es donde ya está la mano—, y
+         eligiendo no va nada. Un recuadro a mano mientras se tilda es un clic
+         distraído que marca algo que nadie quiso. */
+      if (ui.rowMode === 'reordenar') fila.appendChild(moveStack(task, i, tasks.length));
+      else if (!ui.rowMode) fila.appendChild(statusButton(task, date));
+      frag.appendChild(fila);
+    });
+
+    el.diaLista.replaceChildren(frag);
+    renderResumenDelDia(date);
+  }
+
+  /** El cumplimiento del día, encabezando la lista. */
+  function renderResumenDelDia(date) {
+    const totales = rangeTotals([date]);
+    const nivel = complianceOf(totales.points, totales.max);
+
+    el.diaResumen.className = `dia-resumen ${nivel ? 'cp-' + nivel.status : 'cp-empty'}`;
+    el.diaResumenValor.textContent = nivel ? pct(nivel.ratio) : '—';
+    el.diaResumen.title = nivel
+      ? `${num(totales.points)} sobre una meta de ${num(totales.max)} `
+        + `el ${fmtFull.format(date)}`
+      : `Ninguna tarea pide algo el ${fmtFull.format(date)}`;
+  }
+
+  /**
+   * El botón redondo de la esquina: existe solo en las dos secciones que crean
+   * algo, y dice cuál de las dos cosas crea.
+   *
+   * El «+» no dice nada por sí solo, así que el nombre accesible lo pone el
+   * `aria-label` —lo que anuncia un lector de pantalla— y el `title` agrega el
+   * atajo, que existe únicamente en Diario.
+   */
+  function renderFab() {
+    const enPendientes = ui.page === 'todos';
+    el.fab.hidden = !(ui.page === 'home' || enPendientes);
+    if (el.fab.hidden) return;
+
+    const label = enPendientes ? 'Agregar pendiente' : 'Agregar tarea';
+    el.fab.setAttribute('aria-label', label);
+    el.fab.title = enPendientes ? label : 'Crear una tarea nueva (atajo: N)';
+  }
+
+  /**
+   * El apartado «Tareas» del cajón: qué se puede hacer sobre el mes visible y
+   * qué no. Se dibuja con la planilla —es la única sección sobre la que estas
+   * acciones operan— aunque el cajón se abra desde cualquier lado.
+   */
+  function renderAccionesDelMes() {
     /* Dos razones distintas para no poder guardar, y el tooltip dice cuál: sin
        tareas no hay qué guardar, y con los cinco lugares tomados hay que hacer
        lugar antes. Un botón apagado sin decir por qué manda a adivinar. */
-    const motivo = motivoSinGuardar();
-    el.saveTemplate.disabled = Boolean(motivo);
-    el.saveTemplate.title = motivo
-      || `Guardar las ${currentTasks().length} tareas de ${labelDeMes()} como plantilla`;
+    const archivadas = tareasArchivadas();
+    el.archived.disabled = archivadas.length === 0;
+    el.archived.title = archivadas.length
+      ? `Ver ${archivadas.length} ${archivadas.length === 1 ? 'tarea archivada' : 'tareas archivadas'}`
+        + ` de ${labelDeMes()}`
+      : `Ninguna tarea archivada en ${labelDeMes()}`;
 
+    /* Las tres posturas se apagan sin tareas: no habría sobre qué operar. Y el
+       grupo se despliega solo con una puesta, que es donde está su ✓. */
     const sinTareas = currentTasks().length === 0;
-
     for (const [btn, modo, verbo] of [
       [el.modeDelete, 'eliminar', 'Elegir tareas para eliminar'],
-      [el.modeReset, 'resetear', 'Elegir tareas para resetear sus estados'],
+      [el.modeArchive, 'archivar', 'Elegir tareas para archivar'],
       [el.modeReorder, 'reordenar', 'Mostrar los chevrones para reordenar'],
     ]) {
       const activo = ui.rowMode === modo;
       btn.disabled = sinTareas;
-      btn.setAttribute('aria-checked', String(activo));
+      btn.setAttribute('aria-pressed', String(activo));
       btn.classList.toggle('is-active', activo);
       btn.title = sinTareas ? 'No hay tareas en este mes'
         : activo ? 'Volver a las filas limpias' : verbo;
     }
-
-    el.empty.querySelector('[data-add-task]').disabled = false;
-
-    // También acá: sin tareas no se dibuja la tabla y `syncSelection` no corre.
+    if (ui.rowMode) el.grupoMasiva.open = true;
     renderModeConfirm();
+
+    const enPapelera = papelera().length;
+    el.trash.disabled = enPapelera === 0;
+    el.trash.title = enPapelera
+      ? `Restaurar algo de lo eliminado (${enPapelera})`
+      : 'No hay nada eliminado en los últimos 7 días';
+
+    const motivo = motivoSinGuardar();
+    el.saveTemplate.disabled = Boolean(motivo);
+    el.saveTemplate.title = motivo
+      || `Guardar las ${tareasDelDia(diaActual()).length} tareas `
+        + `del ${fmtFull.format(diaActual())} como plantilla`;
+
   }
 
-  function renderTable(days) {
-    el.grid.className = `grid view-${ui.view} cpm-${state.complianceMode}`;
-
-    const frag = document.createDocumentFragment();
-
-    // --- thead ---
-    const thead = elem('thead');
-    const hrow = elem('tr');
-    hrow.appendChild(taskColumnHeader());
-
-    for (const d of days) {
-      const cell = th('', 'col-day', 'col');
-      if (isWeekend(d)) cell.classList.add('is-weekend');
-      if (sameDay(d, today)) cell.classList.add('is-today');
-
-      cell.append(
-        elem('span', 'dow', fmtDow.format(d).replace('.', '').slice(0, 3)),
-        elem('span', 'dnum', String(d.getDate())),
-      );
-      cell.title = fmtFull.format(d);
-      hrow.appendChild(cell);
-    }
-
-    hrow.appendChild(complianceHeader());
-    thead.appendChild(hrow);
-    frag.appendChild(thead);
-
-    // --- tbody ---
-    const tbody = elem('tbody');
-
-    const tasks = currentTasks();
-    tasks.forEach((task, index) => {
-      const tr = elem('tr');
-      tr.dataset.taskId = task.id;
-      tr.appendChild(taskHeaderCell(task, index, tasks.length));
-
-      for (const d of days) {
-        const td = elem('td', 'cell-td');
-        // El tinte del cuerpo marca los días no requeridos por la frecuencia,
-        // no los fines de semana: eso queda en el encabezado y en el pie.
-        if (!isRequiredDay(task, d)) td.classList.add('is-optional');
-        // Hoy no se marca acá: solo en el encabezado. Ver `.cell-td` en la hoja.
-        td.appendChild(statusButton(task, d));
-        tr.appendChild(td);
-      }
-
-      tr.appendChild(complianceCell(taskTotals(task, days), 'row-total'));
-      tbody.appendChild(tr);
-    });
-
-    frag.appendChild(tbody);
-
-    // --- tfoot ---
-    const tfoot = elem('tfoot');
-    const frow = elem('tr');
-    frow.appendChild(celdaAlta());
-
-    for (const d of days) {
-      const td = elem('td', 'col-day');
-      if (isWeekend(d)) td.classList.add('is-weekend');
-
-      const span = elem('span', 'day-total');
-      span.append(elem('span', 'dt-glyph'), elem('span', 'dt-pct'));
-      td.appendChild(span);
-      applyDayTotal(td, d);
-      frow.appendChild(td);
-    }
-
-    // Esquina inferior derecha: cumplimiento global del rango visible.
-    frow.appendChild(complianceCell(rangeTotals(days), 'grand-total'));
-
-    tfoot.appendChild(frow);
-    frag.appendChild(tfoot);
-
-    el.grid.innerHTML = '';
-    el.grid.appendChild(frag);
-    syncSelection();
-  }
+  /** Las dos posturas que ELIGEN tareas comparten los casilleros. */
+  const modoConCasilleros = () =>
+    ui.rowMode === 'eliminar' || ui.rowMode === 'archivar';
 
   /**
-   * Refleja la selección múltiple: resalta las filas tildadas y convierte el
-   * botón de alta en uno de borrado cuando hay al menos dos.
+   * El bloque de una tarea: el nombre con su frecuencia, el lápiz y, según la
+   * postura, el casillero o los chevrones. Era el contenido de la columna
+   * «Tareas» de la planilla y ahora es el de cada fila de la lista del día — el
+   * mismo marcado, para no tener dos versiones del mismo contenido.
    */
-  function syncSelection() {
-    const count = ui.selected.size;
-    const total = currentTasks().length;
-
-    for (const tr of el.grid.querySelectorAll('tbody tr[data-task-id]')) {
-      tr.classList.toggle('is-selected', ui.selected.has(tr.dataset.taskId));
-    }
-
-    const all = el.grid.querySelector('[data-pick-all]');
-    if (all) {
-      all.checked = total > 0 && count === total;
-      // Estado intermedio cuando hay algunas tildadas pero no todas.
-      all.indeterminate = count > 0 && count < total;
-    }
-
-    // Los remates de la selección aparecen en la barra del mes, al lado
-    // del alta, y solo mientras haya algo tildado.
-    renderModeConfirm();
-  }
-
-  /**
-   * El ✓ y el ✕ de la barra: aparecen con la postura puesta y son el único
-   * modo de rematarla. El ✓ queda apagado mientras no haya nada que confirmar
-   * —ninguna tarea tildada—, así el botón dice por sí solo qué falta.
-   */
-  function renderModeConfirm() {
-    const modo = ui.rowMode;
-    el.modeConfirm.hidden = !modo;
-    if (!modo) return;
-
-    const count = ui.selected.size;
-    const plural = count === 1 ? 'tarea' : 'tareas';
-    const rango = rangeLabel(visibleDays().days);
-
-    const rotulos = {
-      eliminar: [
-        count ? `Eliminar ${count} ${plural} de ${labelDeMes()}` : 'Tildá las tareas a eliminar',
-        'Salir sin eliminar nada',
-      ],
-      resetear: [
-        count ? `Resetear ${count} ${plural} en ${rango}` : 'Tildá las tareas a resetear',
-        'Salir sin resetear nada',
-      ],
-      reordenar: ['Guardar este orden', 'Descartar los cambios de orden'],
-    }[modo];
-
-    el.modeOk.disabled = modo !== 'reordenar' && count === 0;
-    el.modeOk.title = rotulos[0];
-    el.modeOk.setAttribute('aria-label', rotulos[0]);
-    el.modeCancel.title = rotulos[1];
-    el.modeCancel.setAttribute('aria-label', rotulos[1]);
-  }
-
-  /**
-   * Esquina inferior izquierda: el alta, en el lugar que antes ocupaba el
-   * rótulo «Cumplimiento diario».
-   *
-   * Es el mismo alta que la entrada de «Opciones» —abren el mismo diálogo— y
-   * ninguna reemplaza a la otra: esta queda al pie de la columna que va a
-   * crecer, que es donde está la mano después de recorrer la lista.
-   *
-   * El rótulo desaparece de la vista pero NO del árbol de accesibilidad: el
-   * `aria-label` sigue nombrando la fila, que es lo que un lector de pantalla
-   * anuncia antes de leer los porcentajes de cada día. Sin él, esa fila pasaría
-   * a llamarse «Agregar tarea», que es el botón y no la fila.
-   */
-  function celdaAlta() {
-    const celda = th('', 'col-task', 'row');
-    celda.setAttribute('aria-label', 'Cumplimiento diario');
-
-    /* `icon-btn` es la clase de las flechas que mueven el período: así el «+»
-       mide exactamente lo mismo que ellas, sin repetir el número. */
-    const btn = boton('btn btn-brand icon-btn add-task-btn', {
-      text: '+',
-      title: 'Crear una tarea nueva (atajo: N)',
-      label: 'Agregar tarea',
-    });
-    btn.addEventListener('click', () => openTaskDialog());
-
-    celda.appendChild(btn);
-    return celda;
-  }
-
-  function th(text, className, scope) {
-    const node = elem('th', className, text || '');
-    if (scope) node.scope = scope;
-    return node;
-  }
-
-  /**
-   * Las dos posturas que eligen tareas —eliminar y resetear— comparten los
-   * casilleros: lo que cambia es qué se ofrece hacer con lo tildado.
-   */
-  const modoConCasilleros = () => ui.rowMode === 'eliminar' || ui.rowMode === 'resetear';
-
-  function taskHeaderCell(task, index, total) {
-    const cell = th('', 'col-task', 'row');
+  function taskCellContent(task, index = 0, total = 1) {
     const wrap = elem('div', 'task-cell');
 
     /* Casilleros y chevrones se DIBUJAN solo en su postura, no se esconden con
@@ -1957,19 +2233,7 @@
       piezas.push(pick);
     }
 
-    if (ui.rowMode === 'reordenar') {
-      const move = elem('div', 'move-stack');
-      move.append(
-        moveButton('up', '▲', index === 0, `Subir «${task.name}»`),
-        moveButton('down', '▼', index === total - 1, `Bajar «${task.name}»`),
-      );
-      piezas.push(move);
-    }
-
-    // El nombre hace de agarre para arrastrar: blanco grande y no interactivo.
     const info = elem('div', 'task-info');
-    info.dataset.dragHandle = '';
-    info.title = 'Arrastrá para reordenar';
 
     const name = elem('span', 'task-name', task.name);
     name.title = task.name;
@@ -1982,18 +2246,38 @@
 
     info.append(name, freq);
 
-    // El borrado vive en el casillero de selección + la fila de abajo.
-    const actions = elem('div', 'task-actions');
-    actions.appendChild(boton('mini-btn', {
-      text: '✎',
-      action: 'edit',
-      title: `Editar «${task.name}»`,
-      label: `Editar ${task.name}`,
-    }));
+    /* El lápiz abre «Editar tarea», que es de donde salen TODAS las acciones
+       sobre la tarea: cambiarle los datos, eliminarla, moverla de lugar y
+       archivarla. La fila se queda con lo que se carga a diario.
 
-    wrap.append(...piezas, info, actions);
-    cell.appendChild(wrap);
-    return cell;
+       Con una postura puesta no está: abrir un diálogo interrumpe justo lo que
+       se está haciendo —ordenar, o elegir de a varias—, y la fila se queda con
+       lo de esa postura y el nombre. */
+    if (!ui.rowMode) {
+      const actions = elem('div', 'task-actions');
+      actions.appendChild(boton('mini-btn', {
+        text: '✎',
+        action: 'edit',
+        title: `Editar «${task.name}»`,
+        label: `Editar ${task.name}`,
+      }));
+      piezas.push(info, actions);
+    } else {
+      piezas.push(info);
+    }
+
+    wrap.append(...piezas);
+    return wrap;
+  }
+
+  /** Las dos flechas de una fila, en el lugar del recuadro de estado. */
+  function moveStack(task, index, total) {
+    const move = elem('div', 'move-stack');
+    move.append(
+      moveButton('up', '▲', index === 0, `Subir «${task.name}»`),
+      moveButton('down', '▼', index === total - 1, `Bajar «${task.name}»`),
+    );
+    return move;
   }
 
   function moveButton(dir, glyph, disabled, label) {
@@ -2025,195 +2309,58 @@
 
     // Del inicio en adelante cualquier día es marcable, las veces que haga falta.
     const status = getStatus(task, date);
+    /* El estado lo dice el relleno del recuadro, no un símbolo adentro. El
+       nombre accesible sí lo nombra: es lo único que tiene un lector de
+       pantalla, que no ve el color. */
     btn.classList.add(status ? `st-${status}` : 'st-none');
-    btn.textContent = status ? STATUS_GLYPH[status] : '';
     btn.setAttribute('aria-label',
       `${task.name}, ${fmtFull.format(date)}: ${status ? STATUS_LABEL[status] : 'sin cargar'}`);
 
     return btn;
   }
 
-  /** Encabezado de la columna de tareas: casillero de "todas" + rótulo. */
-  function taskColumnHeader() {
-    const cell = th('', 'col-task', 'col');
-
-    const wrap = elem('div', 'task-head');
-
-    // El «todas» acompaña a los casilleros de las filas: sin ellos no gobierna nada.
-    if (modoConCasilleros()) {
-      const all = elem('input', 'task-pick');
-      all.type = 'checkbox';
-      all.dataset.pickAll = '';
-      all.title = 'Seleccionar todas las tareas';
-      all.setAttribute('aria-label', 'Seleccionar todas las tareas');
-      wrap.appendChild(all);
-    }
-
-    wrap.appendChild(elem('span', '', 'Tareas'));
-    cell.appendChild(wrap);
-    return cell;
-  }
-
-  /** Encabezado de la columna: un botón que cicla entre los cuatro modos. */
-  function complianceHeader() {
-    const cell = th('', 'col-total', 'col');
-
-    const btn = boton('col-total-btn', {
-      text: 'Estatus',
-      title: `Clic para ver ${modeLabel(nextComplianceMode())}`,
-    });
-    btn.dataset.complianceMode = '';
-
-    // El modo activo se lee en el propio encabezado, no solo en el tooltip.
-    btn.appendChild(elem('span', 'cp-mode', modeLabel(state.complianceMode)));
-
-    cell.appendChild(btn);
-    return cell;
-  }
-
-  const modeLabel = id => CP_MODES.find(m => m.id === id).label;
-
-  function nextComplianceMode() {
-    const i = CP_MODES.findIndex(m => m.id === state.complianceMode);
-    return CP_MODES[(i + 1) % CP_MODES.length].id;
-  }
-
-  /** Celda de cumplimiento: símbolo y/o porcentaje, según el modo activo. */
-  function complianceCell(totals, extraClass = '') {
-    const td = elem('td', `col-total compliance ${extraClass}`.trim());
-
-    // Ambos se dibujan siempre; cuál se ve lo decide la clase `cpm-*` de la tabla.
-    td.append(elem('span', 'cp-glyph'), elem('span', 'cp-pct'));
-    applyCompliance(td, totals);
-    return td;
-  }
-
   /**
-   * @param totals {{points, max}} — puntos contra la meta del período completo
-   *   de la vista. Lo transcurrido no entra en la cuenta: el porcentaje dice
-   *   cuánto del período se cumplió, y sube a medida que se carga.
-   */
-  function applyCompliance(td, totals) {
-    const { points, max } = totals;
-    const level = complianceOf(points, max);
-
-    td.classList.remove('cp-done', 'cp-partial', 'cp-missed');
-    if (level) td.classList.add(`cp-${level.status}`);
-
-    const glyph = td.querySelector('.cp-glyph');
-    const ratio = td.querySelector('.cp-pct');
-    td.classList.toggle('cp-empty', !level);
-
-    if (level) {
-      glyph.textContent = level.glyph;
-      ratio.textContent = pct(level.ratio);
-      td.title = `${pct(level.ratio)} de cumplimiento — ${num(points)} `
-        + `sobre una meta de ${num(max)} en el período visible`;
-      return;
-    }
-
-    /* Sin meta no hay nada que medir: un guion en cualquiera de los tres modos.
-       Los dos motivos se nombran distinto porque son distintos, y el segundo
-       recién aparece con el prorrateo de `taskTotals`: la frecuencia sí pide
-       días del rango, pero el pedazo de período que se ve no alcanza para pedir
-       una vez —la semana del 1 de agosto de 2026, de la que el mes muestra dos
-       días—. Decir ahí que «no pide ningún día» sería falso. */
-    glyph.textContent = '—';
-    ratio.textContent = '—';
-    td.title = totals.dias > 0
-      ? 'El rango visible es solo una parte del período, demasiado corta para pedir una vez'
-      : 'La frecuencia de la tarea no pide ningún día del rango visible';
-  }
-
-  /**
-   * Total de una columna: el cumplimiento del día, con su símbolo y su
-   * porcentaje. Antes mostraba la suma cruda de puntos —«1,5»—, que no decía
-   * contra cuánto se medía: 1,5 puede ser excelente con dos tareas y flojo con
-   * ocho. El porcentaje ya trae esa comparación hecha, y el símbolo la resume.
+   * Puntos que se marcaron ese día, cuenten o no para la meta de cada tarea. Es
+   * cuánto se HIZO, sin mirar contra qué.
    *
-   * Los dos se ven SIEMPRE. El modo que cicla el encabezado `Estatus` gobierna
-   * esa columna, no el pie, así que estas piezas no llevan las clases que ese
-   * modo esconde: son `dt-*` y no `cp-*`.
+   * Fue una medida a la vista y se sacó: premiaba al día con más tareas
+   * asignadas —el lunes ganaba por tener veinte, no por rendir mejor—. Queda
+   * como SEGUNDO criterio del podio, donde no manda: solo ordena a los días que
+   * ya empataron en cumplimiento.
    */
-  function applyDayTotal(td, date) {
-    const { points, max } = dayCompliance(date);
-    const level = complianceOf(points, max);
-    const span = td.querySelector('.day-total');
-
-    span.classList.remove('cp-done', 'cp-partial', 'cp-missed', 'cp-empty');
-    span.classList.add(level ? `cp-${level.status}` : 'cp-empty');
-
-    span.querySelector('.dt-glyph').textContent = level ? level.glyph : '—';
-    span.querySelector('.dt-pct').textContent = level ? pct(level.ratio) : '';
-
-    td.title = level
-      ? `${fmtFull.format(date)}: ${pct(level.ratio)} — ${num(points)} de ${num(max)} puntos`
-      : date > today
-        ? `${fmtFull.format(date)}: todavía no transcurrió`
-        : `${fmtFull.format(date)}: ninguna tarea pide este día`;
+  function dayPoints(date) {
+    let points = 0;
+    for (const task of tasksOf(date.getFullYear(), date.getMonth())) {
+      if (fueraDeVigencia(task, date)) continue;
+      const s = getStatus(task, date);
+      if (s) points += POINTS[s];
+    }
+    return points;
   }
 
   /**
-   * Los indicadores describen siempre el MES visible, no la ventana de la vista:
-   * un promedio por día de la semana no significa nada dentro de una sola semana,
-   * y la comparación es explícitamente mensual.
-   */
-  function renderSummary() {
-    const days = monthDays(ui.year, ui.month);
-
-    el.summary.innerHTML = '';
-    el.summary.append(
-      ...productivityTiles(days),
-      attentionTile(days),
-      comparisonTile(),
-    );
-  }
-
-  /** Tareas del mes cuyo cumplimiento está en rojo. */
-  function attentionTile(days) {
-    const flagged = currentTasks().filter(task => {
-      const t = taskTotals(task, days);
-      return complianceOf(t.points, t.max)?.status === 'missed';
-    });
-
-    const card = tile(
-      'Necesitan tu atención',
-      String(flagged.length),
-      flagged.length ? flagged.map(t => t.name) : 'Ninguna tarea en rojo',
-      flagged.length ? 'alert' : '',
-    );
-
-    /* Esta lista es un listado de nombres y no un par de datos: puede tener
-       veinte entradas y scrollear. Se marca para que ocupe el ancho entero de
-       la tarjeta — si no, la barra de scroll queda contra el texto, en el
-       medio, en vez de contra el borde. Ver `.tile-list.is-nombres`. */
-    card.querySelector('.tile-list')?.classList.add('is-nombres');
-    return card;
-  }
-
-  /**
-   * Las dos medidas de un día de la semana, promediadas sobre los días
+   * El cumplimiento de cada día de la semana, promediado sobre los días
    * medibles del rango — ver `diasMedibles`.
    *
-   * `tareas` es **cuánto se hizo**: el promedio de puntos del día, sin mirar
-   * contra qué. `pct` es **qué proporción de lo que ese día pedía se cumplió**,
-   * y se agrega sumando puntos y techos antes de dividir, igual que
-   * `monthCompliance`: promediar los porcentajes diarios le daría el mismo peso
-   * a un domingo que pedía una tarea que a un lunes que pedía veinte.
+   * Es **qué proporción de lo que ese día pedía se cumplió**, y se agrega
+   * sumando puntos y techos antes de dividir: promediar los porcentajes
+   * diarios le daría el mismo peso a un domingo que pedía una tarea que a un
+   * lunes que pedía veinte.
    *
-   * Las dos coronan días distintos y por eso se muestran las dos: el lunes suele
-   * ganar por cantidad porque tiene más tareas asignadas, no porque se rinda
-   * mejor.
+   * Hubo una segunda medida, `tareas`: el promedio de puntos del día, sin mirar
+   * contra qué. Medía cuánto se hizo y no cuánto de lo que había que hacer, así
+   * que coronaba al día con más tareas asignadas —el lunes ganaba por tener
+   * veinte, no por rendir mejor—.
    */
   function weekdayAverages(days) {
     const buckets = new Map();
     for (const d of diasMedibles(days)) {
-      const b = buckets.get(d.getDay()) || { suma: 0, dias: 0, points: 0, max: 0 };
-      b.suma += dayPoints(d);
-      b.dias += 1;
+      const b = buckets.get(d.getDay()) || { points: 0, max: 0, hechas: 0, dias: 0 };
       const c = dayCompliance(d);
       b.points += c.points;
       b.max += c.max;
+      b.hechas += dayPoints(d);
+      b.dias += 1;
       buckets.set(d.getDay(), b);
     }
 
@@ -2221,8 +2368,9 @@
     const redondo = n => Math.round(n * 1e4) / 1e4;
     return [...buckets].map(([js, b]) => ({
       js,
-      tareas: redondo(b.suma / b.dias),
       pct: b.max > 0 ? redondo((b.points / b.max) * 100) : null,
+      // Solo para desempatar el podio; no se muestra.
+      tareas: redondo(b.hechas / b.dias),
     }));
   }
 
@@ -2236,177 +2384,17 @@
    */
   const MINIMO_DIAS = 7;
 
-  /* Corto a propósito: `.tile-sub` muestra dos líneas y manda el resto al
-     `title`, y este texto es justamente el que no se puede quedar a medias. El
-     porqué de los siete días vive en la guía, no en la tarjeta. */
+  /* Corto a propósito: es lo que el gráfico muestra en lugar de las barras, y
+     el porqué de los siete días vive en la guía. */
   function avisoMinimoDias(cuantos) {
     return cuantos
       ? `Hacen falta ${MINIMO_DIAS} días de uso para comparar; van ${cuantos}.`
       : 'Todavía no hay días de uso en este mes.';
   }
 
-  function productivityTiles(days) {
-    const medibles = diasMedibles(days);
-    if (medibles.length < MINIMO_DIAS) {
-      const aviso = avisoMinimoDias(medibles.length);
-      return [
-        tile('Días más productivos', '—', aviso),
-        tile('Días menos productivos', '—', aviso),
-      ];
-    }
-
-    const averages = weekdayAverages(days);
-    return [
-      productividadTile('Días más productivos', averages, 'best'),
-      productividadTile('Días menos productivos', averages, 'worst'),
-    ];
-  }
-
-  /**
-   * Qué días alcanzan el extremo de una medida, y con qué valor.
-   *
-   * Devuelve `null` cuando la medida no distingue nada: sin valores, con todo
-   * en cero, o con todos los días iguales. Ahí no hay ranking — coronar a
-   * alguien sería inventar una diferencia que no existe.
-   *
-   * Los días salen recorriendo WEEKDAYS para que los empates queden en orden
-   * cronológico (lunes → domingo) y no en el que aparecieron en el mes.
-   */
-  function extremoDe(averages, campo, tone) {
-    const valores = averages.map(a => a[campo]).filter(v => v !== null);
-    if (valores.length < 2) return null;
-
-    const top = Math.max(...valores);
-    const bottom = Math.min(...valores);
-    if (top === 0 || top === bottom) return null;
-
-    const objetivo = tone === 'best' ? top : bottom;
-    const dias = WEEKDAYS.filter(w => averages.some(a => a.js === w.js && a[campo] === objetivo));
-    return { dias, valor: objetivo };
-  }
-
-  /**
-   * Las dos medidas de un día, en el orden en que se muestran y en que las
-   * cicla el botón del análisis diario.
-   *
-   * Una sola lista para las tarjetas de productividad y para el gráfico: los
-   * dos leen los mismos dos campos de `weekdayAverages`, y tenerlos declarados
-   * dos veces era la forma segura de que un día dijeran cosas distintas.
-   *
-   * `cifra` arma el número que acompaña al día; `icono` es lo que muestra el
-   * botón del gráfico, y `hint` la bajada de la tarjeta cuando esa medida está
-   * activa.
-   */
-  const MEDIDAS = [
-    {
-      campo: 'tareas',
-      rotulo: 'Por cantidad:',
-      cifra: v => `${num(v)} ${v === 1 ? 'tarea' : 'tareas'}`,
-      icono: '123',
-      nombre: 'cantidad de tareas',
-      hint: 'Tareas completadas por día, sobre los días de uso del mes',
-    },
-    {
-      campo: 'pct',
-      rotulo: 'Porcentualmente:',
-      cifra: v => pct(v),
-      icono: '%',
-      nombre: 'porcentaje de cumplimiento',
-      hint: 'Cumplimiento de cada día, sobre los días de uso del mes',
-    },
-  ];
-
-  /** La medida que el análisis diario está mostrando. */
-  function medidaDiaria() {
-    return MEDIDAS.find(m => m.campo === state.weekdayMode) ?? MEDIDAS[0];
-  }
-
-  /**
-   * Una tarjeta de productividad: cada medida en su propia subtarjeta, con el
-   * criterio a la izquierda y el resultado —día y cifra— a la derecha.
-   *
-   * El día es el dato y va grande y con el color del extremo; el criterio y la
-   * cifra lo acompañan en gris. Las dos medidas se muestran aunque coronen al
-   * mismo día: ahí cada subtarjeta lo dice bajo un criterio distinto y con su
-   * propio número, así que no hay repetición que ahorrar.
-   *
-   * Una medida que no distingue nada —todos los días empatados— no dibuja
-   * subtarjeta: ver `extremoDe`.
-   */
-  function productividadTile(label, averages, tone) {
-    const medidas = MEDIDAS
-      .map(m => ({ ...m, extremo: extremoDe(averages, m.campo, tone) }))
-      .filter(m => m.extremo);
-
-    if (!medidas.length) return tile(label, '—', 'Todos los días parejos');
-
-    const node = tileBase(label, tone);
-    const lista = elem('ul', 'tile-ranks');
-
-    for (const { rotulo, cifra, extremo } of medidas) {
-      const item = elem('li', 'rank');
-      item.appendChild(elem('p', 'rank-label', rotulo));
-
-      const resultado = elem('p', 'rank-result');
-      resultado.append(
-        elem('span', 'rank-day',
-          extremo.dias.map(d => capitalizeFirstLetter(d.long)).join(' · ')),
-        elem('span', 'rank-value', cifra(extremo.valor)),
-      );
-
-      item.appendChild(resultado);
-      lista.appendChild(item);
-    }
-
-    node.appendChild(lista);
-    return node;
-  }
-
-  /**
-   * Cumplimiento (0-100) de un mes entero, con las tareas propias de ese mes.
-   *
-   * La meta la recorta `taskTotals` a los días vencidos, así que el mes en
-   * curso se mide por lo que lleva transcurrido. Eso es lo que vuelve honesta
-   * la comparación: antes el mes a medio andar se medía contra su mes entero y
-   * siempre perdía contra uno cerrado, por bien que se estuviera yendo.
-   */
-  function monthCompliance(year, month) {
-    const days = monthDays(year, month);
-    let points = 0;
-    let max = 0;
-    for (const task of tasksOf(year, month)) {
-      const t = taskTotals(task, days);
-      points += aporte(t.points, t.max);
-      max += t.max;
-    }
-    return max > 0 ? (points / max) * 100 : null;
-  }
-
-  function comparisonTile() {
-    const label = 'Mes actual vs mes pasado';
-    const prev = previousMonth();
-    const current = monthCompliance(ui.year, ui.month);
-    const before = monthCompliance(prev.year, prev.month);
-
-    const nameNow = capitalizeFirstLetter(fmtMonthName.format(new Date(ui.year, ui.month, 1)));
-    const nameBefore = capitalizeFirstLetter(
-      fmtMonthName.format(new Date(prev.year, prev.month, 1)));
-
-    if (current === null) return enCaja(tile(label, '—', `${nameNow} todavía no tiene meta`));
-    if (before === null) {
-      return enCaja(tile(label, pct(current), `${nameBefore} no tiene datos`));
-    }
-
-    const delta = Math.round(current) - Math.round(before);
-    const sign = delta > 0 ? '+' : '';
-    return enCaja(tile(
-      label,
-      `${sign}${delta} pts`,
-      [`${nameNow}: ${pct(current)}`,
-       `${nameBefore}: ${pct(before)}`],
-      delta > 0 ? 'up' : delta < 0 ? 'down' : '',
-    ));
-  }
+  /* El texto que acompaña al día en las tarjetas y en el gráfico: una sola
+     medida, así que no hace falta nombrarla en cada lugar. */
+  const HINT_DIARIO = 'Cumplimiento de cada día, sobre los días de uso del mes';
 
   // ---------------------------------------------------------
   // Gráficos
@@ -2438,24 +2426,6 @@
       + `L ${x + w} ${y + h} Z`;
   }
 
-  /**
-   * Reparto de estados de los días ya transcurridos del mes.
-   * Los días marcados como no requeridos quedan afuera del reparto: no son un
-   * resultado, son días que se sacaron de la cuenta.
-   */
-  function statusBreakdown(days) {
-    const counts = { done: 0, partial: 0, missed: 0, none: 0 };
-    for (const task of currentTasks()) {
-      for (const d of days) {
-        if (d > today || beforeStart(task, d)) continue;
-        const s = getStatus(task, d);
-        if (s === 'skip') continue;
-        counts[s || 'none'] += 1;
-      }
-    }
-    return counts;
-  }
-
   function chartCard(title, hint) {
     const card = elem('figure', 'chart-card');
     card.appendChild(elem('figcaption', 'chart-title', title));
@@ -2463,125 +2433,40 @@
     return card;
   }
 
-  /** Leyenda: cuadradito de color + símbolo + etiqueta + valor. */
-  function chartLegend(items) {
-    const box = elem('ul', 'chart-legend');
-    for (const item of items) {
-      const li = elem('li');
-
-      // El símbolo va FUERA del cuadradito: adentro quedaría como texto sobre
-      // un relleno saturado y el ámbar no llega a contraste. Afuera, la
-      // identidad la dan el color, el símbolo y la palabra, nunca el tono solo.
-      const swatch = elem('span', 'lg-swatch');
-      swatch.style.background = item.color;
-
-      li.append(
-        swatch,
-        elem('span', 'lg-name', item.glyph ? `${item.glyph}  ${item.label}` : item.label),
-        elem('span', 'lg-value', item.value),
-      );
-      box.appendChild(li);
-    }
-    return box;
-  }
-
-  // ---- Torta: reparto de estados --------------------------------------
-
-  function pieChart(days) {
-    const counts = statusBreakdown(days);
-    const total = counts.done + counts.partial + counts.missed + counts.none;
-
-    const card = chartCard('Reparto de estados',
-      'Sobre los días transcurridos del mes');
-
-    if (!total) {
-      card.appendChild(emptyChart('Todavía no hay días que analizar'));
-      return card;
-    }
-
-    const segments = [
-      { key: 'done',    label: 'Cumplido',    glyph: '✓', color: 'var(--chart-done)' },
-      { key: 'partial', label: 'Parcial',     glyph: '~', color: 'var(--chart-partial)' },
-      { key: 'missed',  label: 'No cumplido', glyph: '✕', color: 'var(--chart-missed)' },
-      { key: 'none',    label: 'Sin cargar',  glyph: '',  color: 'var(--chart-none)' },
-    ].filter(s => counts[s.key] > 0);
-
-    const size = 168;
-    const r = 62;
-    const c = size / 2;
-    const circumference = 2 * Math.PI * r;
-    const gap = 3;   // separador en color superficie, no un borde dibujado
-
-    const plot = svg('svg', {
-      viewBox: `0 0 ${size} ${size}`,
-      class: 'pie',
-      role: 'img',
-      'aria-label': `Reparto de estados de ${total} marcas posibles`,
-    });
-
-    let offset = 0;
-    for (const seg of segments) {
-      const len = (counts[seg.key] / total) * circumference;
-      const visible = Math.max(len - gap, 0.8);
-
-      const arc = svg('circle', {
-        cx: c, cy: c, r,
-        fill: 'none',
-        stroke: seg.color,
-        'stroke-width': 26,
-        'stroke-dasharray': `${visible} ${circumference - visible}`,
-        'stroke-dashoffset': -offset,
-        transform: `rotate(-90 ${c} ${c})`,
-      });
-      arc.appendChild(svg('title')).textContent =
-        `${seg.label}: ${counts[seg.key]} (${pct(counts[seg.key] / total * 100)})`;
-      plot.appendChild(arc);
-      offset += len;
-    }
-
-    // Centro: qué proporción del mes llegaste a registrar.
-    const cargado = total - counts.none;
-    const big = svg('text', { x: c, y: c - 2, class: 'pie-value', 'text-anchor': 'middle' });
-    big.textContent = pct(cargado / total * 100);
-    const small = svg('text', { x: c, y: c + 16, class: 'pie-label', 'text-anchor': 'middle' });
-    small.textContent = 'cargado';
-    plot.append(big, small);
-
-    const wrap = elem('div', 'pie-wrap');
-    wrap.appendChild(plot);
-    wrap.appendChild(chartLegend(segments.map(s => ({
-      color: s.color,
-      glyph: s.glyph,
-      label: s.label,
-      value: `${counts[s.key]} · ${pct(counts[s.key] / total * 100)}`,
-    }))));
-
-    card.appendChild(wrap);
-    return card;
-  }
-
   // ---- Barras: promedio por día de la semana ---------------------------
 
   /**
-   * El botón de la esquina del análisis diario. Muestra el ícono de la medida
-   * ACTIVA —`123` o `%`—, igual que el botón de zoom muestra el nivel puesto y
-   * no el siguiente, y su tooltip nombra las dos: qué se está viendo y a qué
-   * se pasa. Con dos medidas, ciclar y alternar son lo mismo.
+   * La marca del podio, arriba de la barra: una corona sobre el mejor día y una
+   * cruz sobre el peor.
+   *
+   * Es lo que antes decía el color de la barra. Separarlos deja que el color
+   * hable de cuánto se cumplió y el dibujo de quién ganó, que son dos preguntas
+   * distintas: el mejor día de un mes flojo sigue siendo el mejor, y su barra
+   * tiene que poder ser roja.
    */
-  function botonMedidaDiaria(medida) {
-    const otra = MEDIDAS[(MEDIDAS.indexOf(medida) + 1) % MEDIDAS.length];
-    return boton('chart-mode', {
-      text: medida.icono,
-      action: 'medida-diaria',
-      title: `Mostrando ${medida.nombre} — ver ${otra.nombre}`,
-      label: `Medida del análisis diario: ${medida.nombre}. Cambiar a ${otra.nombre}`,
+  function podio(cx, y, cual) {
+    const g = svg('g', {
+      class: `podio podio-${cual}`,
+      transform: `translate(${cx} ${y})`,
     });
+
+    g.appendChild(svg('path', {
+      d: cual === 'mejor'
+        // Corona: base y tres picos.
+        ? 'M-6.5 4 L-6.5 -3.5 L-3 0 L0 -4.5 L3 0 L6.5 -3.5 L6.5 4 Z'
+        // Cruz: el último del podio.
+        : 'M-4 -4 L4 4 M4 -4 L-4 4',
+    }));
+
+    g.appendChild(svg('title')).textContent =
+      cual === 'mejor' ? 'El mejor día del mes' : 'El peor día del mes';
+    return g;
   }
 
   function weekdayChart(days) {
-    const medida = medidaDiaria();
-    const card = chartCard('Análisis diario', medida.hint);
-    card.appendChild(botonMedidaDiaria(medida));
+    /* Tuvo un botón en la esquina para elegir entre cantidad de tareas y
+       porcentaje. Con una sola medida no hay nada que elegir. */
+    const card = chartCard('Barras', HINT_DIARIO);
 
     /* El mismo mínimo que las tarjetas de productividad, porque es la misma
        cuenta: si la tarjeta dice que no alcanza, la barra de al lado no puede
@@ -2593,23 +2478,41 @@
     }
 
     const averages = weekdayAverages(days);
-    const byJs = new Map(averages.map(a => [a.js, a[medida.campo]]));
-    const data = WEEKDAYS.map(w => ({ w, avg: byJs.get(w.js) ?? null }));
+    const byJs = new Map(averages.map(a => [a.js, a]));
+    const data = WEEKDAYS.map(w => ({
+      w,
+      avg: byJs.get(w.js)?.pct ?? null,
+      tareas: byJs.get(w.js)?.tareas ?? 0,
+    }));
     const values = data.filter(d => d.avg !== null).map(d => d.avg);
 
-    /* Con la medida porcentual un día puede no tener nada que medir —ninguna
-       tarea le pedía nada— y viene en `null`, así que el vacío se decide sobre
-       los valores que quedaron y no sobre la cantidad de días. */
+    /* Un día puede no tener nada que medir —ninguna tarea le pedía nada— y viene
+       en `null`, así que el vacío se decide sobre los valores que quedaron y no
+       sobre la cantidad de días. */
     if (!values.length || values.every(v => v === 0)) {
       card.appendChild(emptyChart('Todavía no hay datos cargados'));
       return card;
     }
 
-    const top = Math.max(...values);
-    const bottom = Math.min(...values);
+    /* El podio compara lo MISMO que se muestra —el porcentaje redondeado— y,
+       cuando eso empata, mira cuántas tareas se hicieron en promedio ese día:
+       entre dos días que cumplieron igual, rindió más el que hizo más cosas.
 
-    const W = 340, H = 170;
-    const padX = 10, padTop = 22, padBottom = 26;
+       Comparar sobre el promedio con decimales decidía por un dato que la barra
+       no muestra: dos días rotulados «75%» podían ser 75,4 y 74,8, y la corona
+       caía en uno sin que se viera por qué. */
+    const rinde = (a, b) => (Math.round(a.avg) - Math.round(b.avg)) || (a.tareas - b.tareas);
+
+    const medidos = data.filter(d => d.avg !== null);
+    const mejor = medidos.reduce((x, y) => (rinde(y, x) > 0 ? y : x));
+    const peor = medidos.reduce((x, y) => (rinde(y, x) < 0 ? y : x));
+
+    // La altura sí sale del valor exacto: es una escala, no un ranking.
+    const top = Math.max(...values);
+
+    const W = 340, H = 178;
+    // El alto de arriba tiene que alcanzar para el número Y para el podio.
+    const padX = 10, padTop = 40, padBottom = 26;
     const band = (W - padX * 2) / data.length;
     const barW = Math.min(24, band * 0.55);
     const plotH = H - padTop - padBottom;
@@ -2618,7 +2521,7 @@
       viewBox: `0 0 ${W} ${H}`,
       class: 'bars',
       role: 'img',
-      'aria-label': `Promedio de ${medida.nombre} por día de la semana`,
+      'aria-label': 'Cumplimiento promedio por día de la semana',
     });
 
     // Línea de base: hairline sólida, un paso por encima de la superficie.
@@ -2640,26 +2543,41 @@
 
       const h = Math.max(top > 0 ? (d.avg / top) * plotH : 0, 2);
       const y = padTop + plotH - h;
-      const esTope = d.avg === top;
-      const esPiso = d.avg === bottom && top !== bottom;
 
+      /* Empatar en los dos criterios corona a los dos: ahí no hay diferencia que
+         mostrar, y elegir uno sería inventarla. Y sin diferencia entre el mejor
+         y el peor no hay podio: el mes está parejo. */
+      const esTope = rinde(d, mejor) === 0;
+      const esPiso = rinde(d, peor) === 0 && rinde(mejor, peor) !== 0;
+
+      /* El color dice qué tan bien está ese día, con el mismo umbral que el
+         resto de la app: verde desde 75, ámbar desde 50, rojo abajo. Antes decía
+         cuál era el extremo —verde el más alto, rojo el más bajo—, así que un mes
+         malo parejo igual tenía su barra verde. Cuál es el extremo lo dice ahora
+         el podio, arriba de la barra. */
+      /* Los mismos colores que la lista del día: una barra verde y una tarjeta
+         verde tienen que querer decir lo mismo. Son áreas grandes, así que el
+         pastel alcanza —lo que no alcanzaba era en los puntos de 13px. */
+      const nivel = complianceOf(d.avg, 100);
       const bar = svg('path', {
         d: columnPath(cx - barW / 2, y, barW, h),
-        fill: esTope ? 'var(--chart-done)' : esPiso ? 'var(--chart-missed)' : 'var(--chart-neutral)',
+        fill: `var(--${nivel.status}-bg)`,
       });
       bar.appendChild(svg('title')).textContent =
-        `${capitalizeFirstLetter(d.w.long)}: ${medida.cifra(d.avg)} en promedio`;
+        `${capitalizeFirstLetter(d.w.long)}: ${pct(d.avg)} en promedio`;
       plot.appendChild(bar);
 
-      // Solo se rotulan los extremos: un número sobre cada barra es ruido.
-      if (esTope || esPiso) {
-        const value = svg('text', {
-          x: cx, y: y - 6, 'text-anchor': 'middle', class: 'bar-value',
-        });
-        // Sin la unidad, que ya está en el tooltip: sobre la barra no entra.
-        value.textContent = medida.campo === 'pct' ? pct(d.avg) : num(d.avg);
-        plot.appendChild(value);
-      }
+      /* El número va en todas. Estuvo solo en los extremos, cuando el color
+         decía cuál era el mejor y cuál el peor y un número por barra era ruido
+         encima de eso. Ahora el color dice el nivel y el podio dice el extremo,
+         así que el número queda libre para lo suyo: el dato exacto del día. */
+      const value = svg('text', {
+        x: cx, y: y - 6, 'text-anchor': 'middle', class: 'bar-value',
+      });
+      value.textContent = pct(d.avg);
+      plot.appendChild(value);
+
+      if (esTope || esPiso) plot.appendChild(podio(cx, y - 24, esTope ? 'mejor' : 'peor'));
     });
 
     card.appendChild(plot);
@@ -2668,161 +2586,344 @@
 
   // ---- Barras horizontales: cumplimiento por tarea ---------------------
 
+  /**
+   * La misma forma que «Puntos» —una tarjeta por tarea, con su nombre y su
+   * frecuencia— pero con una barra en lugar de los puntos: adónde llegó el mes
+   * para esa tarea.
+   *
+   * Va ordenado de mayor a menor, que es la pregunta que se le hace: cuál va
+   * mejor y cuál está flojo. Copió un tiempo el orden de la lista, para poder
+   * compararse renglón contra renglón con «Puntos»; esa comparación se paga con
+   * un ojo más de trabajo, leer el ranking no.
+   *
+   * Las que este mes no piden nada no tienen porcentaje que ordenar, así que van
+   * al final: arriba ocuparían el lugar de las que sí.
+   */
   function taskChart(days) {
-    const card = chartCard('Cumplimiento por tarea', 'Sobre lo que va del mes');
+    const card = chartCard('Porcentajes', 'A cuánto llegó cada tarea en lo que va del mes');
+    card.classList.add('is-plana');
 
-    const rows = currentTasks()
-      .map(task => {
-        const t = taskTotals(task, days);
-        const level = complianceOf(t.points, t.max);
-        return level ? { name: task.name, ratio: level.ratio, status: level.status } : null;
-      })
-      .filter(Boolean)
-      .sort((a, b) => b.ratio - a.ratio);
-
-    if (!rows.length) {
-      card.appendChild(emptyChart('Ninguna tarea tiene meta este mes'));
+    const filas = tareasOrdenadas(days);
+    if (!filas.length) {
+      card.appendChild(emptyChart('Todavía no hay tareas este mes'));
       return card;
     }
 
-    const list = elem('ul', 'hbars');
+    const lista = elem('ul', 'dots-list');
+    for (const { task, nivel } of filas) {
+      const fila = elem('li', 'dots-row');
 
-    for (const row of rows) {
-      const li = elem('li');
+      const info = elem('div', 'task-info');
+      const nombre = elem('span', 'task-name', task.name);
+      nombre.title = task.name;
+      info.append(nombre, elem('span', 'task-freq', freqLabel(task)));
 
-      const name = elem('span', 'hb-name', row.name);
-      name.title = row.name;
-
-      // El cumplimiento topea en 100%, así que la barra llena es el máximo y la
-      // escala coincide con el dato: no hace falta recortar nada.
-      const track = elem('span', 'hb-track');
-      const fill = elem('i', `hb-fill st-${row.status}`);
-      fill.style.width = `${row.ratio}%`;
-      track.appendChild(fill);
-
-      li.append(name, track, elem('span', 'hb-value', pct(row.ratio)));
-      li.title = `${row.name}: ${pct(row.ratio)} de cumplimiento`;
-      list.appendChild(li);
+      fila.append(info, barraDeTarea(task, nivel));
+      lista.appendChild(fila);
     }
 
-    // Sin leyenda: los umbrales ya están en la columna Estatus del tablero, y
-    // acá cada barra lleva su porcentaje al lado, que es el dato exacto.
-    card.appendChild(list);
+    card.appendChild(lista);
     return card;
+  }
+
+  /**
+   * La barra de una tarea: el riel, lo alcanzado y el número al costado.
+   *
+   * El color sale del NIVEL, con la misma lógica que «Barras»: verde desde 75,
+   * ámbar desde 50, rojo abajo. Una tarea sin meta este mes —ninguna de sus
+   * fechas cae en él— no tiene adónde llegar, así que va con el riel vacío y un
+   * guion en lugar del número.
+   */
+  function barraDeTarea(task, nivel) {
+    const caja = elem('div', 'meter');
+    const riel = elem('span', 'meter-track');
+
+    if (nivel) {
+      /* El cumplimiento topea en 100%, así que la barra llena es el máximo y la
+         escala coincide con el dato: no hace falta recortar nada. */
+      const lleno = elem('i', `meter-fill st-${nivel.status}`);
+      lleno.style.width = `${nivel.ratio}%`;
+      riel.appendChild(lleno);
+    }
+
+    caja.append(riel, elem('span', 'meter-value', nivel ? pct(nivel.ratio) : '—'));
+    caja.title = nivel
+      ? `${task.name}: ${pct(nivel.ratio)} de cumplimiento`
+      : `${task.name}: este mes no pide nada`;
+    return caja;
   }
 
   function emptyChart(text) {
     return elem('p', 'chart-empty', text);
   }
 
-  function renderCharts() {
-    const days = monthDays(ui.year, ui.month);
-    el.charts.innerHTML = '';
-    el.charts.append(pieChart(days), weekdayChart(days), taskChart(days));
-  }
+  // ---- Puntos: el mes día por día, tarea por tarea ---------------------
 
   /**
-   * El armazón de una tarjeta: la caja, su tono y el rótulo de arriba. Lo que
-   * va debajo lo pone quien la arma — el par valor/subtítulo de `tile`, o los
-   * renglones por medida de `productividadTile`.
-   */
-  function tileBase(label, tone = '') {
-    const node = elem('div', tone ? `tile tone-${tone}` : 'tile');
-    node.appendChild(elem('p', 'tile-label', label));
-    return node;
-  }
-
-  /**
-   * Mete el contenido de una tarjeta —todo menos el rótulo— en una caja
-   * hundida, hermana de las subtarjetas de productividad. La caja se estira
-   * hasta llenar el alto que queda bajo el rótulo, así la tarjeta se lee con
-   * el mismo lenguaje que sus vecinas en lugar de como texto suelto.
+   * Cómo viene el mes: lo hecho sobre lo que las tareas piden.
    *
-   * Se hace por fuera de `tile` y no con un parámetro más porque es una
-   * decisión de quien arma cada tarjeta, no del molde.
+   * Es la MISMA cuenta que el resto de la app —una cumplida suma un punto y una
+   * parcial medio, y cada tarea aporta como mucho su propia meta—, agregada
+   * sobre todas las tareas del mes. Así el número de arriba no puede
+   * contradecir a los de abajo.
+   *
+   * `taskTotals` recorta la meta a los días ya vencidos: lo que no transcurrió
+   * no se exige, y al día 4 el mes entero por delante no cuenta como
+   * incumplido. Y cuenta bien a las de período —una semanal pide cuatro veces
+   * en el mes, sin pedir ningún día en particular—, que contadas por «días
+   * requeridos» no aportaban nada y dejaban el mes en 100% siempre.
    */
-  function enCaja(card) {
-    const caja = elem('div', 'tile-box');
-    // El rótulo es el primer hijo y se queda afuera; lo demás se muda.
-    while (card.children.length > 1) caja.appendChild(card.children[1]);
-    card.appendChild(caja);
+  function cumplimientoMensual(days) {
+    let puntos = 0;
+    let meta = 0;
+
+    for (const task of currentTasks()) {
+      const t = taskTotals(task, days);
+      /* El tope por tarea es lo que impide que hacer de más en una tape el
+         incumplimiento de otra. */
+      puntos += aporte(t.points, t.max);
+      meta += t.max;
+    }
+    return { puntos, meta };
+  }
+
+  /**
+   * El renglón de arriba de Análisis. Se dibuja siempre, también cuando no hay
+   * nada que medir: ahí muestra «—», que es lo que dice un mes sin exigencias.
+   */
+  function renderMesResumen() {
+    const days = monthDays(ui.year, ui.month);
+    const { puntos, meta } = cumplimientoMensual(days);
+    const nivel = complianceOf(puntos, meta);
+
+    el.mesResumen.className = `dia-resumen ${nivel ? 'cp-' + nivel.status : 'cp-empty'}`;
+    el.mesResumenValor.textContent = nivel ? pct(nivel.ratio) : '—';
+    // El mismo texto que el resumen del día, que hace la misma cuenta.
+    el.mesResumen.title = nivel
+      ? `${num(puntos)} sobre una meta de ${num(meta)} en ${labelDeMes()}`
+      : `Ninguna tarea pidió nada en ${labelDeMes()}`;
+  }
+
+  /**
+   * Las tareas del mes en el orden elegido. `lista` las deja como están —es el
+   * orden que uno armó, el mismo que muestra Hábitos—; los otros dos ordenan por
+   * cumplimiento del mes.
+   *
+   * Las que este mes no piden nada no tienen porcentaje que ordenar, así que van
+   * al final en los dos sentidos: arriba ocuparían el lugar de las que sí.
+   */
+  function tareasOrdenadas(days) {
+    const filas = currentTasks().map(task => {
+      const t = taskTotals(task, days);
+      return { task, nivel: complianceOf(t.points, t.max) };
+    });
+
+    if (ui.orden === 'lista') return filas;
+
+    const signo = ui.orden === 'desc' ? -1 : 1;
+    return [...filas].sort((a, b) => {
+      if (!a.nivel || !b.nivel) return (a.nivel ? 0 : 1) - (b.nivel ? 0 : 1);
+      return signo * (a.nivel.ratio - b.nivel.ratio);
+    });
+  }
+
+  /** Los tres órdenes, en el orden en que los ofrece el desplegable. */
+  const ORDENES = [
+    { clave: 'lista', nombre: 'el predeterminado' },
+    { clave: 'desc', nombre: 'de mayor a menor' },
+    { clave: 'asc', nombre: 'de menor a mayor' },
+  ];
+
+  /**
+   * El botón del orden: existe solo donde hay algo que ordenar —«Puntos» y
+   * «Porcentajes» listan tareas; «Barras» es por día de la semana, y ahí el
+   * orden es el calendario—.
+   *
+   * Muestra el dibujo del orden PUESTO, como el botón del tema: el control dice
+   * dónde está. Cuál se elige lo resuelve el desplegable, donde las tres están a
+   * la vista y la puesta se ve.
+   */
+  function renderOrden() {
+    const listaDeTareas = ui.chart === 'puntos' || ui.chart === 'porcentajes';
+    el.orden.hidden = !(ui.page === 'indicators' && listaDeTareas);
+    if (el.orden.hidden) return;
+
+    const actual = ORDENES.find(o => o.clave === ui.orden) ?? ORDENES[0];
+
+    for (const icono of el.orden.querySelectorAll('.orden-icon')) {
+      icono.hidden = icono.dataset.orden !== actual.clave;
+    }
+    el.orden.title = `Orden: ${actual.nombre}`;
+    el.orden.setAttribute('aria-label', `Ordenar. Ahora: ${actual.nombre}`);
+
+    for (const opcion of el.ordenDialog.querySelectorAll('.orden-opcion')) {
+      opcion.setAttribute('aria-pressed', String(opcion.dataset.orden === actual.clave));
+    }
+  }
+
+  el.orden.addEventListener('click', () => {
+    el.ordenDialog.showModal();
+    $('#orden-title').focus();
+  });
+
+  el.ordenDialog.addEventListener('click', e => {
+    const opcion = e.target.closest('.orden-opcion');
+    if (!opcion) return;
+    ui.orden = opcion.dataset.orden;
+    el.ordenDialog.close();
+    renderCharts();
+  });
+
+  /**
+   * El mes entero en puntos: una fila por tarea y un punto por día.
+   *
+   * Los otros dos gráficos resumen —un número por tarea, un promedio por día de
+   * la semana—; este no resume nada, y por eso muestra lo que ninguno puede
+   * decir: dónde se cortó una racha, cuántos días seguidos duró, si el bajón fue
+   * al principio o al final del mes.
+   *
+   * Van TODAS las tareas del mes, también las que hoy no se ven —archivadas o
+   * eliminadas desde una fecha—: sus días fuera de vigencia salen apagados, que
+   * es justamente lo que cuenta su historia.
+   */
+  function monthDotsChart(days) {
+    /* Sin recuadro: no es un dibujo adentro de una caja sino una lista de las
+       mismas tarjetas de Hábitos, y envolverla dejaba una caja adentro de otra.
+       Sueltas, las filas ocupan el ancho entero, que es lo que los puntos
+       necesitan para entrar en menos renglones. */
+    const card = chartCard('Puntos',
+      'Un punto por día, del color del estado de esa tarea ese día');
+    card.classList.add('is-plana');
+
+    const filas = tareasOrdenadas(days);
+    if (!filas.length) {
+      card.appendChild(emptyChart('Todavía no hay tareas este mes'));
+      return card;
+    }
+
+    const lista = elem('ul', 'dots-list');
+    for (const { task } of filas) {
+      const fila = elem('li', 'dots-row');
+
+      const info = elem('div', 'task-info');
+      const nombre = elem('span', 'task-name', task.name);
+      nombre.title = task.name;
+      info.append(nombre, elem('span', 'task-freq', freqLabel(task)));
+
+      const puntos = elem('div', 'dots');
+      for (const d of days) puntos.appendChild(dotOf(task, d));
+
+      fila.append(info, puntos);
+      lista.appendChild(fila);
+    }
+
+    card.appendChild(lista);
     return card;
   }
 
   /**
-   * Tarjeta de un solo dato: un valor grande y su explicación debajo.
+   * El punto de una tarea en un día. Los cuatro estados llevan su color, y hay
+   * dos maneras de no llevar ninguno:
    *
-   * @param sub texto suelto, o un arreglo que se lista con viñetas.
-   *   Con un solo elemento se dibuja como texto: una viñeta sola queda rara.
+   * - **apagado**: el día está fuera de vigencia —antes de empezar, archivada o
+   *   eliminada— o todavía no llegó. No hay nada que decir de él.
+   * - **vacío**: el día pasó y no se cargó. Eso sí es un dato.
+   *
+   * Y el día que la frecuencia no pide se atenúa, igual que la tarjeta de la
+   * lista del día: una tarea de lunes a viernes no incumple los domingos.
    */
-  function tile(label, value, sub, tone = '') {
-    const node = tileBase(label, tone);
-    node.appendChild(elem('p', 'tile-value', value));
+  function dotOf(task, date) {
+    const punto = elem('span', 'dot');
+    const cuando = fmtFull.format(date);
 
-    const items = (Array.isArray(sub) ? sub : [sub]).filter(Boolean);
-
-    if (items.length > 1) {
-      const list = elem('ul', 'tile-list');
-      for (const item of items) list.appendChild(elem('li', '', item));
-      node.appendChild(list);
-    } else {
-      const p = elem('p', 'tile-sub', items[0] || '');
-      p.title = items[0] || '';
-      node.appendChild(p);
+    /* Los días en que la tarea no estaba viva —antes de su fecha de inicio,
+       archivada o eliminada— no pedían nada, que es lo mismo que dice el gris.
+       Apagados se confundían con los días que todavía no llegaron, y una tarea
+       dada de alta a mitad de mes arrancaba el mes pareciendo pendiente. */
+    if (fueraDeVigencia(task, date)) {
+      punto.classList.add('st-skip');
+      punto.title = `${task.name}, ${cuando}: `
+        + (beforeStart(task, date) ? 'todavía no existía' : 'no estaba activa');
+      return punto;
     }
 
-    return node;
+    const estado = getStatus(task, date);
+    const noPedido = !estado && !isRequiredDay(task, date);
+
+    /* Que un día no se pida NO es un resultado que haya que esperar: se sabe
+       desde que se eligió la frecuencia. Por eso el gris se decide antes de
+       mirar si el día ya pasó —si no, una tarea de lunes a viernes terminaba el
+       mes con los fines de semana vacíos, que se leen como pendientes—. */
+    if (noPedido) {
+      punto.classList.add('st-skip');
+      punto.title = `${task.name}, ${cuando}: no requerido`;
+      return punto;
+    }
+
+    /* Lo que el futuro sí tiene sin saber es si se va a cumplir, y eso solo
+       aplica a los días que se piden. */
+    if (!estado && date > today) {
+      punto.classList.add('is-off');
+      punto.title = `${task.name}, ${cuando}`;
+      return punto;
+    }
+
+    // El mismo nombre que usa el botón de estado de la lista del día.
+    punto.classList.add(estado ? `st-${estado}` : 'st-none');
+    punto.title = `${task.name}, ${cuando}: `
+      + (estado ? STATUS_LABEL[estado] : 'sin cargar');
+    return punto;
+  }
+
+  /**
+   * Cuál dibuja cada opción del menú, en el orden en que se ofrecen.
+   *
+   * Se nombran por su FORMA y no por lo que miden: los tres miden cumplimiento
+   * del mes, así que «Visualización mensual», «Cumplimiento por tarea» y
+   * «Análisis diario» eran tres títulos parecidos que no ayudaban a elegir. Lo
+   * que los distingue al elegir es cómo se ven; qué muestran lo dice la bajada
+   * de cada uno.
+   */
+  const GRAFICOS = {
+    puntos: { boton: 'btn-chart-puntos', dibuja: monthDotsChart },
+    porcentajes: { boton: 'btn-chart-porcentajes', dibuja: taskChart },
+    barras: { boton: 'btn-chart-barras', dibuja: weekdayChart },
+  };
+
+  /* Uno por vez: los tres apilados obligan a desplazar para llegar al de abajo,
+     y casi siempre se quiere mirar uno. Cuál se elige en el cajón. */
+  function renderCharts() {
+    const days = monthDays(ui.year, ui.month);
+    const elegido = GRAFICOS[ui.chart] ?? GRAFICOS.puntos;
+
+    el.charts.innerHTML = '';
+    el.charts.appendChild(elegido.dibuja(days));
+    renderOrden();
+    renderMesResumen();
+
+    for (const [clave, g] of Object.entries(GRAFICOS)) {
+      const btn = $(`#${g.boton}`);
+      const activo = clave === ui.chart;
+      btn.setAttribute('aria-pressed', String(activo));
+      btn.classList.toggle('is-active', activo);
+    }
+  }
+
+  for (const [clave, g] of Object.entries(GRAFICOS)) {
+    $(`#${g.boton}`).addEventListener('click', () => {
+      ui.chart = clave;
+      renderCharts();
+    });
   }
 
   // ---------------------------------------------------------
   // Interacción con la grilla
   // ---------------------------------------------------------
 
-  el.grid.addEventListener('change', e => {
-    // "Todas": tilda o destilda de una vez y sincroniza los casilleros de fila.
-    const all = e.target.closest('[data-pick-all]');
-    if (all) {
-      ui.selected.clear();
-      if (all.checked) for (const t of currentTasks()) ui.selected.add(t.id);
-      for (const box of el.grid.querySelectorAll('tbody .task-pick')) {
-        box.checked = ui.selected.has(box.dataset.taskId);
-      }
-      syncSelection();
-      return;
-    }
-
-    const pick = e.target.closest('.task-pick');
-    if (!pick) return;
-    if (pick.checked) ui.selected.add(pick.dataset.taskId);
-    else ui.selected.delete(pick.dataset.taskId);
-    syncSelection();
-  });
-
-  /* Los gráficos se redibujan enteros en cada render, así que el botón que
-     cambia la medida no sobrevive a su propio clic: el listener va en el
-     contenedor, que sí es fijo. Después hay que devolver el foco al botón
-     nuevo, porque el que lo tenía dejó de existir. */
-  el.charts.addEventListener('click', e => {
-    if (!e.target.closest('[data-action="medida-diaria"]')) return;
-
-    const i = MEDIDAS.indexOf(medidaDiaria());
-    state.weekdayMode = MEDIDAS[(i + 1) % MEDIDAS.length].campo;
-    savePrefs();
-    renderCharts();
-    el.charts.querySelector('[data-action="medida-diaria"]')?.focus();
-  });
-
-  el.grid.addEventListener('click', e => {
-    if (e.target.closest('[data-compliance-mode]')) {
-      state.complianceMode = nextComplianceMode();
-      savePrefs();
-      render();
-      return;
-    }
-
+  el.diaLista.addEventListener('click', e => {
     const action = e.target.closest('[data-action]');
     if (action) {
-      const taskId = action.closest('tr').dataset.taskId;
+      const taskId = action.closest('.dia-fila').dataset.taskId;
       switch (action.dataset.action) {
         case 'edit': openTaskDialog(taskId); break;
         case 'move-up': moveTask(taskId, -1); break;
@@ -2836,91 +2937,27 @@
     cycleCell(cell, e.shiftKey ? -1 : 1);
   });
 
-  // ---------------------------------------------------------
-  // Reordenar arrastrando
-  // ---------------------------------------------------------
-  //  La fila solo se vuelve arrastrable mientras el puntero apoya sobre el
-  //  nombre. Si `draggable` quedara siempre activo, arrastrar desde una celda
-  //  de estado movería la tarea sin querer.
-
-  let arrastrando = null;
-
-  function limpiarArrastre() {
-    for (const tr of el.grid.querySelectorAll('tbody tr')) {
-      tr.draggable = false;
-      tr.classList.remove('is-dragging', 'drop-before', 'drop-after');
+  el.diaLista.addEventListener('change', e => {
+    // «Todas»: tilda o destilda de una vez y sincroniza los casilleros de fila.
+    const all = e.target.closest('[data-pick-all]');
+    if (all) {
+      ui.selected.clear();
+      if (all.checked) for (const t of currentTasks()) ui.selected.add(t.id);
+      for (const box of el.diaLista.querySelectorAll('.task-pick')) {
+        box.checked = ui.selected.has(box.dataset.taskId);
+      }
+      syncSelection();
+      return;
     }
-    arrastrando = null;
-  }
 
-  el.grid.addEventListener('mousedown', e => {
-    const tr = e.target.closest('[data-drag-handle]')?.closest('tr[data-task-id]');
-    if (tr) tr.draggable = true;
+    const pick = e.target.closest('.task-pick');
+    if (!pick) return;
+    if (pick.checked) ui.selected.add(pick.dataset.taskId);
+    else ui.selected.delete(pick.dataset.taskId);
+    syncSelection();
   });
 
-  el.grid.addEventListener('dragstart', e => {
-    const tr = e.target.closest('tr[data-task-id]');
-    if (!tr || !tr.draggable) return;
-    arrastrando = tr.dataset.taskId;
-    tr.classList.add('is-dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', arrastrando);
-  });
-
-  el.grid.addEventListener('dragover', e => {
-    if (!arrastrando) return;
-    const tr = e.target.closest('tr[data-task-id]');
-    if (!tr || tr.dataset.taskId === arrastrando) return;
-
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-
-    // El punto medio de la fila decide si se suelta antes o después.
-    const caja = tr.getBoundingClientRect();
-    const antes = e.clientY < caja.top + caja.height / 2;
-    for (const otra of el.grid.querySelectorAll('tbody tr')) {
-      otra.classList.remove('drop-before', 'drop-after');
-    }
-    tr.classList.add(antes ? 'drop-before' : 'drop-after');
-  });
-
-  el.grid.addEventListener('drop', e => {
-    const tr = e.target.closest('tr[data-task-id]');
-    if (!arrastrando || !tr) return;
-    e.preventDefault();
-
-    const antes = tr.classList.contains('drop-before');
-    const destino = tr.dataset.taskId;
-    const origen = arrastrando;
-    limpiarArrastre();
-    reorderTask(origen, destino, antes);
-  });
-
-  el.grid.addEventListener('dragend', limpiarArrastre);
-
-  /** Mueve `taskId` justo antes o después de `targetId`. */
-  function reorderTask(taskId, targetId, antes) {
-    if (taskId === targetId) return;
-
-    const tasks = materialize();
-    const orden = tasks.map(t => t.id);
-    if (!orden.includes(taskId) || !orden.includes(targetId)) return;
-
-    // Se saca primero y recién después se busca el destino: así el índice ya
-    // contempla el corrimiento y no hay que compensarlo a mano.
-    orden.splice(orden.indexOf(taskId), 1);
-    orden.splice(orden.indexOf(targetId) + (antes ? 0 : 1), 0, taskId);
-
-    const porId = new Map(tasks.map(t => [t.id, t]));
-    state.months[monthKey(ui.year, ui.month)] = orden.map(id => porId.get(id));
-
-    const scroll = el.tableWrap.scrollLeft;
-    save();
-    render();
-    el.tableWrap.scrollLeft = scroll;
-  }
-
-  /** Reordena una tarea manteniendo el scroll y el foco sobre el mismo botón. */
+  /** Mueve una tarea un lugar y deja el foco sobre el mismo chevrón, ya movido. */
   function moveTask(taskId, delta) {
     const tasks = materialize();
     const from = tasks.findIndex(t => t.id === taskId);
@@ -2929,16 +2966,20 @@
 
     [tasks[from], tasks[to]] = [tasks[to], tasks[from]];
     save();
-
-    const scroll = el.tableWrap.scrollLeft;
     render();
-    el.tableWrap.scrollLeft = scroll;
 
     const action = delta < 0 ? 'move-up' : 'move-down';
-    const next = el.grid.querySelector(
-      `tr[data-task-id="${CSS.escape(taskId)}"] [data-action="${action}"]`);
+    const next = el.diaLista.querySelector(
+      `.dia-fila[data-task-id="${CSS.escape(taskId)}"] [data-action="${action}"]`);
     if (next && !next.disabled) next.focus();
   }
+
+  /* Elegir un día del carrete. Los del mes vecino también valen: el mes de
+     trabajo los sigue. */
+  el.carretePista.addEventListener('click', e => {
+    const ficha = e.target.closest('[data-date]');
+    if (ficha) irAlDia(parseDateKey(ficha.dataset.date));
+  });
 
   /**
    * Un día pasa a estar cerrado apenas termina. No es un candado duro: se abre
@@ -2972,213 +3013,87 @@
       return;
     }
 
-    const ciclo = allowsSkip(task) ? CYCLE_CON_SKIP : CYCLE;
     const current = getStatus(task, date);
+
+    /* «No requerido» es eximirse de un día que SÍ tocaba. Donde la frecuencia
+       no pedía nada, ese día ya estaba fuera de la meta y marcarlo no cambiaría
+       una coma: el ciclo se saltea el paso en vez de ofrecer uno que no hace
+       nada.
+
+       Si el día YA está eximido, el paso tiene que seguir en el ciclo o no
+       habría cómo salir de él: `isRequiredDay` devuelve false justamente porque
+       está eximido. */
+    const pideElDia = isRequiredDay(task, date) || current === 'skip';
+    const ciclo = allowsSkip(task) && pideElDia ? CYCLE_CON_SKIP : CYCLE;
     const next = ciclo[(ciclo.indexOf(current) + dir + ciclo.length) % ciclo.length];
 
     setStatus(task, date, next);
 
     // Repintado puntual de la celda + recálculo de totales.
     cell.className = `cell ${next ? 'st-' + next : 'st-none'}`;
-    cell.textContent = next ? STATUS_GLYPH[next] : '';
+
+    /* La fila acompaña: marcar «no requerido» apaga la tarjeta entera, y
+       sacarlo la enciende — salvo que la frecuencia tampoco pida ese día, que
+       es un apagado que no depende de la marca. */
+    cell.closest('.dia-fila')?.classList.toggle('is-optional', !cuentaHoy(task, date));
     cell.setAttribute('aria-label',
       `${task.name}, ${fmtFull.format(date)}: ${next ? STATUS_LABEL[next] : 'sin cargar'}`);
 
     refreshTotals();
-    scrollCellIntoView(cell);
-  }
-
-  function scrollCellIntoView(cell) {
-    if (!cell || !el.tableWrap.contains(cell)) return;
-
-    const container = el.tableWrap;
-    const cellRect = cell.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    const leftSticky = el.grid.querySelector('.col-task')?.getBoundingClientRect().width || 0;
-    const rightSticky = el.grid.querySelector('.col-total')?.getBoundingClientRect().width || 0;
-    const padding = 8;
-
-    let targetLeft = container.scrollLeft;
-    const cellLeft = cellRect.left - containerRect.left + container.scrollLeft;
-    const cellRight = cellLeft + cellRect.width;
-    const visibleLeft = container.scrollLeft + leftSticky + padding;
-    const visibleRight = container.scrollLeft + container.clientWidth - rightSticky - padding;
-
-    if (cellLeft < visibleLeft) {
-      targetLeft = Math.max(0, cellLeft - leftSticky - padding);
-    } else if (cellRight > visibleRight) {
-      targetLeft = Math.min(container.scrollWidth - container.clientWidth,
-        cellRight - container.clientWidth + rightSticky + padding);
-    }
-
-    if (targetLeft !== container.scrollLeft) {
-      container.scrollLeft = targetLeft;
-    }
-  }
-
-  /** Recalcula fila de totales, columna de totales y tarjetas sin reconstruir la tabla. */
-  function refreshTotals() {
-    const { days } = visibleDays();
-
-    // Indexadas una vez: buscarlas dentro del bucle recorría la lista entera
-    // por cada fila, y esto corre en cada clic sobre una celda.
-    const porId = new Map(currentTasks().map(t => [t.id, t]));
-
-    const rows = el.grid.querySelectorAll('tbody tr');
-    rows.forEach(tr => {
-      const task = porId.get(tr.dataset.taskId);
-      if (!task) return;
-      const cell = tr.querySelector('.row-total');
-      if (!cell) return;   // columna de cumplimiento oculta
-      applyCompliance(cell, taskTotals(task, days));
-    });
-
-    const footCells = el.grid.querySelectorAll('tfoot .col-day');
-
-    days.forEach((d, i) => {
-      if (footCells[i]?.querySelector('.day-total')) applyDayTotal(footCells[i], d);
-    });
-
-    const grand = el.grid.querySelector('tfoot .grand-total');
-    if (grand) applyCompliance(grand, rangeTotals(days));
-
-    // los indicadores viven en su propia sección del menú
   }
 
   // ---------------------------------------------------------
   // Navegación
   // ---------------------------------------------------------
 
-  /** Cambia de mes. `landing` indica en qué ventana caer: la primera o la última. */
+  el.hoy.addEventListener('click', goToToday);
+
+  /* Una vuelta entera: los siete días que se ven, no uno. Al costado de una
+     tira, una flecha se lee como «la página anterior»; el paso de a uno lo
+     dan las teclas ← → y tocar la ficha vecina, que ya están. */
+  el.prevRange.addEventListener('click', () => shiftRangeOrMonth(-CARRETE));
+  el.nextRange.addEventListener('click', () => shiftRangeOrMonth(CARRETE));
+
+  /**
+   * Cambia de mes. `landing` dice en qué punta caer, que es lo que hace que
+   * cruzar de mes con las flechas del carrete no dé un salto: yendo hacia atrás
+   * se aterriza en el último día del mes anterior, y no en el primero.
+   */
   function goToMonth(delta, landing = 'first') {
     const d = new Date(ui.year, ui.month + delta, 1);
-    ui.year = d.getFullYear();
-    ui.month = d.getMonth();
-    // Los meses tienen listas propias: la selección no se arrastra entre ellos.
-    ui.selected.clear();
-    ui.windowIndex = landing === 'last' ? getWindows().length - 1 : 0;
-    render();
+    const dias = monthDays(d.getFullYear(), d.getMonth());
+    irAlDia(landing === 'last' ? dias[dias.length - 1] : dias[0]);
   }
 
   function goToToday() {
-    if (ui.year !== today.getFullYear() || ui.month !== today.getMonth()) ui.selected.clear();
-    ui.year = today.getFullYear();
-    ui.month = today.getMonth();
-    ui.windowIndex = windowIndexFor(today);
-    render();
+    irAlDia(today);
   }
 
-  function shiftRange(delta) {
-    const { count } = visibleDays();
-    const next = ui.windowIndex + delta;
-    if (next < 0) {
-      goToMonth(-1, 'last');
-    } else if (next >= count) {
-      goToMonth(1, 'first');
-    } else {
-      ui.windowIndex = next;
-      render();
-    }
+  /**
+   * Después de marcar: se repinta el cumplimiento del día. Repintar en vez de
+   * volver a dibujar la lista entera mantiene el foco donde estaba, que es el
+   * botón que se acaba de tocar.
+   */
+  function refreshTotals() {
+    renderResumenDelDia(diaActual());
   }
-
-  /* Las flechas mueven la ventana de la vista activa: un día, una semana o —en
-     la mensual, donde no hay ventana que correr dentro del mes— un mes. Es el
-     mismo criterio de las teclas ← →, así que comparten función. */
-  el.prevRange.addEventListener('click', () => shiftRangeOrMonth(-1));
-  el.nextRange.addEventListener('click', () => shiftRangeOrMonth(1));
 
   // ---------------------------------------------------------
-  // Desplegables
+  // Seleccionar mes
   // ---------------------------------------------------------
-  //  Dos con el mismo comportamiento: el de vista y el de opciones del mes. Se
-  //  manejan desde una sola pieza para que abrir uno cierre al otro y para no
-  //  duplicar el cierre por Esc y por clic afuera.
+  //  Los saltos largos. Los cortos los hace el carrete, que llega a cualquier
+  //  día con las flechas y con las teclas ← →.
+  //
+  //  Tuvo un segundo modo, de DÍAS, que abría «☰ → Ir a una fecha…». Compartían
+  //  encabezado y grilla y cambiaba qué celdas se dibujaban. Con el carrete
+  //  moviéndose de a siete días, esa entrada era un camino más largo para lo
+  //  mismo, y sin ella el modo se quedó sin puerta.
 
-  const MENUS = [
-    { btn: el.viewBtn, pop: el.viewOptions },
-    { btn: el.actionsBtn, pop: el.actionsOptions },
-  ];
-
-  function setMenu(menu, abierto) {
-    menu.pop.hidden = !abierto;
-    menu.btn.setAttribute('aria-expanded', String(abierto));
-  }
-
-  const menuAbierto = () => MENUS.find(m => !m.pop.hidden) ?? null;
-
-  /** Cierra todos, y devuelve el que estaba abierto para poder recuperar foco. */
-  function cerrarMenus() {
-    const abierto = menuAbierto();
-    for (const m of MENUS) setMenu(m, false);
-    return abierto;
-  }
-
-  for (const menu of MENUS) {
-    menu.btn.addEventListener('click', () => {
-      const estaba = !menu.pop.hidden;
-      cerrarMenus();
-      setMenu(menu, !estaba);
-    });
-  }
-
-  /* El de opciones: casi todo lo que hay adentro abre un diálogo, así que se
-     cierra al elegir. El zoom es la excepción —cicla tres niveles— y se queda
-     abierto para poder recorrerlos sin volver a desplegar. */
-  el.actionsOptions.addEventListener('click', e => {
-    const opt = e.target.closest('.view-opt');
-    if (!opt || opt.disabled || opt.id === 'btn-zoom') return;
-    cerrarMenus();
-  });
-
-  el.viewOptions.addEventListener('click', e => {
-    const opt = e.target.closest('[data-view]');
-    if (!opt) return;
-    ui.view = opt.dataset.view;
-    // Al cambiar de vista, mantener el foco en hoy si estamos en el mes actual.
-    ui.windowIndex = (ui.year === today.getFullYear() && ui.month === today.getMonth())
-      ? windowIndexFor(today)
-      : 0;
-    cerrarMenus();
-    el.viewBtn.focus();
-    render();
-  });
-
-  /* «Hoy» dentro del calendario: es el destino más frecuente del salto, y desde
-     que «Ir a hoy» se fundió con «Ir a un día…» es el único camino con el
-     puntero. Sirve en los dos modos —al mes actual o a su día— porque
-     `goToToday` fija mes y ventana de una. */
-  $('#jump-today').addEventListener('click', () => {
-    el.jumpDialog.close();
-    goToToday();
-  });
-
-  // Clic afuera: el menú es propio, así que hay que cerrarlo a mano.
-  document.addEventListener('click', e => {
-    if (menuAbierto() && !e.target.closest('.view-menu')) cerrarMenus();
-  });
-
-  // ---------------------------------------------------------
-  // Seleccionar día o mes
-  // ---------------------------------------------------------
-  //  Un solo diálogo con dos modos. Comparten el encabezado con flechas y la
-  //  grilla; lo único que cambia es qué se dibuja y de a cuánto se navega:
-  //  el de días avanza de mes en mes, el de meses de año en año.
-
-  /** @type {'day'|'month'} */
-  let jumpMode = 'day';
-  /** Período que muestra el diálogo, independiente del que está a la vista. */
+  /** Año que muestra el diálogo, independiente del que está a la vista. */
   let jumpYear = today.getFullYear();
-  let jumpMonth = today.getMonth();
 
-  // Encabezado de días de la semana: fijo, se arma una sola vez.
-  el.jumpDows.append(...WEEKDAYS.map(w => elem('span', '', w.short)));
-
-  function openJump(mode) {
-    jumpMode = mode;
+  function openJump() {
     jumpYear = ui.year;
-    jumpMonth = ui.month;
-
-    el.jumpTitle.textContent = mode === 'day' ? 'Seleccionar día' : 'Seleccionar mes';
     renderJump();
     el.jumpDialog.showModal();
     // Al título, no a la grilla: si no, el anillo de foco rodea la grilla entera.
@@ -3186,100 +3101,45 @@
   }
 
   function renderJump() {
-    const esDia = jumpMode === 'day';
-
-    el.jumpLabel.textContent = esDia ? labelDeMes(jumpYear, jumpMonth) : String(jumpYear);
-    el.jumpDows.hidden = !esDia;
-    el.jumpGrid.className = esDia ? 'jump-grid' : 'jump-grid is-months';
+    el.jumpLabel.textContent = String(jumpYear);
     el.jumpGrid.innerHTML = '';
 
-    if (!esDia) {
-      for (let m = 0; m < 12; m++) {
-        const btn = boton('jump-cell', {
-          text: capitalizeFirstLetter(fmtMonthName.format(new Date(jumpYear, m, 1))),
-          title: labelDeMes(jumpYear, m),
-        });
-        btn.dataset.month = String(m);
-        marcarJump(btn, jumpYear === ui.year && m === ui.month,
-          jumpYear === today.getFullYear() && m === today.getMonth());
-        el.jumpGrid.appendChild(btn);
-      }
-      return;
-    }
-
-    // El mes propio del diálogo, alineado al lunes como el resto de la app.
-    const dias = monthDays(jumpYear, jumpMonth);
-    const hueco = (dias[0].getDay() + 6) % 7;
-    for (let i = 0; i < hueco; i++) el.jumpGrid.appendChild(elem('span', 'jump-blank'));
-
-    // Qué días están a la vista ahora, para señalarlos en el calendario.
-    const visibles = new Set(visibleDays().days.map(dateKey));
-
-    for (const d of dias) {
-      const btn = boton('jump-cell', { text: String(d.getDate()), title: fmtFull.format(d) });
-      btn.dataset.date = dateKey(d);
-      if (isWeekend(d)) btn.classList.add('is-weekend');
-      marcarJump(btn, jumpYear === ui.year && jumpMonth === ui.month && visibles.has(dateKey(d)),
-        sameDay(d, today));
+    for (let m = 0; m < 12; m++) {
+      const btn = boton('jump-cell', {
+        text: capitalizeFirstLetter(fmtMonthName.format(new Date(jumpYear, m, 1))),
+        title: labelDeMes(jumpYear, m),
+      });
+      btn.dataset.month = String(m);
+      /* `is-current` es el mes que se está mirando; `is-today`, el mes real. */
+      btn.classList.toggle('is-current', jumpYear === ui.year && m === ui.month);
+      btn.classList.toggle('is-today',
+        jumpYear === today.getFullYear() && m === today.getMonth());
       el.jumpGrid.appendChild(btn);
     }
   }
 
-  /** `actual` es lo que ya se está mirando; `hoy`, el día o mes reales. */
-  function marcarJump(btn, actual, hoy) {
-    btn.classList.toggle('is-current', actual);
-    btn.classList.toggle('is-today', hoy);
-  }
-
   function shiftJump(delta) {
-    if (jumpMode === 'month') {
-      jumpYear += delta;
-    } else {
-      const d = new Date(jumpYear, jumpMonth + delta, 1);
-      jumpYear = d.getFullYear();
-      jumpMonth = d.getMonth();
-    }
+    jumpYear += delta;
     renderJump();
   }
 
-  /** Salta a un mes. La selección no cruza de mes: cada uno tiene su lista. */
+  /**
+   * Salta a un mes. Cae en el día 1, salvo que sea el mes de hoy: ahí el
+   * destino evidente es hoy, que es donde se carga.
+   */
   function jumpToMonth(year, month) {
-    if (year !== ui.year || month !== ui.month) ui.selected.clear();
-    ui.year = year;
-    ui.month = month;
-    ui.windowIndex = 0;
-    render();
+    const esDeHoy = year === today.getFullYear() && month === today.getMonth();
+    irAlDia(esDeHoy ? today : new Date(year, month, 1));
   }
 
-  /** Salta a un día y cae en la ventana que lo contiene, según la vista activa. */
-  function jumpToDay(date) {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    if (year !== ui.year || month !== ui.month) ui.selected.clear();
-    ui.year = year;
-    ui.month = month;
-    // Después de fijar el mes: `windowIndexFor` particiona el mes visible.
-    ui.windowIndex = windowIndexFor(date);
-    render();
-  }
-
-  el.monthLabel.addEventListener('click', () => openJump('month'));
-  /* Vive dentro del desplegable, así que hay que cerrarlo: si no, el menú queda
-     abierto por detrás del diálogo y reaparece al cerrarlo. */
-  el.pickDay.addEventListener('click', () => {
-    cerrarMenus();
-    openJump('day');
-  });
+  el.monthLabel.addEventListener('click', openJump);
   $('#jump-prev').addEventListener('click', () => shiftJump(-1));
   $('#jump-next').addEventListener('click', () => shiftJump(1));
 
   el.jumpGrid.addEventListener('click', e => {
     const btn = e.target.closest('.jump-cell');
     if (!btn) return;
-
-    if (btn.dataset.month !== undefined) jumpToMonth(jumpYear, Number(btn.dataset.month));
-    else jumpToDay(parseDateKey(btn.dataset.date));
-
+    jumpToMonth(jumpYear, Number(btn.dataset.month));
     el.jumpDialog.close();
   });
 
@@ -3336,7 +3196,19 @@
     const task = taskId ? currentTasks().find(t => t.id === taskId) : null;
 
     el.taskDialogTitle.textContent = task ? 'Editar tarea' : 'Nueva tarea';
-    el.taskSubmit.textContent = task ? 'Guardar cambios' : 'Crear tarea';
+
+    /* El botón que remata es un tilde, así que su nombre no está en el texto
+       sino en el `aria-label`: es lo único que lee un lector de pantalla y lo
+       que muestra el tooltip. */
+    const rotulo = task ? 'Guardar cambios' : 'Crear tarea';
+    el.taskSubmit.title = rotulo;
+    el.taskSubmit.setAttribute('aria-label', rotulo);
+
+    /* Las tres acciones obran sobre una tarea que ya existe: en un alta no hay
+       ninguna. Las flechas arrancan guardadas cada vez que se abre. */
+    el.taskTools.hidden = !task;
+    el.taskArchive.textContent = task && tramoAbierto(task) ? 'Desarchivar' : 'Archivar';
+    mostrarFlechas(false);
     el.taskName.value = task ? task.name : '';
     el.taskError.hidden = true;
 
@@ -3375,6 +3247,532 @@
     el.taskName.focus();
     el.taskName.select();
   }
+
+  /* ---- selección masiva ---- */
+
+  /**
+   * Pone la lista en una postura, o la saca si ya estaba en esa. Elegir una
+   * apaga la otra: los casilleros y los chevrones compiten por el mismo lugar
+   * de la fila, y tenerlos juntos era lo que llenaba de controles cada renglón.
+   */
+  function setRowMode(modo) {
+    ui.rowMode = ui.rowMode === modo ? null : modo;
+    /* Cambiar de postura suelta lo tildado: lo elegido para una acción no puede
+       quedar elegido para otra. */
+    ui.selected.clear();
+    // Se anota de dónde se sale, para que ✕ pueda devolver el orden.
+    ui.ordenPrevio = ui.rowMode === 'reordenar' ? currentTasks().map(t => t.id) : null;
+    render();
+  }
+
+  el.modeDelete.addEventListener('click', () => setRowMode('eliminar'));
+  el.modeArchive.addEventListener('click', () => setRowMode('archivar'));
+  el.modeReorder.addEventListener('click', () => setRowMode('reordenar'));
+
+  /** Refleja la selección: resalta las filas tildadas y repinta el ✓. */
+  function syncSelection() {
+    const count = ui.selected.size;
+    const total = currentTasks().length;
+
+    for (const fila of el.diaLista.querySelectorAll('.dia-fila')) {
+      fila.classList.toggle('is-selected', ui.selected.has(fila.dataset.taskId));
+    }
+
+    const all = el.diaLista.querySelector('[data-pick-all]');
+    if (all) {
+      all.checked = total > 0 && count === total;
+      // Estado intermedio cuando hay algunas tildadas pero no todas.
+      all.indeterminate = count > 0 && count < total;
+    }
+
+    renderModeConfirm();
+  }
+
+  /**
+   * El ✓ y el ✕ del menú: aparecen con la postura puesta y son el único modo de
+   * rematarla. El ✓ queda apagado mientras no haya nada que confirmar, y su
+   * rótulo dice qué falta.
+   */
+  function renderModeConfirm() {
+    const modo = ui.rowMode;
+    el.modeConfirm.hidden = !modo;
+    if (!modo) return;
+
+    const count = ui.selected.size;
+    const plural = count === 1 ? 'tarea' : 'tareas';
+    const rotulos = {
+      eliminar: [
+        count ? `Eliminar ${count} ${plural} de ${labelDeMes()}` : 'Tildá las tareas a eliminar',
+        'Salir sin eliminar nada',
+      ],
+      archivar: [
+        count ? `Archivar ${count} ${plural}` : 'Tildá las tareas a archivar',
+        'Salir sin archivar nada',
+      ],
+      reordenar: ['Guardar este orden', 'Descartar los cambios de orden'],
+    }[modo];
+
+    el.modeOk.disabled = modo !== 'reordenar' && count === 0;
+    el.modeOk.title = rotulos[0];
+    el.modeOk.setAttribute('aria-label', rotulos[0]);
+    el.modeCancel.title = rotulos[1];
+    el.modeCancel.setAttribute('aria-label', rotulos[1]);
+  }
+
+  /** Sale de la postura sin aplicar nada. */
+  function cancelarPostura() {
+    if (ui.rowMode === 'reordenar' && ui.ordenPrevio) restaurarOrden(ui.ordenPrevio);
+    ui.rowMode = null;
+    ui.ordenPrevio = null;
+    ui.selected.clear();
+    render();
+  }
+
+  /** Devuelve las tareas del mes al orden de `ids`, y lo guarda. */
+  function restaurarOrden(ids) {
+    const tasks = materialize();
+    const porId = new Map(tasks.map(t => [t.id, t]));
+    const vuelto = ids.map(id => porId.get(id)).filter(Boolean);
+    // Lo que se creó o borró mientras tanto se respeta: va detrás.
+    for (const t of tasks) if (!ids.includes(t.id)) vuelto.push(t);
+    if (vuelto.length !== tasks.length) return;   // algo no cuadra: mejor no tocar
+    tasks.length = 0;
+    tasks.push(...vuelto);
+    save();
+  }
+
+  /** Remata la postura puesta, cada una con su pregunta. */
+  function confirmarPostura() {
+    if (ui.rowMode === 'eliminar') return askDeleteSelected();
+    if (ui.rowMode === 'archivar') return archivarSeleccionadas();
+    if (ui.rowMode !== 'reordenar') return;
+
+    const tasks = currentTasks();
+    const cambio = ui.ordenPrevio && ui.ordenPrevio.join() !== tasks.map(t => t.id).join();
+    if (!cambio) return cancelarPostura();   // nada que confirmar
+
+    confirmAction(
+      `Se va a guardar este orden para ${labelDeMes()}:`,
+      () => {
+        // Ya está aplicado; confirmar es quedarse con él y soltar la vuelta atrás.
+        ui.rowMode = null;
+        ui.ordenPrevio = null;
+        render();
+        toast('Orden guardado');
+      },
+      { items: tasks.map(t => t.name), ok: 'Guardar' },
+    );
+  }
+
+  function askDeleteSelected() {
+    abrirBorrado(currentTasks().filter(t => ui.selected.has(t.id)));
+  }
+
+  /** Una sola fecha para todas: archivar de a varias es archivar el mismo día. */
+  function archivarSeleccionadas() {
+    const tasks = currentTasks().filter(t => ui.selected.has(t.id));
+    if (!tasks.length) return;
+    abrirArchivo(tasks, 'archivar');
+  }
+
+  el.modeOk.addEventListener('click', confirmarPostura);
+  el.modeCancel.addEventListener('click', cancelarPostura);
+
+  /* ---- las archivadas del mes ---- */
+
+  /** Las del mes visible, en el orden en que están en la lista. */
+  function tareasArchivadas() {
+    return currentTasks().filter(task => tramoAbierto(task));
+  }
+
+  function openArchived() {
+    renderArchived();
+    el.archivedDialog.showModal();
+    $('#archived-title').focus();
+  }
+
+  /**
+   * Dibuja la lista. Se la vuelve a llamar al desarchivar: `render()` repinta la
+   * pantalla de atrás, pero el contenido de un diálogo abierto no lo toca nadie.
+   */
+  function renderArchived() {
+    const archivadas = tareasArchivadas();
+    el.archivedList.innerHTML = '';
+    for (const task of archivadas) el.archivedList.appendChild(archivedCard(task));
+    el.archivedEmpty.hidden = archivadas.length > 0;
+    // Cada dibujado arranca sin nada tildado: las fichas son nuevas.
+    syncArchivedUndo();
+  }
+
+  function archivedCard(task) {
+    const card = elem('article', 'arch');
+
+    const pick = elem('input', 'arch-pick');
+    pick.type = 'checkbox';
+    pick.dataset.taskId = task.id;
+    pick.title = `Elegir «${task.name}»`;
+    pick.setAttribute('aria-label', `Elegir ${task.name}`);
+
+    const head = elem('header', 'arch-head');
+    head.append(pick, elem('h3', 'arch-name', task.name));
+
+    /* La fecha es el dato que hace falta para entender qué se ve y qué no: desde
+       ahí la tarea no aparece, y antes de ahí sigue entera. */
+    card.append(head, elem('p', 'arch-desc',
+      `${freqLabel(task)} · archivada desde el `
+      + fmtShort.format(parseDateKey(tramoAbierto(task).from))));
+    return card;
+  }
+
+  /** Las tildadas en la lista del Archivo. */
+  function archivedElegidas() {
+    const ids = new Set([...el.archivedList.querySelectorAll('.arch-pick:checked')]
+      .map(c => c.dataset.taskId));
+    return tareasArchivadas().filter(t => ids.has(t.id));
+  }
+
+  /* Un botón apagado sin decir por qué manda a adivinar, así que el título dice
+     qué falta o qué va a hacer. */
+  function syncArchivedUndo() {
+    const cuantas = archivedElegidas().length;
+    const total = tareasArchivadas().length;
+
+    el.archivedUndo.disabled = cuantas === 0;
+    el.archivedUndo.title = cuantas
+      ? `Volver a pedir ${cuantas} ${cuantas === 1 ? 'tarea' : 'tareas'}`
+      : 'Tildá las tareas a desarchivar';
+
+    /* El botón dice qué va a hacer al tocarlo: con todo tildado, lo único que
+       queda por hacer es soltarlo. Sin fichas no hay nada que elegir. */
+    const todasPuestas = total > 0 && cuantas === total;
+    el.archivedAll.disabled = total === 0;
+    el.archivedAll.textContent = todasPuestas ? 'Quitar la selección' : 'Seleccionar todas';
+    el.archivedAll.title = todasPuestas
+      ? 'Destildar las que están elegidas'
+      : `Elegir las ${total} tareas archivadas`;
+  }
+
+  el.archivedList.addEventListener('change', e => {
+    if (e.target.closest('.arch-pick')) syncArchivedUndo();
+  });
+
+  el.archivedAll.addEventListener('click', () => {
+    const picks = [...el.archivedList.querySelectorAll('.arch-pick')];
+    const faltan = picks.some(p => !p.checked);
+    for (const pick of picks) pick.checked = faltan;
+    syncArchivedUndo();
+  });
+
+  /* Una sola vuelta por el diálogo de fecha para todas las tildadas: la fecha
+     de regreso se elige UNA vez. */
+  el.archivedUndo.addEventListener('click', () => {
+    const tasks = archivedElegidas();
+    if (tasks.length) abrirArchivo(tasks, 'desarchivar');
+  });
+
+  el.archived.addEventListener('click', () => {
+    setDrawer(false);
+    openArchived();
+  });
+
+  /* ---- la papelera ---- */
+
+  function openTrash() {
+    renderTrash();
+    el.trashDialog.showModal();
+    $('#trash-title').focus();
+  }
+
+  function renderTrash() {
+    const items = papelera();
+    el.trashList.innerHTML = '';
+    for (const item of items) el.trashList.appendChild(trashCard(item));
+    el.trashEmpty.hidden = items.length > 0;
+    syncTrashRestore();
+  }
+
+  function trashCard(item) {
+    const card = elem('article', 'arch');
+
+    const pick = elem('input', 'arch-pick');
+    pick.type = 'checkbox';
+    pick.dataset.taskId = item.taskId;
+    pick.dataset.fecha = item.fecha;
+    pick.title = `Elegir «${item.nombre}»`;
+    pick.setAttribute('aria-label', `Elegir ${item.nombre}`);
+
+    const head = elem('header', 'arch-head');
+    head.append(pick, elem('h3', 'arch-name', item.nombre));
+
+    /* Tres datos y en este orden: qué era, desde cuándo se borró y cuánto
+       queda. Los dos primeros explican qué se recupera; el tercero, hasta
+       cuándo se puede. */
+    const quedan = diasQueQuedan(item);
+    const partes = [
+      item.frecuencia,
+      `eliminada desde el ${fmtNumerica.format(parseDateKey(item.desde ?? item.fecha))}`,
+      quedan === 1 ? 'queda 1 día' : `quedan ${quedan} días`,
+    ].filter(Boolean);
+
+    card.append(head, elem('p', 'arch-desc', partes.join(' · ')));
+    return card;
+  }
+
+  /** Las entradas tildadas, en el orden en que están en la lista. */
+  function papeleraElegidas() {
+    const elegidas = [...el.trashList.querySelectorAll('.arch-pick:checked')]
+      .map(c => `${c.dataset.taskId}|${c.dataset.fecha}`);
+    return papelera().filter(item => elegidas.includes(`${item.taskId}|${item.fecha}`));
+  }
+
+  function syncTrashRestore() {
+    const cuantas = papeleraElegidas().length;
+    const total = papelera().length;
+
+    el.trashRestore.disabled = cuantas === 0;
+    el.trashRestore.title = cuantas
+      ? `Restaurar ${cuantas} ${cuantas === 1 ? 'tarea' : 'tareas'}`
+      : 'Tildá lo que quieras restaurar';
+
+    const todasPuestas = total > 0 && cuantas === total;
+    el.trashAll.disabled = total === 0;
+    el.trashAll.textContent = todasPuestas ? 'Quitar la selección' : 'Seleccionar todas';
+    el.trashAll.title = todasPuestas
+      ? 'Destildar las que están elegidas'
+      : `Elegir las ${total} eliminadas`;
+  }
+
+  el.trashList.addEventListener('change', e => {
+    if (e.target.closest('.arch-pick')) syncTrashRestore();
+  });
+
+  el.trashAll.addEventListener('click', () => {
+    const picks = [...el.trashList.querySelectorAll('.arch-pick')];
+    const faltan = picks.some(p => !p.checked);
+    for (const pick of picks) pick.checked = faltan;
+    syncTrashRestore();
+  });
+
+  /* Restaurar no pregunta nada: la entrada guarda el estado anterior tal cual
+     era, así que devolverlo es exacto o no es. No hay fecha que elegir. */
+  el.trashRestore.addEventListener('click', () => {
+    const items = papeleraElegidas();
+    if (!items.length) return;
+
+    for (const item of items) restaurarDePapelera(item);
+    save();
+    render();
+    renderTrash();
+    toast(items.length === 1
+      ? `«${items[0].nombre}» restaurada`
+      : `${items.length} tareas restauradas`);
+  });
+
+  el.trash.addEventListener('click', () => {
+    setDrawer(false);
+    openTrash();
+  });
+
+  /* ---- las tres acciones sobre la tarea que se está editando ---- */
+
+  /** Abre o guarda las flechas de reordenar, y las pinta al abrirlas. */
+  function mostrarFlechas(abrir) {
+    el.taskMove.hidden = !abrir;
+    el.taskReorder.setAttribute('aria-pressed', String(abrir));
+    if (abrir) renderFlechas();
+  }
+
+  /**
+   * Dónde está la tarea en la lista del mes y hasta dónde puede moverse.
+   *
+   * La cuenta es sobre la lista del MES, no sobre las filas que se ven ese día:
+   * el orden que se guarda es uno solo para todo el mes, y una tarea que ese día
+   * no aparece —todavía no empezó, o ya está archivada— igual ocupa su lugar.
+   */
+  function renderFlechas() {
+    const tasks = currentTasks();
+    const i = tasks.findIndex(t => t.id === ui.editingId);
+    el.taskMovePos.textContent = i < 0 ? '' : `${i + 1} de ${tasks.length}`;
+    el.taskMoveUp.disabled = i <= 0;
+    el.taskMoveDown.disabled = i < 0 || i >= tasks.length - 1;
+  }
+
+  /**
+   * Mueve la tarea un lugar y lo guarda en el acto. No hay nada que confirmar
+   * después: cada paso ya es el resultado, y volver atrás es tocar la otra
+   * flecha. Es lo que reemplazó a la postura de arrastrar toda la lista.
+   */
+  function moverTarea(delta) {
+    const tasks = materialize();
+    const i = tasks.findIndex(t => t.id === ui.editingId);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= tasks.length) return;
+
+    [tasks[i], tasks[j]] = [tasks[j], tasks[i]];
+    save();
+    render();
+    renderFlechas();
+  }
+
+  el.taskDelete.addEventListener('click', () => {
+    const id = ui.editingId;
+    // Se cierra antes de preguntar: dos diálogos encimados esconden la pregunta.
+    el.taskDialog.close();
+    askDeleteTask(id);
+  });
+
+  el.taskReorder.addEventListener('click', () => mostrarFlechas(el.taskMove.hidden));
+  el.taskMoveUp.addEventListener('click', () => moverTarea(-1));
+  el.taskMoveDown.addEventListener('click', () => moverTarea(1));
+
+  el.taskArchive.addEventListener('click', () => {
+    const task = currentTasks().find(t => t.id === ui.editingId);
+    if (!task) return;
+    abrirArchivo(task, tramoAbierto(task) ? 'desarchivar' : 'archivar');
+  });
+
+  /**
+   * Pregunta una fecha. Archivar y desarchivar son la misma operación mirada de
+   * los dos lados —abrir un tramo y cerrarlo—, así que comparten el diálogo:
+   * una fecha y un botón. Lo único que cambia son las palabras.
+   *
+   * Trabaja sobre un conjunto: una tarea desde «Editar tarea» o desde el
+   * Archivo, varias desde la selección masiva. La fecha es UNA para todas —
+   * archivar de a varias es archivarlas el mismo día—.
+   */
+  function abrirArchivo(tasks, modo) {
+    const lista = Array.isArray(tasks) ? tasks : [tasks];
+    if (!lista.length) return;
+
+    ui.archivingIds = lista.map(t => t.id);
+    ui.archiveMode = modo;
+    el.archiveError.hidden = true;
+
+    const archivar = modo === 'archivar';
+    const una = lista.length === 1;
+    /* Con una, el texto la nombra; con varias, las cuenta. Nombrarlas a todas
+       haría un párrafo que nadie lee, y la lista ya está tildada a la vista. */
+    const sujeto = una ? `«${lista[0].name}»` : `${lista.length} tareas`;
+    const verbo = una ? 'deja' : 'dejan';
+    const vuelve = una ? 'vuelve' : 'vuelven';
+
+    el.archiveTitle.textContent = archivar
+      ? (una ? 'Archivar tarea' : 'Archivar tareas')
+      : (una ? 'Desarchivar tarea' : 'Desarchivar tareas');
+    el.archiveLabel.textContent = archivar
+      ? 'Archivar desde'
+      : (una ? 'Volver a pedirla desde' : 'Volver a pedirlas desde');
+    el.archiveSubmit.textContent = archivar ? 'Archivar' : 'Desarchivar';
+    el.archiveNote.textContent = archivar
+      ? `${sujeto} ${verbo} de pedirse desde el día que elijas. Lo que ya `
+        + 'cargaste antes se conserva y se sigue viendo.'
+      : `${sujeto} ${vuelve} a pedirse desde el día que elijas. Los días `
+        + 'que estuvieron archivadas quedan como están.';
+
+    /* El día en el que está parado el carrete, que es de lo que se está
+       hablando. Casi siempre es hoy; cuando no lo es, es porque quien carga
+       está mirando otro día a propósito. */
+    el.archiveDate.value = dateKey(diaActual());
+    el.archiveDialog.showModal();
+  }
+
+  /** Muestra el motivo por el que la fecha elegida no sirve. */
+  function errorDeArchivo(texto) {
+    el.archiveError.textContent = texto;
+    el.archiveError.hidden = false;
+  }
+
+  /**
+   * Por qué esa fecha no le sirve a esa tarea, o null si le sirve. El mensaje
+   * nombra la tarea: con varias tildadas, «no se puede» sin decir cuál manda a
+   * destildar de a una a ver cuál era.
+   */
+  function motivoSinArchivar(task, iso) {
+    const conNombre = (texto, tope, relacion = 'posterior') =>
+      `«${task.name}»: tiene que ser ${relacion} al `
+      + `${fmtShort.format(parseDateKey(tope))}, ${texto}`;
+
+    if (ui.archiveMode === 'archivar') {
+      /* Archivarla desde antes de que empiece la dejaría sin un solo día vivo,
+         que es lo mismo que no haberla creado — y no es lo que archivar
+         significa. Y desde antes de la última vuelta, el tramo nuevo se comería
+         al anterior: no habría dos idas, habría una sola mal contada. */
+      if (task.start && iso <= task.start) {
+        return conNombre('que es cuando la tarea empieza.', task.start);
+      }
+      const tramos = tramosArchivados(task);
+      const ultima = tramos[tramos.length - 1]?.to;
+      if (ultima) return iso <= ultima
+        ? conNombre('que es cuando volvió del archivo anterior.', ultima)
+        : null;
+      return null;
+    }
+
+    const abierto = tramoAbierto(task);
+    if (!abierto) return null;
+    /* Volver ANTES de haberse ido no describe nada. Volver el mismo día sí: es
+       deshacer el archivo, y se resuelve borrando el tramo. */
+    return iso < abierto.from
+      ? conNombre('que es cuando se archivó.', abierto.from, 'igual o posterior')
+      : null;
+  }
+
+  el.archiveForm.addEventListener('submit', e => {
+    e.preventDefault();
+    const vivas = materialize();
+    const tasks = ui.archivingIds.map(id => vivas.find(t => t.id === id)).filter(Boolean);
+    if (!tasks.length) return el.archiveDialog.close();
+
+    const archivar = ui.archiveMode === 'archivar';
+    const iso = RE_DIA.test(el.archiveDate.value) ? el.archiveDate.value : null;
+    if (!iso) {
+      return errorDeArchivo(archivar
+        ? 'Elegí desde qué día se archiva.'
+        : 'Elegí desde qué día vuelve a pedirse.');
+    }
+
+    /* Se valida ANTES de tocar nada: media tanda archivada y media no sería un
+       resultado que nadie pidió. */
+    for (const task of tasks) {
+      const motivo = motivoSinArchivar(task, iso);
+      if (motivo) return errorDeArchivo(motivo);
+    }
+
+    for (const task of tasks) {
+      if (archivar) task.archived = [...tramosArchivados(task), { from: iso, to: null }];
+      else {
+        const abierto = tramoAbierto(task);
+        if (!abierto) continue;
+        /* Vuelve el mismo día en que se fue: el tramo no cubriría ningún día, y
+           un tramo vacío en la lista es ruido que hay que explicar cada vez que
+           se lee. Se borra: el archivo no llegó a pasar. */
+        if (iso === abierto.from) {
+          task.archived = tramosArchivados(task).filter(t => t !== abierto);
+        } else {
+          abierto.to = iso;
+        }
+      }
+    }
+
+    /* Aplicada la acción, la postura ya no tiene sobre qué operar. */
+    ui.rowMode = null;
+    ui.selected.clear();
+
+    save();
+    el.archiveDialog.close();
+    /* Desde la lista del archivo se sigue ahí: la ficha tiene que irse de la
+       lista, y `render()` no toca el contenido de un diálogo abierto. Desde la
+       edición de la tarea, en cambio, ya no queda nada que mirar atrás. */
+    if (el.archivedDialog.open) renderArchived();
+    else el.taskDialog.close();
+
+    render();
+    const fecha = fmtShort.format(parseDateKey(iso));
+    const sujeto = tasks.length === 1 ? `«${tasks[0].name}»` : `${tasks.length} tareas`;
+    toast(archivar
+      ? `${sujeto} ${tasks.length === 1 ? 'archivada' : 'archivadas'} desde el ${fecha}`
+      : `${sujeto} ${tasks.length === 1 ? 'vuelve' : 'vuelven'} desde el ${fecha}`);
+  });
 
   el.taskForm.addEventListener('submit', e => {
     e.preventDefault();
@@ -3428,12 +3826,8 @@
     save();
     el.taskDialog.close();
 
-    // Se sigue a la tarea hasta el mes donde quedó, si no es el que se veía.
-    ui.year = year;
-    ui.month = month;
-    ui.selected.clear();
-    ui.windowIndex = windowIndexFor(inicio);
-    render();
+    // Se sigue a la tarea hasta el día en que empieza, aunque sea de otro mes.
+    irAlDia(inicio);
 
     toast(`Tarea creada en ${nombreMes}`);
     ui.editingId = null;
@@ -3445,63 +3839,251 @@
   }
 
   /** Borra tareas del mes visible junto con sus estados de ESE mes. */
-  function deleteTasks(ids) {
-    const month = monthKey(ui.year, ui.month);
-    materialize();
-    state.months[month] = state.months[month].filter(t => !ids.has(t.id));
+  /**
+   * Borra una tarea DESDE un día: lo anterior queda como estaba y de ahí en
+   * adelante no queda nada.
+   *
+   * `desde` en null es «desde siempre»: la tarea se va entera, con todo lo
+   * cargado, como si no hubiera existido.
+   *
+   * Los meses son listas propias, así que el corte se aplica mes por mes: los
+   * posteriores pierden la tarea, el del corte la conserva con `end` puesto —o
+   * la pierde también, si el corte cae antes de que la tarea empiece ahí— y los
+   * anteriores no se tocan.
+   */
+  function eliminarDesde(task, desde) {
+    /* Lo que se va a cambiar se anota ANTES de cambiarlo: la copia de la tarea
+       en cada mes que se toca, con el índice donde estaba, y los estados que se
+       van a borrar. Restaurar es poner esto de vuelta, así que lo que se guarda
+       no es «la tarea» sino el cambio entero. */
+    const entrada = {
+      taskId: task.id,
+      nombre: task.name,
+      frecuencia: freqLabel(task),
+      /* Solo para mostrar: la fecha desde la que se borró. Cuando la tarea se
+         fue entera es la de su inicio —el primer día que se borró de verdad—,
+         que es lo mismo que dice la confirmación. */
+      desde: desde ?? inicioDe(task),
+      fecha: dateKey(today),
+      meses: {},
+      estados: {},
+    };
 
-    // Solo los estados de este mes: los de meses anteriores siguen siendo válidos.
-    for (const key of statusKeysOf(ids, month)) delete state.status[key];
+    for (const [mes, lista] of Object.entries(state.months)) {
+      const primero = `${mes}-01`;
+      // Meses enteramente anteriores al corte: intactos.
+      if (desde && ultimoDiaDe(mes) < desde) continue;
 
-    for (const id of ids) ui.selected.delete(id);
-    // Hecho el borrado, la postura ya no tiene sobre qué operar.
-    ui.rowMode = null;
-    save();
-    render();
+      const indice = lista.findIndex(t => t.id === task.id);
+      if (indice < 0) continue;
+      const copia = lista[indice];
+
+      entrada.meses[mes] = {
+        indice,
+        task: { ...copia, weekdays: [...copia.weekdays] },
+      };
+
+      /* El corte cae antes del primer día vivo de la tarea EN ESE MES: no le
+         queda nada, así que sale de la lista. */
+      const arranca = copia.start && copia.start > primero ? copia.start : primero;
+      if (!desde || desde <= arranca) {
+        state.months[mes] = lista.filter(t => t.id !== task.id);
+      } else {
+        copia.end = desde;
+      }
+    }
+
+    for (const key of Object.keys(state.status)) {
+      const [taskId, iso] = key.split('|');
+      if (taskId === task.id && (!desde || iso >= desde)) {
+        entrada.estados[key] = state.status[key];
+        delete state.status[key];
+      }
+    }
+
+    if (Object.keys(entrada.meses).length) state.trash.push(entrada);
+    ui.selected.delete(task.id);
+  }
+
+  /* ---- la papelera ---- */
+
+  /** Lo que sigue vivo en la papelera, de lo más reciente a lo más viejo. */
+  function papelera() {
+    /* Se poda al leer y no con un reloj: la app puede estar cerrada una semana,
+       y lo que decide si algo venció es la fecha que tiene anotada, no que
+       alguien haya estado mirando. */
+    const vivas = state.trash.filter(item => diasDesde(item.fecha) < DIAS_PAPELERA);
+    if (vivas.length !== state.trash.length) {
+      state.trash = vivas;
+      save();
+    }
+    return [...vivas].reverse();
+  }
+
+  /** Días que le quedan a una entrada antes de perderse. */
+  function diasQueQuedan(item) {
+    return Math.max(0, DIAS_PAPELERA - diasDesde(item.fecha));
+  }
+
+  /**
+   * Devuelve una eliminación completa: la tarea vuelve al mismo lugar de cada
+   * mes, con su misma fecha de corte y con todos sus estados.
+   *
+   * Se restaura a la fecha en la que se eliminó y no a otra: la entrada guarda
+   * el estado anterior tal cual era, así que devolverlo es exacto o no es.
+   */
+  function restaurarDePapelera(item) {
+    for (const [mes, guardado] of Object.entries(item.meses)) {
+      const lista = state.months[mes];
+      // El mes puede haber desaparecido —importar, cerrar sesión—: se rehace.
+      if (!lista) {
+        state.months[mes] = [guardado.task];
+        continue;
+      }
+      const actual = lista.findIndex(t => t.id === item.taskId);
+      if (actual >= 0) lista[actual] = guardado.task;
+      else lista.splice(Math.min(guardado.indice, lista.length), 0, guardado.task);
+    }
+
+    for (const [key, value] of Object.entries(item.estados)) state.status[key] = value;
+
+    state.trash = state.trash.filter(t => t !== item);
+  }
+
+  /**
+   * El primer día en que la tarea existe, para MOSTRAR. Con fecha de inicio es
+   * esa; sin ella, el dato más viejo que hay de la tarea —el primero de su mes
+   * más antiguo, o su marca más vieja—, que es lo que se va a borrar.
+   */
+  function inicioDe(task) {
+    if (task.start) return task.start;
+
+    const candidatos = [];
+    for (const [mes, lista] of Object.entries(state.months)) {
+      if (lista.some(t => t.id === task.id)) candidatos.push(`${mes}-01`);
+    }
+    for (const key of Object.keys(state.status)) {
+      const [taskId, iso] = key.split('|');
+      if (taskId === task.id && iso) candidatos.push(iso);
+    }
+    candidatos.sort();
+    return candidatos[0] ?? dateKey(today);
+  }
+
+  /** El último día de un mes `YYYY-MM`, en clave. */
+  function ultimoDiaDe(mes) {
+    const [anio, m] = mes.split('-').map(Number);
+    const dias = monthDays(anio, m - 1);
+    return dateKey(dias[dias.length - 1]);
+  }
+
+  /**
+   * Desde qué día se elimina cada tarea, según lo que se eligió.
+   *
+   * «La fecha de inicio» es por tarea —cada una tiene la suya— y equivale a
+   * borrarla entera. Con una fecha elegida, una tarea que empieza DESPUÉS
+   * tampoco deja nada atrás, así que también se va entera: por eso el plan
+   * guarda null y la confirmación lo dice.
+   */
+  function planDeBorrado(tasks, modo, iso) {
+    return tasks.map(task => {
+      if (modo === 'inicio') return { task, desde: null };
+      const dia = modo === 'hoy' ? dateKey(today) : iso;
+      /* Entera solo si el corte cae antes de que la tarea exista. Sin fecha de
+         inicio no hay tal cosa: la tarea viene de siempre y el corte la parte
+         igual, dejando atrás lo cargado. */
+      const entera = Boolean(task.start) && dia <= task.start;
+      return { task, desde: entera ? null : dia };
+    });
+  }
+
+  /** Abre la pregunta de «desde cuándo» para una o varias tareas. */
+  function abrirBorrado(tasks) {
+    const lista = tasks.filter(Boolean);
+    if (!lista.length) return;
+
+    ui.deletingIds = lista.map(t => t.id);
+    el.deleteError.hidden = true;
+    el.deleteDate.value = dateKey(diaActual());
+
+    const una = lista.length === 1;
+    el.deleteTitle.textContent = una ? 'Eliminar tarea' : 'Eliminar tareas';
+    el.deleteNote.textContent = una
+      ? `«${lista[0].name}» deja de existir desde el día que elijas. Lo cargado `
+        + 'antes se conserva; de ahí en adelante no vuelve.'
+      : `Las ${lista.length} tareas dejan de existir desde el día que elijas. Lo `
+        + 'cargado antes se conserva; de ahí en adelante no vuelve.';
+
+    el.deleteForm.querySelector('input[name="delete-from"][value="hoy"]').checked = true;
+    syncBorrado();
+    el.deleteDialog.showModal();
+  }
+
+  const modoDeBorrado = () =>
+    el.deleteForm.querySelector('input[name="delete-from"]:checked')?.value ?? 'hoy';
+
+  /* El campo de fecha existe solo para una de las tres opciones: dibujarlo
+     siempre pediría completar algo que en las otras dos no se usa. */
+  function syncBorrado() {
+    el.deleteDateField.hidden = modoDeBorrado() !== 'fecha';
+  }
+
+  el.deleteForm.addEventListener('change', e => {
+    if (e.target.name === 'delete-from') syncBorrado();
+  });
+
+  el.deleteForm.addEventListener('submit', e => {
+    e.preventDefault();
+    const vivas = currentTasks();
+    const tasks = ui.deletingIds.map(id => vivas.find(t => t.id === id)).filter(Boolean);
+    if (!tasks.length) return el.deleteDialog.close();
+
+    const modo = modoDeBorrado();
+    const iso = RE_DIA.test(el.deleteDate.value) ? el.deleteDate.value : null;
+    if (modo === 'fecha' && !iso) {
+      el.deleteError.textContent = 'Elegí desde qué día se elimina.';
+      el.deleteError.hidden = false;
+      return;
+    }
+
+    const plan = planDeBorrado(tasks, modo, iso);
+    el.deleteDialog.close();
+    confirmarBorrado(plan);
+  });
+
+  /* La confirmación nombra cada tarea con SU fecha al lado: con varias elegidas
+     y «la fecha de inicio», cada una se va desde un día distinto, y una sola
+     frase para todas no podría decirlo. */
+  function confirmarBorrado(plan) {
+    const una = plan.length === 1;
+    confirmAction(
+      una
+        ? 'Se va a eliminar esta tarea:'
+        : `Se van a eliminar estas ${plan.length} tareas:`,
+      () => {
+        for (const { task, desde } of plan) eliminarDesde(task, desde);
+        ui.rowMode = null;
+        save();
+        render();
+        toast(una ? 'Tarea eliminada' : `${plan.length} tareas eliminadas`);
+      },
+      {
+        /* Siempre una fecha, también cuando la tarea se va entera: ahí el día es
+           el de su inicio, que es el primero que se borra. Es lo mismo que hay
+           que mostrar cuando el corte elegido cae ANTES de que la tarea exista:
+           recortar desde antes del inicio no borra nada de más. */
+        filas: plan.map(({ task, desde }) => ({
+          izquierda: task.name,
+          derecha: `desde el ${fmtNumerica.format(parseDateKey(desde ?? inicioDe(task)))}`,
+        })),
+        note: 'Lo cargado antes de esa fecha se conserva. Lo de ahí en adelante no vuelve.',
+      },
+    );
   }
 
   function askDeleteTask(taskId) {
     const task = currentTasks().find(t => t.id === taskId);
-    if (!task) return;
-
-    confirmAction(
-      `Se va a eliminar «${task.name}» de ${labelDeMes()}, `
-      + 'junto con los estados cargados ese mes.',
-      () => {
-        deleteTasks(new Set([taskId]));
-        toast('Tarea eliminada');
-      },
-      { note: 'Los periodos anteriores no se verán modificados.' },
-    );
-  }
-
-  function askDeleteSelected() {
-    const tasks = currentTasks().filter(t => ui.selected.has(t.id));
-    if (!tasks.length) return;
-    // Con una sola, el mensaje que la nombra es más claro que el genérico.
-    if (tasks.length === 1) return askDeleteTask(tasks[0].id);
-
-    confirmAction(
-      `Se van a eliminar estas ${tasks.length} tareas de `
-      + `${labelDeMes()}, junto con los estados `
-      + 'cargados ese mes:',
-      () => {
-        deleteTasks(new Set(tasks.map(t => t.id)));
-        toast(`${tasks.length} tareas eliminadas`);
-      },
-      {
-        items: tasks.map(t => t.name),
-        note: 'Los periodos anteriores no se verán modificados.',
-      },
-    );
-  }
-
-  /** Claves de estado de esas tareas dentro del mes visible. */
-  function statusKeysOf(ids, month) {
-    return Object.keys(state.status).filter(key => {
-      const [taskId, iso] = key.split('|');
-      return ids.has(taskId) && iso && iso.startsWith(`${month}-`);
-    });
+    if (task) abrirBorrado([task]);
   }
 
   /** Claves de estado de esas tareas dentro de un conjunto concreto de días. */
@@ -3513,47 +4095,9 @@
     });
   }
 
-  /** Cómo nombrar el rango visible en un mensaje: el mes, la semana o el día. */
+  /** Cómo nombrar en un mensaje lo que está a la vista, que es un día. */
   function rangeLabel(days) {
-    if (!days.length) return '';
-    if (ui.view === 'month') return monthYearLabel(days[0]);
-    return spanLabel(days);
-  }
-
-  function askResetSelected() {
-    const tasks = currentTasks().filter(t => ui.selected.has(t.id));
-    if (!tasks.length) return;
-
-    // Alcance: lo que se ve. En vista semanal borra esa semana, en diaria ese
-    // día, en mensual el mes entero.
-    const { days } = visibleDays();
-    const keys = statusKeysIn(new Set(tasks.map(t => t.id)), days);
-    const rango = rangeLabel(days);
-
-    if (!keys.length) {
-      toast(`Esas tareas no tienen estados cargados en ${rango}`);
-      return;
-    }
-
-    const cuantas = tasks.length === 1 ? 'esta tarea' : `estas ${tasks.length} tareas`;
-    confirmAction(
-      `Se van a borrar ${keys.length} estado(s) cargados de ${cuantas} en ${rango}, `
-      + 'y las celdas vuelven a "sin cargar":',
-      () => {
-        for (const key of keys) delete state.status[key];
-        ui.selected.clear();
-        ui.rowMode = null;   // hecho el reseteo, la postura se cierra sola
-        save();
-        render();
-        toast(`${keys.length} estado(s) reseteados`);
-      },
-      {
-        ok: 'Resetear',
-        items: tasks.map(t => t.name),
-        note: 'Las tareas y su configuración no se tocan, y fuera del rango '
-          + 'visible no se borra nada.',
-      },
-    );
+    return days.length ? spanLabel(days) : '';
   }
 
   /**
@@ -3567,10 +4111,22 @@
   function confirmAction(text, onOk, opts = {}) {
     el.confirmText.textContent = text;
 
+    /* Dos formas de listar lo afectado: nombres sueltos, o nombre y dato a los
+       costados de la misma fila —que es lo que hace falta cuando cada uno tiene
+       el suyo, como la fecha desde la que se elimina—. */
     const items = opts.items || [];
+    const filas = opts.filas || [];
     el.confirmList.innerHTML = '';
-    el.confirmList.hidden = !items.length;
+    el.confirmList.classList.toggle('is-pares', filas.length > 0);
+    el.confirmList.hidden = !items.length && !filas.length;
+
     for (const item of items) el.confirmList.appendChild(elem('li', '', item));
+    for (const fila of filas) {
+      const li = elem('li');
+      li.append(elem('span', 'confirm-izq', fila.izquierda),
+        elem('span', 'confirm-der', fila.derecha));
+      el.confirmList.appendChild(li);
+    }
 
     el.confirmNote.textContent = opts.note || '';
     el.confirmNote.hidden = !opts.note;
@@ -3598,13 +4154,596 @@
     btn.addEventListener('click', () => btn.closest('dialog').close());
   }
 
-  /* Los accesos al alta que están en el HTML: la entrada de «Opciones» y el
-     botón del estado vacío. El «+» del pie de la columna de tareas no entra
-     acá —se dibuja en cada render y este listener corre una sola vez—: lo
-     conecta `celdaAlta`. */
-  for (const btn of document.querySelectorAll('[data-add-task]')) {
-    btn.addEventListener('click', () => openTaskDialog());
+  /* Tocar afuera cierra, como la ✕ y como `Esc`.
+
+     El velo de un `<dialog>` no es un elemento aparte: es el fondo del diálogo
+     mismo, así que un clic ahí llega con `target` en el propio `<dialog>`. Los
+     de adentro caen siempre en algún hijo —`.dialog-form` cubre todo el
+     interior—, y por eso la comparación alcanza para distinguirlos. */
+  for (const dlg of document.querySelectorAll('dialog')) {
+    dlg.addEventListener('click', e => {
+      if (e.target === dlg) dlg.close();
+    });
   }
+
+  /* El botón redondo de la esquina crea lo que corresponda a la sección en la
+     que está: una tarea en Hábitos, un pendiente en Pendientes. Es el mismo
+     gesto para la misma intención, y por eso es un solo botón y no dos. */
+  el.fab.addEventListener('click', () => {
+    if (ui.page === 'todos') openPendienteDialog();
+    else openTaskDialog();
+  });
+
+  // ---------------------------------------------------------
+  // Pendientes
+  // ---------------------------------------------------------
+
+  /**
+   * Los tres estados, en el orden en que los cicla el botón de la fila.
+   *
+   * El orden es el del avance —nada, algo, todo—, así que tocar de más no
+   * pierde nada: se sigue avanzando hasta volver al principio.
+   */
+  const ESTADOS_PENDIENTE = [
+    { id: 'sin-iniciar', label: 'Sin iniciar' },
+    { id: 'en-proceso', label: 'En proceso' },
+    { id: 'finalizada', label: 'Finalizada' },
+  ];
+  const esEstadoPendiente = v => ESTADOS_PENDIENTE.some(e => e.id === v);
+  const labelEstado = id => ESTADOS_PENDIENTE.find(e => e.id === id)?.label ?? '';
+
+  /** El que sigue en el ciclo; después del último vuelve al principio. */
+  function siguienteEstado(id) {
+    const i = ESTADOS_PENDIENTE.findIndex(e => e.id === id);
+    return ESTADOS_PENDIENTE[(i + 1) % ESTADOS_PENDIENTE.length].id;
+  }
+
+  const categoriasRaiz = () => state.pendientes.categorias.filter(c => !c.padre);
+  const subcategoriasDe = id => state.pendientes.categorias.filter(c => c.padre === id);
+  const categoriaPorId = id => state.pendientes.categorias.find(c => c.id === id) ?? null;
+  const pendientePorId = id => state.pendientes.items.find(p => p.id === id) ?? null;
+  /** Los pendientes de una categoría, SIN los de sus subcategorías. */
+  const pendientesDe = id => state.pendientes.items.filter(p => p.categoria === id);
+
+  /**
+   * Cuántos cuelgan de una categoría contando los de sus subcategorías: es lo
+   * único que queda a la vista cuando está plegada.
+   */
+  function cuentaDe(cat) {
+    return pendientesDe(cat.id).length
+      + subcategoriasDe(cat.id).reduce((n, sub) => n + pendientesDe(sub.id).length, 0);
+  }
+
+  /** Dibuja la vista que esté puesta. Las dos leen lo mismo de `state`. */
+  function renderPendientes() {
+    const enLista = ui.vistaPendientes === 'lista';
+
+    for (const btn of document.querySelectorAll('.pend-vista')) {
+      const activa = btn.dataset.vista === ui.vistaPendientes;
+      btn.classList.toggle('is-activa', activa);
+      btn.setAttribute('aria-pressed', String(activa));
+    }
+
+    el.pendLista.hidden = !enLista;
+    el.pendCalendario.hidden = enLista;
+
+    /* Cada vista deja a la vista lo suyo y nada más: las categorías solo
+       ordenan la lista, y el mes solo mueve el calendario. El de mes vive en la
+       línea de arriba —ver `render`—, así que acá va el otro. */
+    el.pendCategoriaBtn.hidden = !enLista;
+
+    /* El cartel de bienvenida solo en la lista: en el calendario el mes vacío
+       ya se ve solo, y el cartel taparía la rejilla. */
+    const { categorias, items } = state.pendientes;
+    el.pendVacio.hidden = !enLista || categorias.length > 0 || items.length > 0;
+
+    if (enLista) renderPendientesLista();
+    else renderPendientesCalendario();
+  }
+
+  function renderPendientesLista() {
+    el.pendLista.innerHTML = '';
+    for (const cat of categoriasRaiz()) el.pendLista.appendChild(bloqueCategoria(cat, 0));
+
+    /* Lo que no está en ninguna categoría va al final, bajo un encabezado que
+       no se puede editar ni borrar: no es una categoría más, es su ausencia. */
+    const sueltos = state.pendientes.items.filter(p => !p.categoria);
+    if (!sueltos.length) return;
+
+    const bloque = elem('section', 'pend-bloque');
+    bloque.appendChild(elem('h3', 'pend-sueltos', 'Sin categoría'));
+    bloque.appendChild(listaDePendientes(sueltos));
+    el.pendLista.appendChild(bloque);
+  }
+
+  /**
+   * Una categoría con lo suyo adentro: primero sus pendientes y después sus
+   * subcategorías, cada una con los propios.
+   */
+  function bloqueCategoria(cat, nivel) {
+    const bloque = elem('section', `pend-bloque pend-nivel-${nivel}`);
+    const plegada = ui.pendPlegadas.has(cat.id);
+
+    const cabecera = elem('div', 'pend-cat');
+
+    /* Plegar y editar son dos cosas distintas y llevan dos botones: con uno
+       solo habría que elegir cuál gana el toque, y las dos se usan seguido. */
+    const flecha = elem('button', 'pend-cat-toggle', plegada ? '▸' : '▾');
+    flecha.type = 'button';
+    flecha.dataset.plegar = cat.id;
+    flecha.setAttribute('aria-expanded', String(!plegada));
+    flecha.title = plegada ? `Desplegar «${cat.name}»` : `Plegar «${cat.name}»`;
+    flecha.setAttribute('aria-label', flecha.title);
+
+    const nombre = elem('button', 'pend-cat-nombre', cat.name);
+    nombre.type = 'button';
+    nombre.dataset.categoria = cat.id;
+    nombre.title = `Editar «${cat.name}»`;
+
+    const cuenta = cuentaDe(cat);
+    const marca = elem('span', 'pend-cat-cuenta', String(cuenta));
+    marca.title = cuenta === 1 ? '1 pendiente' : `${cuenta} pendientes`;
+
+    cabecera.append(flecha, nombre, marca);
+    bloque.appendChild(cabecera);
+    if (plegada) return bloque;
+
+    const propios = pendientesDe(cat.id);
+    const subs = subcategoriasDe(cat.id);
+    if (propios.length) bloque.appendChild(listaDePendientes(propios));
+    for (const sub of subs) bloque.appendChild(bloqueCategoria(sub, nivel + 1));
+
+    // Una categoría recién creada está vacía: se dice, en vez de dejar un
+    // encabezado suelto que se lee como algo que no cargó.
+    if (!propios.length && !subs.length) {
+      bloque.appendChild(elem('p', 'pend-cat-vacia', 'Nada acá todavía'));
+    }
+    return bloque;
+  }
+
+  function listaDePendientes(items) {
+    const lista = elem('ul', 'pend-items');
+    for (const p of items) lista.appendChild(filaDePendiente(p));
+    return lista;
+  }
+
+  function filaDePendiente(p) {
+    const fila = elem('li', `pend-item est-${p.estado}`);
+
+    /* El estado se cambia tocándolo, con el mismo ciclo que la celda de la
+       planilla: es un toque contra abrir un diálogo para mover una cosa.
+
+       Y se dice con todas las letras. Un color pide aprender cuál es cuál antes
+       de poder leer la lista; el nombre entra en la fila y no hace falta
+       aprender nada. El tooltip agrega adónde lleva el toque siguiente. */
+    const estado = elem('button', 'pend-estado', labelEstado(p.estado));
+    estado.type = 'button';
+    estado.dataset.estado = p.id;
+    estado.title = `${labelEstado(p.estado)} — tocar para pasar a `
+      + labelEstado(siguienteEstado(p.estado)).toLowerCase();
+    estado.setAttribute('aria-label', `${p.name}: ${estado.title}`);
+
+    const nombre = elem('button', 'pend-nombre', p.name);
+    nombre.type = 'button';
+    nombre.dataset.pendiente = p.id;
+    nombre.title = `Editar «${p.name}»`;
+
+    /* El nombre primero, que es lo que se busca al recorrer la lista, y los
+       dos datos contra la derecha: la fecha y el estado, que es donde también
+       los lleva la lista del día en Hábitos. */
+    fila.append(nombre);
+    if (p.fecha) fila.appendChild(chipDeFecha(p));
+    fila.appendChild(estado);
+    return fila;
+  }
+
+  function chipDeFecha(p) {
+    const fecha = parseDateKey(p.fecha);
+    const chip = elem('span', 'pend-fecha', fmtShort.format(fecha));
+    chip.title = `Para el ${fmtFull.format(fecha)}`;
+
+    /* Vencido solo mientras quede algo por hacer: una finalizada con fecha
+       pasada no es un problema, es exactamente lo que se esperaba. */
+    if (p.estado !== 'finalizada' && p.fecha < dateKey(today)) {
+      chip.classList.add('is-vencida');
+      chip.title += ' — ya pasó';
+    }
+    return chip;
+  }
+
+  /**
+   * El mes visible con lo que cae cada día.
+   *
+   * Los que no tienen fecha no aparecen: el calendario contesta «cuándo», y de
+   * esos no hay respuesta. Se los cuenta al pie para que no parezca que se
+   * perdieron al cambiar de vista.
+   */
+  function renderPendientesCalendario() {
+    el.pendCalendario.innerHTML = '';
+
+    const cabecera = elem('div', 'pend-cal-dows');
+    for (const dia of ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom']) {
+      cabecera.appendChild(elem('span', 'pend-cal-dow', dia));
+    }
+    el.pendCalendario.appendChild(cabecera);
+
+    const porFecha = new Map();
+    for (const p of state.pendientes.items) {
+      if (!p.fecha) continue;
+      if (!porFecha.has(p.fecha)) porFecha.set(p.fecha, []);
+      porFecha.get(p.fecha).push(p);
+    }
+
+    const rejilla = elem('div', 'pend-cal-rejilla');
+    const dias = monthDays();
+
+    /* La rejilla arranca en el lunes de la semana del día 1; si no, los días no
+       caerían debajo del nombre que les corresponde. */
+    const relleno = (dias[0].getDay() + 6) % 7;
+    for (let i = 0; i < relleno; i++) rejilla.appendChild(elem('div', 'pend-cal-hueco'));
+
+    for (const dia of dias) {
+      const celda = elem('div', 'pend-cal-dia');
+      /* La fecha va en el marcado y no en un índice aparte: la usan las dos
+         cosas que se pueden hacer sobre la celda —crear ahí y soltar ahí—. */
+      celda.dataset.fecha = dateKey(dia);
+      celda.title = `Agregar un pendiente para el ${fmtFull.format(dia)}`;
+      if (sameDay(dia, today)) celda.classList.add('is-hoy');
+      celda.appendChild(elem('span', 'pend-cal-num', String(dia.getDate())));
+
+      for (const p of porFecha.get(dateKey(dia)) ?? []) {
+        const chip = elem('button', `pend-cal-item est-${p.estado}`, p.name);
+        chip.type = 'button';
+        chip.dataset.pendiente = p.id;
+        chip.title = `${p.name} — ${labelEstado(p.estado)}`;
+        celda.appendChild(chip);
+      }
+      rejilla.appendChild(celda);
+    }
+    el.pendCalendario.appendChild(rejilla);
+
+    const sinFecha = state.pendientes.items.filter(p => !p.fecha).length;
+    if (!sinFecha) return;
+    el.pendCalendario.appendChild(elem('p', 'pend-cal-nota',
+      sinFecha === 1
+        ? '1 pendiente sin fecha; está en la lista'
+        : `${sinFecha} pendientes sin fecha; están en la lista`));
+  }
+
+  /**
+   * Llena un desplegable de categorías, con las subcategorías nombradas por su
+   * camino completo: dos pueden llamarse igual colgando de padres distintos, y
+   * sueltas no habría cómo distinguirlas.
+   */
+  function opcionesDeCategoria(select, elegida, vacia) {
+    select.innerHTML = '';
+    const ninguna = elem('option', '', vacia);
+    ninguna.value = '';
+    select.appendChild(ninguna);
+
+    const opcion = (cat, texto) => {
+      const op = elem('option', '', texto);
+      op.value = cat.id;
+      select.appendChild(op);
+    };
+    for (const cat of categoriasRaiz()) {
+      opcion(cat, cat.name);
+      for (const sub of subcategoriasDe(cat.id)) opcion(sub, `${cat.name} › ${sub.name}`);
+    }
+    select.value = elegida ?? '';
+  }
+
+  /**
+   * @param {string|null} id  el pendiente que se edita, o nada para uno nuevo
+   * @param {{ fecha?: string }} [opciones] `fecha` precarga el campo en un alta:
+   *   es lo que hace que tocar un día del calendario cree justo ahí.
+   */
+  function openPendienteDialog(id = null, { fecha = '' } = {}) {
+    const p = id ? pendientePorId(id) : null;
+    ui.editandoPendiente = p ? p.id : null;
+
+    el.pendienteDialogTitle.textContent = p ? 'Editar pendiente' : 'Nuevo pendiente';
+    const rotulo = p ? 'Guardar cambios' : 'Crear pendiente';
+    el.pendienteSubmit.title = rotulo;
+    el.pendienteSubmit.setAttribute('aria-label', rotulo);
+
+    // No hay nada que eliminar en un alta.
+    el.pendienteTools.hidden = !p;
+    el.pendienteError.hidden = true;
+
+    el.pendienteName.value = p ? p.name : '';
+    opcionesDeCategoria(el.pendienteCategoria, p?.categoria ?? '', 'Sin categoría');
+    const estado = p ? p.estado : 'sin-iniciar';
+    el.pendienteForm
+      .querySelector(`input[name="pendiente-estado"][value="${estado}"]`).checked = true;
+    el.pendienteFecha.value = p ? (p.fecha ?? '') : fecha;
+
+    el.pendienteDialog.showModal();
+    el.pendienteName.focus();
+    el.pendienteName.select();
+  }
+
+  function openCategoriaDialog(id = null) {
+    const cat = id ? categoriaPorId(id) : null;
+    ui.editandoCategoria = cat ? cat.id : null;
+
+    el.categoriaDialogTitle.textContent = cat ? 'Editar categoría' : 'Nueva categoría';
+    const rotulo = cat ? 'Guardar cambios' : 'Crear categoría';
+    el.categoriaSubmit.title = rotulo;
+    el.categoriaSubmit.setAttribute('aria-label', rotulo);
+    el.categoriaTools.hidden = !cat;
+    el.categoriaError.hidden = true;
+    el.categoriaName.value = cat ? cat.name : '';
+
+    /* Solo las de primer nivel pueden ser padre —el anidado llega hasta ahí— y
+       una no puede colgar de sí misma. Con subcategorías propias tampoco puede
+       mudarse adentro de otra: dejaría un tercer nivel colgando. */
+    opcionesDeCategoria(el.categoriaPadre, cat?.padre ?? '', 'Ninguna (primer nivel)');
+    for (const op of [...el.categoriaPadre.options]) {
+      if (!op.value) continue;
+      const otra = categoriaPorId(op.value);
+      const prohibida = otra.padre
+        || (cat && (otra.id === cat.id || subcategoriasDe(cat.id).length > 0));
+      if (prohibida) op.remove();
+    }
+    el.categoriaPadre.value = cat?.padre ?? '';
+
+    el.categoriaDialog.showModal();
+    el.categoriaName.focus();
+    el.categoriaName.select();
+  }
+
+  // --- lo que se toca -------------------------------------------------------
+
+  for (const btn of document.querySelectorAll('.pend-vista')) {
+    btn.addEventListener('click', () => {
+      ui.vistaPendientes = /** @type {'lista'|'calendario'} */ (btn.dataset.vista);
+      render();
+    });
+  }
+
+  el.pendCategoriaBtn.addEventListener('click', () => openCategoriaDialog());
+
+  /* Un solo oyente para toda la lista: las filas se redibujan enteras en cada
+     cambio, y colgar oyentes de cada botón los volvería a colgar cada vez. */
+  el.pendLista.addEventListener('click', e => {
+    const boton = e.target.closest('button');
+    if (!boton) return;
+
+    if (boton.dataset.plegar) {
+      const id = boton.dataset.plegar;
+      if (ui.pendPlegadas.has(id)) ui.pendPlegadas.delete(id);
+      else ui.pendPlegadas.add(id);
+      renderPendientes();
+      return;
+    }
+    if (boton.dataset.categoria) return openCategoriaDialog(boton.dataset.categoria);
+    if (boton.dataset.pendiente) return openPendienteDialog(boton.dataset.pendiente);
+    if (boton.dataset.estado) return ciclarEstado(boton.dataset.estado);
+  });
+
+  el.pendCalendario.addEventListener('click', e => {
+    /* El clic que cierra un arrastre no es un toque: sin esto, soltar un
+       pendiente sobre otro día abría además su diálogo. */
+    if (arrastre.hubo) {
+      arrastre.hubo = false;
+      return;
+    }
+
+    const chip = e.target.closest('[data-pendiente]');
+    if (chip) return openPendienteDialog(chip.dataset.pendiente);
+
+    // Tocar el día crea ahí: la fecha es el dato que el calendario ya sabe.
+    const celda = e.target.closest('.pend-cal-dia');
+    if (celda) openPendienteDialog(null, { fecha: celda.dataset.fecha });
+  });
+
+  /* ---- arrastrar para cambiar de día ------------------------------------
+
+     Con eventos de puntero y no con el arrastre nativo de HTML5: el nativo no
+     existe en el teléfono, que es donde se usa esto. El arrastre arranca recién
+     después de moverse un poco, así que un toque sigue siendo un toque y abre
+     el diálogo.
+
+     No es el único camino para cambiar la fecha —el campo del diálogo hace lo
+     mismo—, y eso es lo que lo deja al alcance de quien no puede arrastrar. */
+  const UMBRAL = 6;
+  const arrastre = {
+    id: /** @type {string|null} */ (null),
+    origen: /** @type {Element|null} */ (null),
+    destino: /** @type {Element|null} */ (null),
+    x: 0,
+    y: 0,
+    activo: false,
+    /** Hubo arrastre de verdad: lo mira el clic que viene después. */
+    hubo: false,
+  };
+
+  /** La celda que está debajo del puntero, si es que hay alguna. */
+  function celdaEn(x, y) {
+    const nodo = document.elementFromPoint?.(x, y);
+    return nodo?.closest?.('.pend-cal-dia') ?? null;
+  }
+
+  function marcarDestino(celda) {
+    if (arrastre.destino === celda) return;
+    arrastre.destino?.classList.remove('is-destino');
+    arrastre.destino = celda;
+    celda?.classList.add('is-destino');
+  }
+
+  function soltarArrastre() {
+    arrastre.origen?.classList.remove('is-llevado');
+    arrastre.destino?.classList.remove('is-destino');
+    Object.assign(arrastre, { id: null, origen: null, destino: null, activo: false });
+  }
+
+  el.pendCalendario.addEventListener('pointerdown', e => {
+    const chip = e.target.closest('[data-pendiente]');
+    if (!chip || (e.button ?? 0) !== 0) return;
+
+    /* `hubo` se apaga acá y no después de mirarlo: si el navegador no manda el
+       clic que cierra un arrastre —soltando afuera, o en algunos toques—, la
+       marca quedaría puesta y se comería el toque siguiente. */
+    Object.assign(arrastre, {
+      id: chip.dataset.pendiente,
+      origen: chip,
+      x: e.clientX,
+      y: e.clientY,
+      activo: false,
+      hubo: false,
+    });
+    // Con el puntero capturado el arrastre sobrevive a salirse del chip.
+    chip.setPointerCapture?.(e.pointerId);
+  });
+
+  el.pendCalendario.addEventListener('pointermove', e => {
+    if (!arrastre.id) return;
+
+    if (!arrastre.activo) {
+      const lejos = Math.abs(e.clientX - arrastre.x) > UMBRAL
+        || Math.abs(e.clientY - arrastre.y) > UMBRAL;
+      if (!lejos) return;   // todavía puede ser un toque
+      arrastre.activo = true;
+      arrastre.origen?.classList.add('is-llevado');
+    }
+
+    e.preventDefault();
+    marcarDestino(celdaEn(e.clientX, e.clientY));
+  });
+
+  el.pendCalendario.addEventListener('pointerup', e => {
+    if (!arrastre.id) return;
+
+    const { id, activo } = arrastre;
+    const destino = arrastre.destino ?? celdaEn(e.clientX, e.clientY);
+    soltarArrastre();
+    if (!activo) return;   // fue un toque: lo atiende el clic
+
+    arrastre.hubo = true;
+    if (destino) moverPendiente(id, destino.dataset.fecha);
+  });
+
+  // Soltar afuera, o que el sistema corte el gesto, deja todo como estaba.
+  el.pendCalendario.addEventListener('pointercancel', () => {
+    if (arrastre.id) arrastre.hubo = arrastre.activo;
+    soltarArrastre();
+  });
+
+  function moverPendiente(id, fecha) {
+    const p = pendientePorId(id);
+    if (!p || !RE_DIA.test(fecha ?? '') || p.fecha === fecha) return;
+
+    p.fecha = fecha;
+    save();
+    renderPendientes();
+    toast(`«${p.name}» pasó al ${fmtFull.format(parseDateKey(fecha))}`);
+  }
+
+  /** Avanza al estado siguiente y vuelve al principio después del último. */
+  function ciclarEstado(id) {
+    const p = pendientePorId(id);
+    if (!p) return;
+    p.estado = siguienteEstado(p.estado);
+    save();
+    renderPendientes();
+  }
+
+  el.pendienteForm.addEventListener('submit', e => {
+    e.preventDefault();
+
+    const name = el.pendienteName.value.trim();
+    if (!name) {
+      el.pendienteError.textContent = 'Escribí qué hay que hacer.';
+      el.pendienteError.hidden = false;
+      el.pendienteName.focus();
+      return;
+    }
+
+    const datos = {
+      name,
+      categoria: categoriaPorId(el.pendienteCategoria.value)?.id ?? null,
+      estado: el.pendienteForm
+        .querySelector('input[name="pendiente-estado"]:checked').value,
+      fecha: RE_DIA.test(el.pendienteFecha.value) ? el.pendienteFecha.value : null,
+    };
+
+    const actual = ui.editandoPendiente ? pendientePorId(ui.editandoPendiente) : null;
+    if (actual) Object.assign(actual, datos);
+    else state.pendientes.items.push({ id: newId(), ...datos });
+
+    save();
+    el.pendienteDialog.close();
+    render();
+  });
+
+  el.pendienteDelete.addEventListener('click', () => {
+    const p = ui.editandoPendiente ? pendientePorId(ui.editandoPendiente) : null;
+    if (!p) return;
+    el.pendienteDialog.close();
+
+    confirmAction('Se elimina este pendiente.', () => {
+      state.pendientes.items = state.pendientes.items.filter(i => i.id !== p.id);
+      save();
+      render();
+      toast('Pendiente eliminado');
+    }, { items: [p.name], ok: 'Eliminar' });
+  });
+
+  el.categoriaForm.addEventListener('submit', e => {
+    e.preventDefault();
+
+    const name = el.categoriaName.value.trim();
+    if (!name) {
+      el.categoriaError.textContent = 'Poné un nombre.';
+      el.categoriaError.hidden = false;
+      el.categoriaName.focus();
+      return;
+    }
+
+    const padre = categoriaPorId(el.categoriaPadre.value)?.id ?? null;
+    const actual = ui.editandoCategoria ? categoriaPorId(ui.editandoCategoria) : null;
+    if (actual) Object.assign(actual, { name, padre });
+    else state.pendientes.categorias.push({ id: newId(), name, padre });
+
+    save();
+    el.categoriaDialog.close();
+    render();
+  });
+
+  /* Borrar una categoría NO borra lo que tiene adentro: los pendientes quedan
+     sueltos y las subcategorías pasan a primer nivel. Perder trabajo anotado
+     por reordenar carpetas sería un precio absurdo, y el aviso lo dice. */
+  el.categoriaDelete.addEventListener('click', () => {
+    const cat = ui.editandoCategoria ? categoriaPorId(ui.editandoCategoria) : null;
+    if (!cat) return;
+    el.categoriaDialog.close();
+
+    const subs = subcategoriasDe(cat.id);
+    const dentro = pendientesDe(cat.id).length
+      + subs.reduce((n, sub) => n + pendientesDe(sub.id).length, 0);
+
+    confirmAction('Se elimina la categoría.', () => {
+      const hijas = new Set(subcategoriasDe(cat.id).map(c => c.id));
+      state.pendientes.categorias = state.pendientes.categorias
+        .filter(c => c.id !== cat.id)
+        .map(c => (hijas.has(c.id) ? { ...c, padre: null } : c));
+      for (const p of state.pendientes.items) {
+        if (p.categoria === cat.id) p.categoria = null;
+      }
+      ui.pendPlegadas.delete(cat.id);
+      save();
+      render();
+      toast('Categoría eliminada');
+    }, {
+      items: [cat.name],
+      ok: 'Eliminar',
+      note: dentro || subs.length
+        ? 'Lo que tiene adentro no se borra: los pendientes quedan sin categoría'
+          + ' y las subcategorías pasan a primer nivel.'
+        : '',
+    });
+  });
 
   // ---------------------------------------------------------
   // Plantillas
@@ -3771,7 +4910,7 @@
 
   /** Por qué no se puede guardar el mes visible, o `''` si sí se puede. */
   function motivoSinGuardar() {
-    if (!currentTasks().length) return 'Este mes no tiene tareas para guardar';
+    if (!tareasDelDia(diaActual()).length) return 'Este día no tiene tareas para guardar';
     if (!hayLugarParaPlantilla()) {
       return `Ya hay ${MAX_PLANTILLAS} plantillas: borrá una para guardar otra`;
     }
@@ -3779,10 +4918,10 @@
   }
 
   function openSaveTemplate() {
-    const cuantas = currentTasks().length;
+    const cuantas = tareasDelDia(diaActual()).length;
     el.saveTemplateNote.textContent =
-      `Se guardan las ${cuantas} tareas de ${labelDeMes()}, con su frecuencia. `
-      + 'La fecha de inicio no: la elegís al aplicarla.';
+      `Se guardan las ${cuantas} tareas del ${fmtFull.format(diaActual())}, `
+      + 'con su frecuencia.';
 
     el.saveTemplateName.value = '';
     mostrarErrorPlantilla('');
@@ -3816,8 +4955,9 @@
       name: nombre,
       // La descripción se arma sola: pedirla sería un campo más para algo que
       // la app sabe. Dice de dónde salió, que es lo que se olvida.
-      description: `Guardada desde ${labelDeMes()}`,
-      tasks: tareasComoPlantilla(currentTasks()),
+      // De qué día salió, que es de donde se tomaron las tareas.
+      description: `Guardada desde el ${fmtShort.format(diaActual())}`,
+      tasks: tareasComoPlantilla(tareasDelDia(diaActual())),
     }];
     save();
     // Redibuja para que «Guardar como plantilla» refleje el lugar que queda:
@@ -3908,11 +5048,8 @@
     /* Se sigue a las tareas hasta donde fueron. Quedarse en el mes anterior
        dejaría un aviso de «6 tareas agregadas» sobre una pantalla en la que no
        cambió nada, que es indistinguible de un error. */
-    ui.year = year;
-    ui.month = month;
-    ui.selected.clear();
-    // La fecha es obligatoria, así que siempre hay una ventana a la que ir.
-    ui.windowIndex = windowIndexFor(parseDateKey(start));
+    // La fecha es obligatoria, así que siempre hay un día al que ir.
+    irAlDia(parseDateKey(start));
     irA('home');
 
     if (!agregadas) toast(`Esas tareas ya estaban en ${nombreMes}`);
@@ -3926,32 +5063,36 @@
   // ---------------------------------------------------------
 
   function setDrawer(open) {
+    /* Sin cambio no se toca el foco. Varios caminos cierran el cajón y a
+       continuación abren un diálogo; un segundo cierre —el del manejador
+       general de abajo— devolvería el foco al ☰ y se lo sacaría al diálogo
+       recién abierto. Y desde la barra del pie sería mandarlo al otro extremo
+       de la pantalla sin que nadie lo haya pedido. */
+    if (open === document.body.classList.contains('drawer-open')) return;
+
     document.body.classList.toggle('drawer-open', open);
     el.menu.setAttribute('aria-expanded', String(open));
     if (open) $('#btn-menu-close').focus();
     else el.menu.focus();
   }
 
+  /* Elegir algo del cajón lo cierra: todo lo que hay adentro abre un diálogo o
+     pone la lista en una postura, y en los dos casos hay que ver lo que quedó
+     atrás. */
+  el.drawer.addEventListener('click', e => {
+    /* El resumen de «Selección masiva» abre el grupo: cerrar el cajón ahí
+       escondería justo lo que se acaba de desplegar. */
+    if (e.target.closest('summary')) return;
+    if (e.target.closest('.drawer-item')) setDrawer(false);
+  });
+
   el.menu.addEventListener('click', () => setDrawer(true));
   $('#btn-menu-close').addEventListener('click', () => setDrawer(false));
   el.drawerBackdrop.addEventListener('click', () => setDrawer(false));
 
-  // Los paneles de Análisis recuerdan si quedaron plegados.
-  el.panelTiles.addEventListener('toggle', () => {
-    state.panels.tiles = el.panelTiles.open;
-    savePrefs();
-  });
-  el.panelCharts.addEventListener('toggle', () => {
-    state.panels.charts = el.panelCharts.open;
-    savePrefs();
-  });
-
-  // Alterna entre las dos secciones sin pasar por el menú.
-  el.pageToggle.addEventListener('click', () => {
-    irA(ui.page === 'home' ? 'indicators' : 'home');
-  });
-
-  el.drawer.addEventListener('click', e => {
+  /* Cambiar de sección es el mismo gesto venga de donde venga —la barra del pie
+     o el cajón—, así que las dos zonas comparten manejador. */
+  function navegarSeccion(e) {
     const item = e.target.closest('[data-page]');
     if (!item) return;
 
@@ -3961,7 +5102,10 @@
     e.preventDefault();
     setDrawer(false);
     irA(item.dataset.page);
-  });
+  }
+
+  el.tabbar.addEventListener('click', navegarSeccion);
+  el.drawer.addEventListener('click', navegarSeccion);
 
   el.templates.addEventListener('click', () => {
     setDrawer(false);
@@ -3970,129 +5114,8 @@
 
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-
-    // Lo más cercano primero: un desplegable tapa al menú lateral.
-    const abierto = cerrarMenus();
-    if (abierto) {
-      abierto.btn.focus();   // al que lo abrió, no siempre el de vista
-      return;
-    }
     if (document.body.classList.contains('drawer-open')) setDrawer(false);
   });
-
-  // ---------------------------------------------------------
-  // Opciones del mes
-  // ---------------------------------------------------------
-
-  el.copyPrev.addEventListener('click', () => {
-
-    const prev = previousMonth();
-    const source = tasksOf(prev.year, prev.month);
-    if (!source.length) return;
-
-    const prevName = labelDeMes(prev.year, prev.month);
-    const thisName = labelDeMes();
-    const current = currentTasks().length;
-
-    confirmAction(
-      `Se reemplazarán las ${current} tarea(s) de ${thisName} por las ${source.length} de ${prevName}. `
-      + 'Las tareas que no estén en el mes anterior se pierden junto con sus estados de este mes; '
-      + 'los periodos anteriores no se verán modificados.',
-      () => copyFromPreviousMonth(source),
-      { ok: 'Reemplazar' },
-    );
-  });
-
-  /**
-   * Reemplaza la lista del mes visible por una copia de la del mes anterior.
-   * Conserva los ids, así los estados ya cargados este mes sobreviven para las
-   * tareas que siguen existiendo; los del resto se descartan.
-   */
-  function copyFromPreviousMonth(source) {
-    const key = monthKey(ui.year, ui.month);
-    const copy = source.map(t => ({ ...t, weekdays: [...t.weekdays] }));
-    const keep = new Set(copy.map(t => t.id));
-
-    for (const statusK of Object.keys(state.status)) {
-      const [taskId, iso] = statusK.split('|');
-      if (!iso || !iso.startsWith(`${key}-`)) continue;
-      if (!keep.has(taskId)) delete state.status[statusK];
-    }
-
-    state.months[key] = copy;
-    save();
-    render();
-    toast(`${copy.length} tarea(s) copiadas del mes anterior`);
-  }
-
-  /**
-   * Pone la planilla en una postura, o la saca si ya estaba en esa. Elegir una
-   * apaga la otra: los casilleros y los chevrones compiten por el mismo lugar
-   * de la fila, y tenerlos juntos era lo que llenaba de controles cada renglón.
-   */
-  function setRowMode(modo) {
-    ui.rowMode = ui.rowMode === modo ? null : modo;
-    /* Cualquier cambio de postura suelta lo tildado. Eliminar y resetear
-       comparten los casilleros, y arrastrar una selección de una a la otra es
-       exactamente el descuido que termina borrando lo que se quería resetear. */
-    ui.selected.clear();
-    // Se anota de dónde se sale, para que ✕ pueda devolver el orden.
-    ui.ordenPrevio = ui.rowMode === 'reordenar' ? currentTasks().map(t => t.id) : null;
-    render();
-  }
-
-  el.modeDelete.addEventListener('click', () => setRowMode('eliminar'));
-  el.modeReset.addEventListener('click', () => setRowMode('resetear'));
-  el.modeReorder.addEventListener('click', () => setRowMode('reordenar'));
-
-  /** Sale de la postura sin aplicar nada. */
-  function cancelarPostura() {
-    if (ui.rowMode === 'reordenar' && ui.ordenPrevio) restaurarOrden(ui.ordenPrevio);
-    ui.rowMode = null;
-    ui.ordenPrevio = null;
-    ui.selected.clear();
-    render();
-  }
-
-  /** Devuelve las tareas del mes al orden de `ids`, y lo guarda. */
-  function restaurarOrden(ids) {
-    const tasks = materialize();
-    const porId = new Map(tasks.map(t => [t.id, t]));
-    const vuelto = ids.map(id => porId.get(id)).filter(Boolean);
-    // Lo que se creó o borró mientras tanto se respeta: va detrás.
-    for (const t of tasks) if (!ids.includes(t.id)) vuelto.push(t);
-    if (vuelto.length !== tasks.length) return;   // algo no cuadra: mejor no tocar
-    tasks.length = 0;
-    tasks.push(...vuelto);
-    save();
-  }
-
-  /** Remata la postura puesta, siempre con su diálogo de confirmación. */
-  function confirmarPostura() {
-    if (ui.rowMode === 'eliminar') return askDeleteSelected();
-    if (ui.rowMode === 'resetear') return askResetSelected();
-    if (ui.rowMode !== 'reordenar') return;
-
-    const tasks = currentTasks();
-    const cambio = ui.ordenPrevio && ui.ordenPrevio.join() !== tasks.map(t => t.id).join();
-    if (!cambio) return cancelarPostura();   // nada que confirmar
-
-    confirmAction(
-      `Se va a guardar este orden para ${labelDeMes()}:`,
-      () => {
-        // Ya está aplicado; confirmar es quedarse con él y soltar la vuelta atrás.
-        ui.rowMode = null;
-        ui.ordenPrevio = null;
-        render();
-        toast('Orden guardado');
-      },
-      { items: tasks.map(t => t.name), ok: 'Guardar' },
-    );
-  }
-
-  el.modeOk.addEventListener('click', confirmarPostura);
-  el.modeCancel.addEventListener('click', cancelarPostura);
-
 
   // ---------------------------------------------------------
   // Recordatorio diario
@@ -4437,7 +5460,6 @@
           state = parsed;
           save();
           applyTheme();
-          applyZoom();
           render();
           toast('Datos importados');
         },
@@ -4484,8 +5506,10 @@
     document.documentElement.dataset.theme = theme;
     document.body.style.background = theme === 'dark' ? '#0d1220' : '#f4f6fb';
     document.body.style.color = theme === 'dark' ? '#e7ecf7' : '#16203a';
-    el.theme.textContent = theme === 'dark' ? '☀' : '☾';
+    /* Cuál de los dos dibujos se ve lo decide la hoja, con `data-theme`. Acá
+       queda lo que no es de la hoja: cómo se nombra. */
     el.theme.title = theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro';
+    el.theme.setAttribute('aria-label', el.theme.title);
 
     try {
       localStorage.setItem('tareas-diarias/theme', JSON.stringify(theme));
@@ -4506,85 +5530,34 @@
   });
 
   // ---------------------------------------------------------
-  // Zoom de la planilla (solo móvil)
-  // ---------------------------------------------------------
-  //  El nivel se publica como atributo en <html> y el CSS hace el resto, dentro
-  //  del breakpoint angosto. En escritorio el botón no se ve y el atributo no
-  //  cambia nada: no hay medidas atadas a él fuera de ese bloque.
-
-  const zoomLabel = id => ZOOM_LEVELS.find(z => z.id === id)?.label ?? 'Normal';
-
-  function nextZoom() {
-    const i = ZOOM_LEVELS.findIndex(z => z.id === state.zoom);
-    return ZOOM_LEVELS[(i + 1) % ZOOM_LEVELS.length].id;
-  }
-
-  function applyZoom() {
-    document.documentElement.dataset.zoom = state.zoom;
-    el.zoomText.textContent = zoomLabel(state.zoom);
-    el.zoom.title = `Tamaño de la planilla: ${zoomLabel(state.zoom).toLowerCase()}`
-      + ` · clic para pasar a ${zoomLabel(nextZoom()).toLowerCase()}`;
-    el.zoom.setAttribute('aria-label', el.zoom.title);
-  }
-
-  el.zoom.addEventListener('click', () => {
-    state.zoom = nextZoom();
-    savePrefs();
-    applyZoom();
-  });
-
-  // ---------------------------------------------------------
-  // Plegar los controles del período (solo móvil)
-  // ---------------------------------------------------------
-  //  Oculta todo lo que hay entre la línea del mes y la planilla: el selector
-  //  de vista, la navegación del rango y las opciones del mes. En un teléfono
-  //  eso son tres filas que empujan la planilla fuera de la pantalla.
-
-  function applyCollapse() {
-    const plegado = state.controlsCollapsed;
-    document.body.classList.toggle('controls-collapsed', plegado);
-
-    // El chevron es uno solo y gira; la clase decide hacia dónde apunta.
-    el.collapse.classList.toggle('is-collapsed', plegado);
-    el.collapse.setAttribute('aria-expanded', String(!plegado));
-    el.collapse.title = plegado
-      ? 'Mostrar las vistas y las opciones del mes'
-      : 'Ocultar las vistas y las opciones del mes';
-    el.collapse.setAttribute('aria-label', el.collapse.title);
-  }
-
-  el.collapse.addEventListener('click', () => {
-    state.controlsCollapsed = !state.controlsCollapsed;
-    savePrefs();
-    applyCollapse();
-  });
-
-  // ---------------------------------------------------------
   // Atajos de teclado
   // ---------------------------------------------------------
 
   document.addEventListener('keydown', e => {
-    /* Con el desplegable abierto los atajos quedan en suspenso: mover el
-       período por detrás del menú es desconcertante. Esc lo cierra, más arriba.
+    /* Con el cajón abierto los atajos quedan en suspenso: mover el día por
+       detrás del menú es desconcertante. Esc lo cierra, más arriba.
 
        `matches?.` porque el blanco de un keydown no siempre es un elemento: sin
        nada enfocado puede ser el propio `document`, que no tiene ese método. */
     if (e.target.matches?.('input, textarea') || document.querySelector('dialog[open]')
-      || menuAbierto()) return;
+      || document.body.classList.contains('drawer-open')) return;
 
     if (e.key === 'ArrowLeft') { shiftRangeOrMonth(-1); e.preventDefault(); }
     else if (e.key === 'ArrowRight') { shiftRangeOrMonth(1); e.preventDefault(); }
-    // Dar de alta una tarea solo tiene sentido con la planilla a la vista.
+    // Dar de alta una tarea solo tiene sentido con la lista a la vista.
     else if ((e.key === 'n' || e.key === 'N') && ui.page === 'home') {
       openTaskDialog();
       e.preventDefault();
     } else if (e.key === 't' || e.key === 'T') { goToToday(); e.preventDefault(); }
   });
 
+  /* Mueve el día elegido. Las teclas ← → mandan ±1 y las flechas del carrete
+     ±CARRETE, que es pasar de página. */
   function shiftRangeOrMonth(delta) {
-    // Fuera de la planilla no hay ventana que mover: las flechas cambian de mes.
-    if (ui.page !== 'home' || ui.view === 'month') goToMonth(delta);
-    else shiftRange(delta);
+    // Fuera del Diario no hay carrete que mover: ahí las teclas cambian de mes,
+    // y ahí el salto es de UN mes venga el delta que venga.
+    if (ui.page !== 'home') goToMonth(Math.sign(delta));
+    else irAlDia(addDays(diaActual(), delta));
   }
 
   // ---------------------------------------------------------
@@ -4607,7 +5580,6 @@
   //  aparezca en claro y salte a oscuro un instante después.
 
   applyTheme();
-  applyZoom();
 
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (!state.theme) applyTheme();
@@ -4629,11 +5601,8 @@
 
   function estadoVacio() {
     return {
-      months: {}, status: {},
-      complianceMode: 'glyph',
-      zoom: 'normal',
-      controlsCollapsed: false,
-      panels: { tiles: true, charts: true },
+      months: {}, status: {}, trash: [],
+      pendientes: { categorias: [], items: [] },
       theme: state.theme,   // el tema es de la pantalla, no del usuario
     };
   }
@@ -4644,17 +5613,18 @@
       adoptarDatosPrevios();
       await hydrateStateForUser(user);
       applyTheme();
-      applyZoom();
 
+      // Se abre en hoy, que es el día que se va a cargar.
       ui.year = today.getFullYear();
       ui.month = today.getMonth();
+      ui.day = dateKey(today);
       ui.selected.clear();
       ui.diasEditables.clear();
-      ui.windowIndex = windowIndexFor(today);
       programarMedianoche();
 
-      // Los enlaces del menú se apuntan acá: `BASE` solo se conoce en runtime.
-      for (const item of el.drawer.querySelectorAll('[data-page]')) {
+      // Los enlaces de sección se apuntan acá —barra del pie y cajón—: `BASE`
+      // solo se conoce en runtime.
+      for (const item of document.querySelectorAll('a[data-page]')) {
         item.href = urlDe(item.dataset.page);
       }
 
@@ -4675,8 +5645,7 @@
       state = estadoVacio();
       ui.selected.clear();
       ui.diasEditables.clear();
-      el.grid.innerHTML = '';
-      el.summary.innerHTML = '';
+      el.diaLista.innerHTML = '';
       el.charts.innerHTML = '';
       STORAGE_KEY = STORAGE_BASE;
     },

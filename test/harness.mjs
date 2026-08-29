@@ -27,15 +27,18 @@ export const leer = f => fs.readFileSync(path.join(RAIZ, f), 'utf8');
 /**
  * Levanta la app con un estado ya cargado.
  * @param {object} estado  lo que habría en localStorage para ese usuario
+ * @param {{ ruta?: string }} [opciones] `ruta` es la dirección con la que se
+ *   abre la app —`'ajustes'`, `'pendientes'`…—, sin barra inicial. Por defecto
+ *   la raíz, que es lo que hacía siempre: el router cae en Diario.
  * @returns {Promise<{window: object, doc: Document, Habitos: object}>}
  */
-export async function montar(estado) {
+export async function montar(estado, { ruta = '' } = {}) {
   const html = leer('index.html')
     // El módulo de sesión pide un import por CDN: fuera.
     .replace(/<script type="module"[^>]*><\/script>/, '');
 
   const dom = new JSDOM(html, {
-    url: 'http://localhost/',
+    url: `http://localhost/${ruta}`,
     runScripts: 'dangerously',
     pretendToBeVisual: true,
   });
@@ -118,17 +121,54 @@ export async function montar(estado) {
 }
 
 /**
- * Cambia de vista por el desplegable, que es el único camino: el carril de
- * cuatro botones —«Hoy» y las tres vistas— ya no existe.
+ * Pone un día en el centro del carrete, que es el que se carga.
  *
- * Abre el menú antes de elegir. Clickear la opción con el menú cerrado también
- * funciona en jsdom, pero probaría un recorrido que en un navegador no existe.
+ * Va por el calendario de «Ir a…» y no clickeando las fichas del carrete: el
+ * carrete solo muestra siete días, así que para llegar a uno lejano habría que
+ * simular decenas de clics. Este es además el recorrido que hace un usuario
+ * cuando el destino no está a la vista.
+ *
+ * @param {string} clave  fecha `YYYY-MM-DD`
  */
-export function verVista(doc, vista) {
-  doc.querySelector('#btn-view').click();
-  const opt = doc.querySelector(`.view-opt[data-view="${vista}"]`);
-  if (!opt) throw new Error(`No hay opción de vista «${vista}»`);
-  opt.click();
+export function verDia(doc, clave) {
+  const window = doc.defaultView;
+  const centro = () => doc.querySelector('.carrete-dia.is-centro')?.dataset.date;
+  const distancia = () => Math.round(
+    (Date.parse(clave) - Date.parse(centro())) / 86400000);
+
+  // Los atajos no corren con un diálogo abierto ni con el cajón desplegado.
+  for (const dlg of doc.querySelectorAll('dialog[open]')) dlg.close();
+  if (doc.body.classList.contains('drawer-open')) {
+    doc.querySelector('#btn-menu-close').click();
+  }
+
+  let vueltas = 0;
+  while (centro() !== clave && vueltas++ < 800) {
+    const delta = distancia();
+    // De a siete con las flechas mientras haya una semana entera de por medio.
+    if (Math.abs(delta) >= 7) {
+      doc.querySelector(delta > 0 ? '#next-range' : '#prev-range').click();
+    } else {
+      doc.body.dispatchEvent(new window.KeyboardEvent('keydown', {
+        key: delta > 0 ? 'ArrowRight' : 'ArrowLeft',
+        bubbles: true,
+      }));
+    }
+  }
+  if (centro() !== clave) throw new Error(`No pude llegar a ${clave}`);
+}
+
+/**
+ * El botón de estado de una tarea en un día concreto, yendo hasta ese día si
+ * hace falta: la lista muestra uno por vez, así que la celda de otro día no
+ * está en el DOM hasta que el carrete se para ahí.
+ */
+export function celdaDe(doc, taskId, clave) {
+  if (doc.querySelector('.carrete-dia.is-centro')?.dataset.date !== clave) {
+    verDia(doc, clave);
+  }
+  return doc.querySelector(
+    `.cell[data-task-id="${taskId}"][data-date="${clave}"]`);
 }
 
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',

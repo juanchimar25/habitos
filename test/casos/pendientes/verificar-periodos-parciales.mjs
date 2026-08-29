@@ -17,7 +17,7 @@
    2026 —que tiene la misma forma de calendario— porque el mes tiene que estar
    ENTERO TRANSCURRIDO: desde que la meta cuenta solo los días vencidos, en un
    mes futuro no hay nada que exigir y todas las filas dirían «—». */
-import { montar, verVista, moverMeses } from '../harness.mjs';
+import { montar, verDia, moverMeses } from '../harness.mjs';
 
 let fallos = 0;
 const ok = (n, cond, det = '') => {

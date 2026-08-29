@@ -186,13 +186,15 @@ Tampoco está en Play Store. Se puede empaquetar como TWA con Bubblewrap —lo d
 
 ## Rutas
 
-Las tres secciones tienen dirección propia, se pueden compartir y responden a los botones de
-atrás y adelante del navegador:
+Cada sección tiene dirección propia, se puede compartir y responde a los botones de atrás y
+adelante del navegador:
 
 | Sección | Dirección |
 | --- | --- |
-| Diario | `/diario` |
+| Hábitos | `/diario` |
 | Análisis | `/analisis` |
+| Pendientes | `/pendientes` |
+| Ajustes | `/ajustes` |
 | Cómo usar | `/comousar` |
 
 Sigue siendo **una sola página**: `app.js` reescribe la URL con la History API y muestra la
@@ -991,6 +993,88 @@ El punto de partida en móvil es un escalón más chico que antes, porque en un 
 En escritorio el botón **no existe**: ahí la planilla entra y no hay nada que resolver. Por eso el nivel se aplica dentro del breakpoint angosto y fuera de él el atributo no cambia nada.
 
 > Los niveles multiplican las medidas del breakpoint en vez de fijar las suyas. Si fijaran medidas propias le ganarían por especificidad al bloque de 380px, y el ajuste para pantallas muy angostas quedaría sin efecto en dos de los tres niveles.
+
+## Pendientes
+
+Lo que hay que hacer **una vez**. No tiene frecuencia ni puntaje y **no entra en ningún cálculo**:
+ni en el cumplimiento del día, ni en el del mes, ni en los gráficos. Es la otra mitad de lo que se
+anota —lo que se repite va en Hábitos— y por eso vive en su propia sección y en su propia rama del
+estado (`state.pendientes`), no entre las tareas.
+
+### Qué es un pendiente
+
+| Campo | Qué guarda |
+|---|---|
+| Nombre | Qué hay que hacer |
+| Categoría | Dónde va, o ninguna |
+| Estado | `sin-iniciar`, `en-proceso` o `finalizada` |
+| Fecha de completado | Cuándo hay que hacerlo, o ninguna |
+
+El **estado** se cambia tocando el botón del extremo derecho de la fila —donde la lista del día de
+Hábitos lleva el suyo—, que cicla los tres en orden y vuelve al
+principio: el mismo gesto que la celda de la planilla. El botón **dice el nombre del estado** en vez
+de cifrarlo en un color —un color obliga a aprender cuál es cuál antes de poder leer la lista— y el
+tooltip anticipa adónde lleva el toque siguiente. Los tres van del mismo ancho: con el ancho del
+texto, los nombres de al lado bailaban de lugar cada vez que se tocaba uno.
+
+La **fecha es opcional** a propósito. No todo lo que hay que hacer tiene día, y obligar a inventarle
+uno llenaría el calendario de fechas falsas. En la lista se muestra como una etiqueta, y **en rojo
+si ya pasó** — salvo que esté finalizada, donde una fecha vieja es exactamente lo que se esperaba.
+
+### Categorías y subcategorías
+
+El anidado llega a **dos niveles**: una categoría, y adentro subcategorías. Con una cadena libre
+habría que dibujar una sangría sin fondo, y un padre que apunte a un descendiente dejaría el árbol
+sin poder recorrerse. Por eso el desplegable *Dentro de* solo ofrece categorías de primer nivel, y
+una que ya tiene subcategorías no puede mudarse adentro de otra.
+
+Lo que no está en ninguna categoría cae al final, bajo **Sin categoría** — un encabezado que no se
+edita ni se borra, porque no es una categoría más: es su ausencia.
+
+> **Borrar una categoría no borra lo que tiene adentro.** Los pendientes quedan sueltos y las
+> subcategorías pasan a primer nivel. Perder trabajo anotado por reordenar carpetas sería un precio
+> absurdo, y el aviso de confirmación lo dice antes de que pase.
+
+Lo mismo hace `cleanPendientes` con lo que entra de afuera —de la base o de un archivo importado—:
+una categoría cuyo padre no existe, o cuyo padre ya es subcategoría, **queda de primer nivel** en
+vez de descartarse, y un pendiente que apunta a una categoría que no está queda suelto. Solo se
+tira lo que no se puede leer: sin nombre, sin id o con el id repetido.
+
+### Las dos vistas
+
+Son la **misma lista** mirada de dos maneras, y por eso el cambio es un par de botones y no dos
+secciones distintas. Van arriba, centrados y del mismo ancho —son alternativas de la misma
+pregunta, y una más ancha parecería la principal—, y **debajo** aparece el único control que le toca
+a la vista puesta: **Nueva categoría** en la lista, contra la izquierda; la **línea del mes** en el
+calendario, centrada.
+
+> Esa línea del mes es la misma de Hábitos: en el calendario el nodo se **muda** adentro de la
+> sección, debajo del par de vistas, y vuelve a su lugar al salir. Un segundo botón de mes sería un
+> segundo lugar donde arreglar lo mismo.
+
+- **Lista** — por categoría. Cada encabezado se pliega y deja a la vista la cuenta de lo que tiene
+  adentro, contando lo de sus subcategorías.
+- **Calendario** — por fecha. La rejilla del mes con lo que cae cada día. Los que no tienen fecha no
+  entran en la rejilla, así que se los **cuenta al pie**: si no, cambiar de vista parecería haberlos
+  perdido.
+
+  Ahí el calendario también se edita: **tocar un día** abre el alta con esa fecha puesta, y
+  **arrastrar un pendiente a otro día** se la cambia. El arrastre va con eventos de puntero y no con
+  el arrastre nativo de HTML5, que en el teléfono no existe — y arranca recién después de moverse
+  unos pixeles, así que un toque sigue siendo un toque y abre el diálogo. Los chips llevan
+  `touch-action: none` para que arrastrar con el dedo no desplace además la pantalla; el resto del
+  calendario se sigue desplazando como siempre.
+
+  > Arrastrar no es el único camino: el campo de fecha del diálogo hace lo mismo. Eso es lo que lo
+  > deja al alcance de quien no puede arrastrar.
+
+El calendario es mensual como la planilla y usa **la misma línea de mes**: dos selectores de mes en
+la misma app serían dos cosas que aprender para lo mismo.
+
+### El «+»
+
+El botón redondo de la esquina crea **lo que la sección contiene**: una tarea en Hábitos, un
+pendiente en Pendientes. Es un solo botón porque es un solo gesto para la misma intención.
 
 ## Atajos de teclado
 

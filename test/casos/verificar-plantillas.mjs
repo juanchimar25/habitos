@@ -123,7 +123,7 @@ const abrir = async (estado, fecha, { irAMes } = {}) => {
 // --- 10. no arrastra la fecha entre aperturas -------------------------------
 {
   const { doc } = await abrir(ESTADO_VACIO, '2026-09-20');
-  doc.querySelector('[data-close-dialog]').click();
+  doc.querySelector('#templates-dialog [data-close-dialog]').click();
   doc.querySelector('#btn-templates').click();
   ok('reabre en hoy, no en la fecha anterior',
     doc.querySelector('#templates-start').value === '2026-07-30',
