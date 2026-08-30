@@ -23,10 +23,38 @@ const guardado = w => JSON.parse(w.localStorage.getItem('tareas-diarias/v1/u-tes
 const enviar = (doc, form) => doc.querySelector(form)
   .dispatchEvent(new doc.defaultView.Event('submit', { bubbles: true, cancelable: true }));
 
-const irAPendientes = doc => doc.querySelector('[data-page="todos"]').click();
+/**
+ * Abre todas las tarjetas de la lista.
+ *
+ * Arrancan plegadas —eso lo fija su propio caso, más abajo— y casi todos los
+ * casos de acá miran lo que hay ADENTRO: qué filas quedaron, en qué orden, de
+ * qué categoría cuelgan. Sin esto, cada uno de ellos tendría que abrir a mano lo
+ * que no está probando.
+ *
+ * De a una y volviendo a buscar: cada toque redibuja la lista entera, así que
+ * la tanda que se juntó antes del primer clic queda con nodos que ya no están.
+ * Abrir una además destapa las de adentro, que también hay que abrir.
+ */
+const desplegarTodo = doc => {
+  for (let toques = 0; toques < 60; toques++) {
+    const cerrada = [...doc.querySelectorAll('#pend-lista .pend-cat-toggle')]
+      .find(b => b.getAttribute('aria-expanded') === 'false');
+    if (!cerrada) return;
+    cerrada.click();
+  }
+  throw new Error('quedaron tarjetas plegadas después de 60 toques');
+};
+
+const irAPendientes = doc => {
+  doc.querySelector('[data-page="todos"]').click();
+  desplegarTodo(doc);
+};
 
 /** La vista del árbol, que es donde viven las tarjetas de categoría. */
-const verCategorias = doc => doc.querySelector('#btn-pend-categorias').click();
+const verCategorias = doc => {
+  doc.querySelector('#btn-pend-categorias').click();
+  desplegarTodo(doc);
+};
 
 /**
  * Toca el «+» parado en la vista donde crea lo que se quiere, y deja la
@@ -50,13 +78,15 @@ const nuevaCategoria = (doc, nombre, padre = '') => {
   const opcion = [...select.options].find(o => o.textContent === padre);
   select.value = opcion ? opcion.value : '';
   enviar(doc, '#categoria-form');
+  desplegarTodo(doc);
 };
 
 /**
  * Crea un pendiente desde el «+». `categoria` acepta «Madre» o «Madre › Hija»:
  * el formulario las elige en dos pasos, uno por desplegable.
  */
-const nuevoPendiente = (doc, nombre, { categoria = '', fecha = '', estado = '' } = {}) => {
+const nuevoPendiente = (doc, nombre,
+  { categoria = '', fecha = '', estado = '', comentario = '' } = {}) => {
   agregar(doc, 'pendiente');
   doc.querySelector('#pendiente-name').value = nombre;
 
@@ -70,11 +100,13 @@ const nuevoPendiente = (doc, nombre, { categoria = '', fecha = '', estado = '' }
   elegir('#pendiente-categoria', madre ?? '');
   if (hija) elegir('#pendiente-subcategoria', hija);
   doc.querySelector('#pendiente-fecha').value = fecha;
+  doc.querySelector('#pendiente-comentario').value = comentario;
   if (estado) {
     doc.querySelector(`#pendiente-form input[name="pendiente-estado"][value="${estado}"]`)
       .checked = true;
   }
   enviar(doc, '#pendiente-form');
+  desplegarTodo(doc);
 };
 
 const nombres = doc => [...doc.querySelectorAll('#pend-lista .pend-nombre')]
@@ -553,6 +585,7 @@ const editarCategoria = (doc, nombre) => {
 
   doc.querySelector('#pend-papelera-all').click();
   doc.querySelector('#pend-papelera-restore').click();
+  desplegarTodo(doc);                       // vuelve plegada, como cualquier otra
 
   /* Restaurar una categoría deshace las tres cosas que hizo borrarla: vuelve a
      su lugar, se lleva de vuelta a su subcategoría y recupera los pendientes
@@ -1265,6 +1298,177 @@ const editarCategoria = (doc, nombre) => {
       && limpio.categorias.find(c => c.name === 'Alacena').padre === null
       && limpio.categorias.find(c => c.name === 'Cocina').padre === 'c1',
     JSON.stringify(limpio.categorias));
+}
+
+// --- los comentarios --------------------------------------------------------
+{
+  /* Hasta 200 caracteres para lo que no entra en un nombre de 35: un teléfono,
+     qué papeles llevar, dónde quedó anotado el trámite. Se escribe y se lee en
+     el ✎; la fila solo avisa que hay algo. */
+  const { window, doc } = await montar(VACIO);
+  irAPendientes(doc);
+
+  const NOTA = 'Turno pedido por la web, llevar la partida y el DNI viejo';
+  nuevoPendiente(doc, 'Renovar el pasaporte', { comentario: NOTA });
+  nuevoPendiente(doc, 'Comprar pan');
+
+  const item = nombre => guardado(window).pendientes.items.find(p => p.name === nombre);
+  ok('el comentario se guarda', item('Renovar el pasaporte')?.comentario === NOTA,
+    item('Renovar el pasaporte')?.comentario);
+  ok('  y sin comentario queda vacío, no ausente',
+    item('Comprar pan')?.comentario === '',
+    JSON.stringify(item('Comprar pan')?.comentario));
+
+  /* La fila NO despliega la nota: son 200 caracteres contra una línea donde el
+     nombre ya se recorta. Avisa y nada más — leerla es tocar el ✎. */
+  const filaDe = nombre => [...doc.querySelectorAll('#pend-lista .pend-item')]
+    .find(f => f.querySelector('.pend-nombre').textContent === nombre);
+  const marca = filaDe('Renovar el pasaporte')?.querySelector('.pend-nota');
+  ok('la fila avisa que hay comentarios', Boolean(marca), filaDe('Renovar el pasaporte')?.textContent);
+  ok('  sin escupir la nota en la lista',
+    !filaDe('Renovar el pasaporte').textContent.includes(NOTA),
+    filaDe('Renovar el pasaporte')?.textContent);
+  ok('  pero diciéndola donde hay mouse', marca?.title === NOTA, marca?.title);
+  ok('  y a un lector de pantalla', /comentarios: /.test(marca?.getAttribute('aria-label') ?? ''),
+    marca?.getAttribute('aria-label'));
+  ok('  la que no tiene comentarios no lleva marca',
+    !filaDe('Comprar pan')?.querySelector('.pend-nota'));
+
+  // Al reabrir el ✎ está lo que se escribió, que es donde se lee.
+  doc.querySelectorAll('.pend-editar')[nombres(doc).indexOf('Renovar el pasaporte')].click();
+  ok('el ✎ trae el comentario', doc.querySelector('#pendiente-comentario').value === NOTA,
+    doc.querySelector('#pendiente-comentario').value);
+
+  // Y se puede vaciar: la marca de la fila se va con él.
+  doc.querySelector('#pendiente-comentario').value = '   ';
+  enviar(doc, '#pendiente-form');
+  ok('vaciarlo lo borra de verdad', item('Renovar el pasaporte')?.comentario === '',
+    JSON.stringify(item('Renovar el pasaporte')?.comentario));
+  ok('  y la marca se va con él',
+    !filaDe('Renovar el pasaporte')?.querySelector('.pend-nota'));
+}
+
+// --- un comentario largo, y uno que llega de afuera -------------------------
+{
+  /* El `maxlength` del campo frena lo que se tipea, pero no lo que entra por un
+     archivo importado ni por la base: eso lo frena el saneador. */
+  const largo = 'a'.repeat(500);
+  const { window, doc } = await montar({
+    ...VACIO,
+    pendientes: {
+      categorias: [],
+      items: [
+        { id: 'p1', name: 'De afuera', categoria: 'cat-varios', estado: 'sin-iniciar', fecha: null, comentario: largo },
+        { id: 'p2', name: 'Con espacios', categoria: 'cat-varios', estado: 'sin-iniciar', fecha: null, comentario: '   al medio   ' },
+        { id: 'p3', name: 'Con basura', categoria: 'cat-varios', estado: 'sin-iniciar', fecha: null, comentario: { no: 'es texto' } },
+      ],
+      papelera: [],
+    },
+  });
+  irAPendientes(doc);
+
+  /* La marca de la fila dice lo saneado antes de que nada se guarde: el
+     saneador corre al cargar, pero escribir es otra cosa. */
+  const notaDe = nombre => [...doc.querySelectorAll('#pend-lista .pend-item')]
+    .find(f => f.querySelector('.pend-nombre').textContent === nombre)
+    ?.querySelector('.pend-nota');
+  ok('el largo ya llega recortado a la fila', notaDe('De afuera')?.title.length === 200,
+    String(notaDe('De afuera')?.title.length));
+  ok('  y la basura no deja marca', !notaDe('Con basura'));
+
+  // Y lo saneado es lo que se guarda: un toque cualquiera lo escribe.
+  doc.querySelector('.pend-estado').click();
+  const item = id => guardado(window).pendientes.items.find(p => p.id === id);
+  ok('un comentario largo se recorta a 200', item('p1')?.comentario.length === 200,
+    String(item('p1')?.comentario.length));
+  ok('  sin holgura: el campo nace con ese tope y no hay datos viejos que respetar',
+    item('p1')?.comentario === 'a'.repeat(200));
+  ok('los espacios de los bordes se van', item('p2')?.comentario === 'al medio',
+    JSON.stringify(item('p2')?.comentario));
+  ok('lo que no es texto no rompe nada', item('p3')?.comentario === '',
+    JSON.stringify(item('p3')?.comentario));
+  ok('  y las tres siguen a la vista', nombres(doc).length === 3, nombres(doc).join(', '));
+}
+
+// --- el comentario vuelve de la papelera ------------------------------------
+{
+  /* Restaurar devuelve la tarea «tal como estaba», y eso incluye lo que se
+     había anotado: perderlo sería restaurar a medias. */
+  const { window, doc } = await montar(VACIO);
+  irAPendientes(doc);
+  nuevoPendiente(doc, 'Llamar al gasista', { comentario: 'Presupuesto por WhatsApp' });
+
+  doc.querySelector('.pend-editar').click();
+  doc.querySelector('#pendiente-delete').click();
+  doc.querySelector('#confirm-ok').click();
+  ok('se fue de la lista', nombres(doc).length === 0, nombres(doc).join(', '));
+
+  doc.querySelector('#btn-pend-menu').click();
+  doc.querySelector('#btn-pend-papelera').click();
+  doc.querySelector('#pend-papelera-all').click();
+  doc.querySelector('#pend-papelera-restore').click();
+
+  const vuelto = guardado(window).pendientes.items.find(p => p.name === 'Llamar al gasista');
+  ok('vuelve con su comentario', vuelto?.comentario === 'Presupuesto por WhatsApp',
+    JSON.stringify(vuelto?.comentario));
+}
+
+// --- las tarjetas arrancan plegadas -----------------------------------------
+{
+  /* En «Lista» y en «Categorías» lo primero que se ve es el mapa —los tres
+     estados, las categorías— con su cuenta al costado, y no la lista entera
+     desplegada. Con unas pocas tareas daba lo mismo; con treinta, entrar a
+     Pendientes era caer en el medio de un muro de filas y tener que plegar a
+     mano para poder mirar algo.
+
+     Ojo: este caso NO puede usar los ayudantes de más arriba, que abren todo
+     justamente para no tener que hacerlo en cada uno. */
+  const item = (id, name, categoria) => ({
+    id, name, categoria, estado: 'sin-iniciar', fecha: null, comentario: '', archivado: false,
+  });
+  const { doc } = await montar({
+    ...VACIO,
+    pendientes: {
+      categorias: [{ id: 'c1', name: 'Casa', padre: null, archivada: false }],
+      items: [item('p1', 'Pagar expensas', 'c1'), item('p2', 'Llamar al banco', 'cat-varios')],
+      papelera: [],
+    },
+  });
+  doc.querySelector('[data-page="todos"]').click();
+
+  const flechas = () => [...doc.querySelectorAll('#pend-lista .pend-cat-toggle')];
+  const abiertas = () => flechas().filter(f => f.getAttribute('aria-expanded') === 'true');
+
+  ok('«Lista» abre con las tres tarjetas plegadas',
+    flechas().length === 3 && abiertas().length === 0,
+    `${abiertas().length} de ${flechas().length} abiertas`);
+  ok('  sin ninguna fila a la vista', nombres(doc).length === 0, nombres(doc).join(','));
+  /* Plegada no es vacía: la cuenta es lo que queda diciendo qué hay adentro. */
+  ok('  pero con la cuenta de cada una',
+    [...doc.querySelectorAll('#pend-lista .pend-grupo-cuenta')].map(c => c.textContent)
+      .join(',') === '2,0,0',
+    [...doc.querySelectorAll('#pend-lista .pend-grupo-cuenta')].map(c => c.textContent).join(','));
+
+  // Abrir una no abre las otras: se anota la que se abrió, no un modo.
+  flechas()[0].click();
+  ok('  abrir una deja plegadas a las demás', abiertas().length === 1,
+    `${abiertas().length} de ${flechas().length} abiertas`);
+  ok('    y muestra lo suyo', nombres(doc).join(',') === 'Llamar al banco,Pagar expensas',
+    nombres(doc).join(','));
+
+  doc.querySelector('#btn-pend-categorias').click();
+  ok('«Categorías» también abre plegada',
+    flechas().length > 0 && abiertas().length === 0,
+    `${abiertas().length} de ${flechas().length} abiertas`);
+  ok('  con «Casa» y «Varios» a la vista y nada colgando',
+    categorias(doc).join(',') === 'Casa' && nombres(doc).length === 0,
+    `${categorias(doc).join(',')} · ${nombres(doc).join(',')}`);
+
+  /* Lo que se abrió en «Lista» no se arrastra: son tarjetas distintas —una es
+     un estado y la otra una categoría— y cada una anota la suya. */
+  doc.querySelector('#btn-pend-lista').click();
+  ok('volver a «Lista» conserva la que se había abierto', abiertas().length === 1,
+    `${abiertas().length} de ${flechas().length} abiertas`);
 }
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');

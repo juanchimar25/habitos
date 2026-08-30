@@ -275,9 +275,15 @@
      * el mes en el calendario. Es siempre la MISMA lista.
      */
     vistaPendientes: /** @type {'lista'|'categorias'|'calendario'} */ ('lista'),
-    /** Categorías plegadas. Es una postura de pantalla: no se persiste. */
-    pendPlegadas: /** @type {Set<string>} */ (new Set()),
-    /** Y las archivadas que se abrieron, que arrancan al revés: cerradas. */
+    /**
+     * Las tarjetas de Pendientes que están abiertas — todas arrancan plegadas.
+     *
+     * Anota la excepción y no el estado de cada una: son las menos, y una
+     * categoría recién creada no necesita que nadie la marque para verse como
+     * las demás.
+     *
+     * Es una postura de pantalla: no se persiste.
+     */
     pendDesplegadas: /** @type {Set<string>} */ (new Set()),
     /**
      * Cómo se ordena cada una de las dos vistas que son listas. Uno por vista
@@ -524,9 +530,8 @@
 
   /**
    * Lo que está a la vista, que ahora es un solo día. Sigue devolviendo una
-   * lista porque todo lo que calcula totales —`taskTotals`, `rangeTotals`,
-   * `statusKeysIn`— trabaja sobre un conjunto de días, y con uno solo la cuenta
-   * es la misma.
+   * lista porque todo lo que calcula totales —`taskTotals`, `statusKeysIn`—
+   * trabaja sobre un conjunto de días, y con uno solo la cuenta es la misma.
    */
   function visibleDays() {
     return { days: [diaActual()], count: 1 };
@@ -1042,7 +1047,8 @@
   /** Escribe el estado en la base. `true` si quedó guardado. */
   async function subirEstado() {
     /* Una copia y no el estado vivo: entre que se arma la subida y contesta la
-       base puede pasar cualquier cosa —marcar otra celda—, y        devuelve un objeto que COMPARTE las ramas con . Sin clonar, la
+       base puede pasar cualquier cosa —marcar otra celda—, y `payloadRemoto()`
+       devuelve un objeto que COMPARTE las ramas con `state`. Sin clonar, la
        sombra terminaba diciendo que la base ya tiene cambios que nunca se
        mandaron, y el siguiente parche salía vacío. */
     const payload = clonar(payloadRemoto());
@@ -1579,6 +1585,13 @@
         categoria: porId.has(categoria) ? categoria : VARIOS,
         estado: esEstadoPendiente(crudo.estado) ? crudo.estado : 'sin-iniciar',
         fecha: RE_DIA.test(fecha) ? fecha : null,
+        /* Recortado clavado y no con holgura: el campo nace con este tope, así
+           que no hay datos viejos más largos que respetar —al revés que
+           `name`, que acepta hasta 80 para no mutilar lo que se guardó cuando
+           el tope todavía no existía—. */
+        comentario: typeof crudo.comentario === 'string'
+          ? crudo.comentario.trim().slice(0, TOPE_COMENTARIO)
+          : '',
         archivado: crudo.archivado === true,
       });
     }
@@ -1708,8 +1721,7 @@
        que la fila `Cumplimiento diario`—; lo que no se cuenta es un
        incumplimiento que todavía no ocurrió. Por eso los puntos miran todos los
        días y solo `dias` se recorta. El desbalance no puede pasarse de 100%:
-       `complianceOf` topea el porcentaje y `aporte` topea lo que la tarea
-       aporta a cualquier promedio.
+       lo topea `complianceOf`, que es por donde pasan todos los porcentajes.
 
        Que el período esté partido por el borde del mes o por la ventana de la
        vista recorta la meta igual, pero es cosa distinta: ahí no es que no haya
@@ -1769,37 +1781,6 @@
   function metaEnAcciones(prorrateada, puntos, objetivo) {
     if (prorrateada >= 1) return Math.ceil(prorrateada);
     return Math.min(Math.ceil(puntos), objetivo);
-  }
-
-  /**
-   * Aporte de una tarea a un promedio: nunca más que su propia meta.
-   *
-   * Marcar de más está permitido y los puntos crudos lo reflejan, pero no puede
-   * empujar un promedio hacia arriba. Sin este tope, hacer una tarea de lunes a
-   * viernes también el sábado compensaba el incumplimiento de otra tarea, y el
-   * total del rango subía sin que nada se hubiera cumplido mejor.
-   */
-  function aporte(puntos, meta) {
-    return Math.min(puntos, meta);
-  }
-
-  /**
-   * Meta de todo el rango. Se suma por filas y no por columnas: la de una tarea
-   * periódica es lo que le pide cada período que el rango alcanza a mostrar,
-   * mientras que la de una columna solo dice cuánto se podría marcar ese día
-   * puntual.
-   *
-   * `dias` se arrastra para que el guion del total general pueda explicarse con
-   * el mismo criterio que el de cada fila — ver `applyCompliance`.
-   */
-  function rangeTotals(days) {
-    return currentTasks().reduce((acc, task) => {
-      const t = taskTotals(task, days);
-      acc.points += aporte(t.points, t.max);
-      acc.max += t.max;
-      acc.dias += t.dias;
-      return acc;
-    }, { points: 0, max: 0, dias: 0 });
   }
 
   /**
@@ -2046,6 +2027,7 @@
     pendienteCategoria: $('#pendiente-categoria'),
     pendienteSub: $('#pendiente-subcategoria'),
     pendienteFecha: $('#pendiente-fecha'),
+    pendienteComentario: $('#pendiente-comentario'),
     pendienteError: $('#pendiente-error'),
     pendienteTools: $('#pendiente-tools'),
     pendienteDelete: $('#pendiente-delete'),
@@ -2345,7 +2327,11 @@
 
   /** El cumplimiento del día, encabezando la lista. */
   function renderResumenDelDia(date) {
-    const totales = rangeTotals([date]);
+    /* La MISMA cuenta que usa el gráfico de barras: la del día. Antes esta fila
+       sumaba por tarea y las dos podían no coincidir —el 30 de agosto decían
+       35% y 41%—, que es lo peor que puede pasar con dos números que contestan
+       la misma pregunta. */
+    const totales = dayCompliance(date);
     const nivel = complianceOf(totales.points, totales.max);
 
     el.diaResumen.className = `dia-resumen ${nivel ? 'cp-' + nivel.status : 'cp-empty'}`;
@@ -4490,6 +4476,11 @@
      teléfono. Es el mismo tope que el alta de tareas, que lo declara en el
      atributo del campo. */
   const TOPE_NOMBRE = 35;
+  /* Los comentarios no son un rótulo sino una nota, así que el tope es otro y
+     por otra razón: lo que entra de un vistazo sin que la tarea pendiente se
+     convierta en un documento. Una nota que no cabe se termina escribiendo en
+     otro lado, y entonces la tarea deja de decir todo lo que hay que saber. */
+  const TOPE_COMENTARIO = 200;
 
   const esEstadoPendiente = v => ESTADOS_PENDIENTE.some(e => e.id === v);
   const labelEstado = id => ESTADOS_PENDIENTE.find(e => e.id === id)?.label ?? '';
@@ -4696,7 +4687,7 @@
   /** Una de las tres tarjetas de «Lista», con lo que hay en ese estado. */
   function bloqueDeEstado(estado, items) {
     const bloque = elem('section', 'pend-bloque pend-nivel-0');
-    const plegada = ui.pendPlegadas.has(estado.id);
+    const plegada = !ui.pendDesplegadas.has(estado.id);
 
     const cabecera = elem('div', 'pend-cat');
 
@@ -4764,13 +4755,7 @@
    */
   function bloqueCategoria(cat, nivel, { archivada = false } = {}) {
     const bloque = elem('section', `pend-bloque pend-nivel-${nivel}`);
-    /* La guardada arranca plegada: se archivó justamente para dejar de verla,
-       y se abre cuando hace falta. Solo la de arriba, eso sí: una vez abierta,
-       lo de adentro se ve como en cualquier otra. */
-    const raizGuardada = archivada && nivel === 0;
-    const plegada = raizGuardada
-      ? !ui.pendDesplegadas.has(cat.id)
-      : ui.pendPlegadas.has(cat.id);
+    const plegada = !ui.pendDesplegadas.has(cat.id);
     if (archivada) bloque.classList.add('is-archivada');
 
     const cabecera = elem('div', 'pend-cat');
@@ -4781,7 +4766,6 @@
     const flecha = elem('button', 'pend-cat-toggle', plegada ? '▸' : '▾');
     flecha.type = 'button';
     flecha.dataset.plegar = cat.id;
-    if (raizGuardada) flecha.dataset.guardada = '';
     flecha.setAttribute('aria-expanded', String(!plegada));
     flecha.title = plegada ? `Desplegar «${cat.name}»` : `Plegar «${cat.name}»`;
     flecha.setAttribute('aria-label', flecha.title);
@@ -4865,9 +4849,29 @@
        la derecha la fecha, el lápiz y el estado — el mismo orden que la lista
        del día en Hábitos, donde el lápiz precede al recuadro de estado. */
     fila.append(nombre);
+    if (p.comentario) fila.appendChild(marcaDeNota(p));
     if (p.fecha) fila.appendChild(chipDeFecha(p));
     fila.append(lapiz, estado);
     return fila;
+  }
+
+  /**
+   * «Acá hay algo más que el nombre».
+   *
+   * El comentario NO se despliega en la fila: son hasta 200 caracteres y la
+   * fila es una línea, con el nombre ya recortado con puntos suspensivos.
+   * Meterlo adentro obligaría a que cada tarea ocupe un párrafo, y la lista
+   * dejaría de leerse de un vistazo, que es para lo que sirve.
+   *
+   * Así que la fila solo avisa y el comentario se lee donde se escribe: en el
+   * ✎. El tooltip lo adelanta en pantallas con mouse; en un teléfono no hay
+   * tooltip, y ahí la marca dice justamente «tocá el lápiz».
+   */
+  function marcaDeNota(p) {
+    const marca = elem('span', 'pend-nota', '⋯');
+    marca.title = p.comentario;
+    marca.setAttribute('aria-label', `${p.name}, comentarios: ${p.comentario}`);
+    return marca;
   }
 
   function chipDeFecha(p) {
@@ -5027,11 +5031,40 @@
     el.pendienteForm
       .querySelector(`input[name="pendiente-estado"][value="${estado}"]`).checked = true;
     el.pendienteFecha.value = p ? (p.fecha ?? '') : fecha;
+    el.pendienteComentario.value = p ? (p.comentario ?? '') : '';
+    estirarComentario();
 
     el.pendienteDialog.showModal();
     el.pendienteName.focus();
     el.pendienteName.select();
   }
+
+  /**
+   * El campo de comentarios mide lo que ocupa lo escrito.
+   *
+   * Vacío tiene que ser el mismo recuadro de una línea que el del nombre; con
+   * tres renglones anotados, esconder dos detrás de una barra de desplazamiento
+   * sería peor que ocupar el lugar. Así que ni fijo ni con agarradera: se
+   * acomoda solo, hasta el techo que le pone el CSS.
+   *
+   * El `auto` de la primera línea es lo que le permite ACHICARSE: sin él,
+   * `scrollHeight` nunca baja de la altura que el campo ya tiene, y borrar
+   * texto dejaba el hueco.
+   */
+  function estirarComentario() {
+    const campo = el.pendienteComentario;
+    campo.style.height = 'auto';
+    /* Sin motor de maquetado —los tests— no hay altura que medir, y lo que sale
+       de acá es un 0 que aplastaría el campo. Se lo deja como lo dejó el CSS. */
+    if (!campo.scrollHeight) {
+      campo.style.height = '';
+      return;
+    }
+    const bordes = campo.offsetHeight - campo.clientHeight;
+    campo.style.height = `${campo.scrollHeight + bordes}px`;
+  }
+
+  el.pendienteComentario.addEventListener('input', estirarComentario);
 
   function openCategoriaDialog(id = null) {
     const cat = id ? categoriaPorId(id) : null;
@@ -5101,13 +5134,13 @@
     if (!boton) return;
 
     if (boton.dataset.plegar) {
-      /* Las vivas se guardan plegadas y las archivadas, desplegadas: cada
-         conjunto anota la excepción a cómo arranca, que es al revés en cada
-         uno. Así ninguna necesita que se la marque para verse como debe. */
+      /* Todas arrancan plegadas, así que alcanza con anotar cuáles se abrieron.
+         Antes arrancaban abiertas y hacían falta dos conjuntos —uno para las
+         que se cerraron y otro para las que se abrieron—, porque las archivadas
+         arrancaban al revés que el resto. */
       const id = boton.dataset.plegar;
-      const set = 'guardada' in boton.dataset ? ui.pendDesplegadas : ui.pendPlegadas;
-      if (set.has(id)) set.delete(id);
-      else set.add(id);
+      if (ui.pendDesplegadas.has(id)) ui.pendDesplegadas.delete(id);
+      else ui.pendDesplegadas.add(id);
       renderPendientes();
       return;
     }
@@ -5363,6 +5396,9 @@
       estado: el.pendienteForm
         .querySelector('input[name="pendiente-estado"]:checked').value,
       fecha: RE_DIA.test(el.pendienteFecha.value) ? el.pendienteFecha.value : null,
+      /* `trim` sí, capitalizar no: un nombre es un rótulo y empieza en
+         mayúscula, pero una nota de varias líneas no, y forzársela se ve mal. */
+      comentario: el.pendienteComentario.value.trim().slice(0, TOPE_COMENTARIO),
     };
 
     const actual = ui.editandoPendiente ? pendientePorId(ui.editandoPendiente) : null;
@@ -5487,7 +5523,7 @@
       for (const p of state.pendientes.items) {
         if (p.categoria === cat.id) p.categoria = VARIOS;
       }
-      ui.pendPlegadas.delete(cat.id);
+      ui.pendDesplegadas.delete(cat.id);
       save();
       render();
       toast('Categoría eliminada');

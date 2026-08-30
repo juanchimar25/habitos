@@ -279,19 +279,27 @@ const enviar = (doc, form) => doc.querySelector(form)
 // --- 6. lo archivado no cuenta como incumplido -----------------------------
 {
   /* El día del corte en adelante la tarea no existe, así que no puede figurar
-     como faltante: el cumplimiento del día tiene que subir o quedar igual, nunca
-     bajar por archivar. */
+     como faltante: un día en el que quedó incumplida tiene que mejorar al
+     archivarla, nunca empeorar.
+
+     Ojo con el día que se elige: el resumen cuenta lo que está a la vista, así
+     que archivar también se lleva las marcas posteriores al corte. Si el día
+     que se mira tenía la tarea CUMPLIDA, el porcentaje puede bajar —se fue un
+     1 de 1—, y eso no es un incumplimiento inventado sino una fila menos. Acá
+     se mira el lunes 13, donde «Inglés» tocaba y quedó sin hacer. */
   const { doc } = await montar(ESTADO_LLENO);
-  verDia(doc, '2026-07-28');
+  verDia(doc, '2026-07-13');
   const antes = doc.querySelector('#dia-resumen-valor').textContent;
+  ok('el día arranca con la tarea incumplida',
+    filas(doc).includes('t3'), filas(doc).join(','));
 
   verDia(doc, '2026-07-30');
   editar(doc, 't3');                       // Inglés: lunes, miércoles y viernes
   doc.querySelector('#task-archive').click();
-  doc.querySelector('#archive-date').value = '2026-07-27';
+  doc.querySelector('#archive-date').value = '2026-07-10';
   enviar(doc, '#archive-form');
 
-  verDia(doc, '2026-07-28');
+  verDia(doc, '2026-07-13');
   const despues = doc.querySelector('#dia-resumen-valor').textContent;
   const num = t => Number(String(t).replace('%', '')) || 0;
   ok('archivar no empeora el cumplimiento del día', num(despues) >= num(antes),

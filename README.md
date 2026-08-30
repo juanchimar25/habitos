@@ -607,7 +607,11 @@ La fecha de inicio no se escribe en la fila de la tarea para no alargarla; se ve
 
 Como marcar de más está permitido, **los puntos pueden superar la meta**: una tarea semanal marcada tres veces en una semana suma 3 contra una meta de 1. Pero **el cumplimiento topea en 100%** — cumplir es cumplir, y de ahí no se sube. Los números crudos siguen a la vista en el tooltip de la celda (*«3 sobre una meta de 1»*), así que hacer de más se ve igual sin inflar la medida.
 
-El tope no es solo de presentación: **cada tarea aporta como mucho su propia meta** al cumplimiento de un día. Sin eso, una tarea marcada de más levantaba sola la columna del día.
+**El cumplimiento del día cuenta por día, no por tarea.** Entra en la cuenta lo que ese día se pidió y lo que se hizo aunque no se pidiera, un punto de meta por cada uno: es exactamente lo que la lista muestra encendido. Una tarea de lunes a viernes hecha un domingo cuenta **1 de 1** ese domingo — hacer de más nunca puede empeorar el día.
+
+> Antes esta cuenta se hacía por tarea y con el tope de la meta de cada una, así que esa misma fila se veía cumplida y valía **0 de 0**: la tarea no pedía nada el domingo, y su punto no tenía dónde entrar. El resultado era que el día decía un porcentaje en la lista y otro en el gráfico de barras —que siempre contó por día—. El 30 de agosto de 2026 llegaron a decir **35%** y **41%** sobre las mismas marcas. Ahora es una sola cuenta.
+>
+> Marcar ✕ un día que no tocaba sigue sin restar: no se puede incumplir lo que no se pidió.
 
 > **El cumplimiento del MES no lleva ese tope.** Ahí se suman los puntos enteros: lo hecho de más en una tarea compensa lo que falta en otra, que es lo que se pidió expresamente. La pregunta que contesta ese número es cuánto se hizo en el mes contra cuánto se pedía, no si cada tarea por separado se cumplió — eso lo contesta la barra de cada una, que sí topea en 100%. El porcentaje del mes tampoco pasa de 100%: un cumplimiento del 130% no querría decir nada.
 
@@ -1120,8 +1124,9 @@ estado (`state.pendientes`), no entre las tareas.
 | Categoría | Dónde va. Se elige en dos pasos: la principal y, si tiene, su subcategoría |
 | Estado | `sin-iniciar`, `en-proceso` o `finalizada` |
 | Calendarizar | Qué día hay que hacerlo, o ninguno |
+| Comentarios | Lo que no entra en el nombre (hasta 200 caracteres), o nada |
 
-El **lápiz** de cada fila es la única puerta a su edición —nombre, categoría, fecha— y a sus tres
+El **lápiz** de cada fila es la única puerta a su edición —nombre, categoría, fecha, comentarios— y a sus tres
 acciones, las mismas que las de una tarea o una categoría: **Eliminar**, **Reordenar** —entre los de
 su misma categoría; ese orden se ve en *Categorías*, porque *Lista* ordena por fecha— y
 **Archivar**, que lo guarda en ☰ → Archivo junto a las categorías guardadas. El nombre es el rótulo de la fila y no
@@ -1138,6 +1143,43 @@ texto, los nombres de al lado bailaban de lugar cada vez que se tocaba uno.
 La **fecha es opcional** a propósito. No todo lo que hay que hacer tiene día, y obligar a inventarle
 uno llenaría el calendario de fechas falsas. En la lista se muestra como una etiqueta, y **en rojo
 si ya pasó** — salvo que esté finalizada, donde una fecha vieja es exactamente lo que se esperaba.
+
+Los **comentarios** son para lo que no entra en un nombre de 35 caracteres: un teléfono al que
+llamar, qué papeles llevar, dónde quedó anotado el número de trámite. Topean en **200** porque son
+una nota y no un documento — y porque una nota que no cabe se termina escribiendo en otro lado, y
+entonces la tarea deja de decir todo lo que hay que saber.
+
+**No se despliegan en la fila.** La fila es una línea, con el nombre ya recortado con puntos
+suspensivos: meter 200 caracteres ahí obligaría a que cada tarea ocupe un párrafo y la lista dejaría
+de leerse de un vistazo, que es para lo que sirve. Así que la fila solo **avisa** con un **⋯** tenue
+al lado del nombre, y el comentario se lee donde se escribe: en el ✎. Con mouse, el tooltip del ⋯ lo
+adelanta; en un teléfono no hay tooltip, y ahí el ⋯ dice justamente *tocá el lápiz*.
+
+**Es el mismo recuadro que el del nombre** —relleno, borde, radio, tipografía— y mide **el doble de
+alto**, que es lo que lo distingue de un campo de rótulo. El `calc` lo dice con esas palabras: la
+altura de un campo de una línea —relleno arriba y abajo, los dos bordes, un interlineado—
+multiplicada por dos. Escrito así sigue siendo el doble exacto si mañana cambia el cuerpo de la
+letra o el relleno de los campos, cosa que un número suelto de píxeles no puede prometer.
+
+> El doble de la **caja** no es el doble de **renglones**: el relleno y los bordes no se duplican
+> con el texto, así que adentro entran casi tres líneas.
+
+Desde ahí **crece con lo que se tipea**, hasta un techo; pasado ese punto se desplaza por dentro,
+porque una nota larga empujaba el botón de guardar fuera de la pantalla. Sin agarradera en la
+esquina: se acomoda solo, y esa agarradera era justamente lo que lo distinguía del resto de los
+campos a simple vista.
+
+> Es el **único campo de varios renglones de la app**, así que es el único que podía quedarse sin
+> estilo: el bloque que pinta los campos los lista por tipo —`input[type="text"]`, `[type="date"]`…—
+> para no alcanzar a los radios ni a las casillas, y un `textarea` no es ninguno de esos. Lleva
+> regla propia con las mismas declaraciones, una por una — hay un caso que las compara. Y
+> `display: block`, porque un `textarea` se apoya en la línea de base y deja abajo un hueco que
+> ningún `input` tiene.
+>
+> El saneador lo acepta **solo si es texto**. Con los otros campos alcanza `String(...)` porque
+> después se los valida —una fecha pasa por `RE_DIA`, un estado por su lista—, pero un comentario es
+> texto libre y lo que salga de `String()` se guarda tal cual: un objeto en un archivo importado
+> terminaba escrito como `[object Object]` adentro de la tarea.
 
 ### Categorías y subcategorías
 
@@ -1232,6 +1274,17 @@ calendario aparece **debajo** la línea del mes.
 - **Categorías** — el árbol: cada categoría es una tarjeta con sus pendientes y sus subcategorías
   adentro. Cada encabezado se pliega y deja a la vista la cuenta de lo que tiene, contando lo de sus
   subcategorías.
+
+**Las dos abren plegadas.** Lo primero que se ve es el mapa —los tres estados, las categorías— con
+su cuenta al costado, y se abre lo que se quiere mirar. Con unas pocas tareas daba igual; con
+treinta, entrar a Pendientes era caer en el medio de un muro de filas y tener que plegar a mano para
+poder mirar algo. La cuenta es lo que hace que plegado no sea lo mismo que vacío.
+
+> Se anota **cuáles se abrieron**, no el estado de cada una: son las menos, y una categoría recién
+> creada no necesita que nadie la marque para verse como las demás. Antes arrancaban abiertas y
+> hacían falta **dos** conjuntos —uno para las que se habían cerrado y otro para las que se habían
+> abierto—, porque las archivadas arrancaban al revés que el resto; ahora todo arranca igual y queda
+> uno solo. Es una postura de pantalla: no se guarda ni viaja a la base.
 - **Calendario** — por fecha. La rejilla del mes con lo que cae cada día. Los que no tienen fecha no
   entran en la rejilla, así que se los **cuenta al pie**: si no, cambiar de vista parecería haberlos
   perdido.

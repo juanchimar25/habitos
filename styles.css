@@ -1555,6 +1555,19 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   white-space: nowrap;
 }
 
+/* La marca de que la tarea tiene comentarios. Tenue y sin recuadro: avisa, no
+   compite con el nombre ni con la fecha, que son los dos datos que se leen al
+   recorrer la lista. No es un botón —no lleva a ninguna parte: el comentario se
+   lee en el ✎, que está dos lugares más a la derecha—. */
+.pend-nota {
+  flex: none;
+  font-size: .95rem;
+  line-height: 1;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+  cursor: help;
+}
+
 /* El lápiz, entre el dato y el estado: el mismo lugar que ocupa en la lista
    del día de Hábitos. */
 .pend-editar { flex: none; }
@@ -1639,10 +1652,6 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   line-height: 1.5;
   color: var(--text-muted);
 }
-
-/* Tres opciones cortas en una línea: son alternativas de la misma pregunta y
-   entran las tres sin apretarse. */
-.radio-tres { grid-template-columns: repeat(3, auto); }
 
 .field-select {
   font: inherit;
@@ -2574,9 +2583,47 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   color: var(--text);
   width: 100%;
 }
+/* El único campo de varias líneas de la app —los comentarios de una tarea
+   pendiente—. Es el MISMO recuadro que el del nombre —relleno, borde, radio,
+   tipografía, todo—; lo único distinto es que arranca de dos renglones, que es
+   lo que lo delata como un campo donde se escribe más que un rótulo.
+
+   Arranca midiendo EL DOBLE que un campo de una línea, y el `calc` lo dice con
+   esas palabras: la altura de uno —relleno arriba y abajo, los dos bordes, un
+   interlineado— multiplicada por dos. Escrito así sigue siendo el doble exacto
+   si mañana cambia el cuerpo de la letra o el relleno de los campos, cosa que
+   un número suelto de píxeles no puede prometer.
+
+   Ojo: el doble de la CAJA no es el doble de renglones. El relleno y los bordes
+   no se duplican con el texto, así que adentro entran casi tres líneas.
+
+   Crece con lo que se tipea, que es cosa de `estirarComentario`; el
+   `min-height` es el piso del que no baja. `resize: none` porque se acomoda
+   solo: la agarradera de la esquina era justamente lo que lo distinguía del
+   resto de los campos a simple vista. Y `display: block` porque un `textarea`
+   se apoya en la línea de base y deja un hueco abajo que ningún input tiene.
+
+   El techo lo pone el CSS y de ahí en más se desplaza por dentro: sin él, una
+   nota larga empujaba el botón de guardar fuera de la pantalla. */
+.field textarea {
+  font: inherit;
+  padding: .55rem .7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  width: 100%;
+  display: block;
+  resize: none;
+  overflow-y: auto;
+  min-height: calc(2 * (1.1rem + 2px + 1.45em));
+  max-height: 7.5rem;
+}
+
 /* Adentro de un formulario todo lo que se toca pertenece a la misma acción, y
    esa acción es del color de la marca — el mismo del botón que la remata. */
-.field input:focus {
+.field input:focus,
+.field textarea:focus {
   outline: 2px solid var(--brand-text);
   outline-offset: 1px;
   border-color: var(--brand-text);
@@ -2610,6 +2657,19 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   justify-content: center;
   gap: .35rem 1.75rem;
 }
+
+/* Tres opciones cortas en una línea, centradas como las de dos: son
+   alternativas de la misma pregunta y entran las tres sin apretarse.
+
+   Tiene que ir DESPUÉS de `.radio-grid`. Vivía cien líneas más arriba, entre
+   las reglas de otra pantalla, y no hacía nada: `.radio-grid` vuelve a pedir
+   dos columnas más abajo y con la misma especificidad, así que ganaba la de
+   abajo y los tres estados caían en dos filas —dos arriba y uno solo abajo—.
+
+   Con menos aire entre las tres que entre las dos: con el hueco de
+   `.radio-grid` la fila no entraba en el diálogo de un teléfono. Por debajo de
+   380px se apilan, que es lo que hacen todas las opciones a ese ancho. */
+.radio-tres { grid-template-columns: repeat(3, auto); column-gap: .9rem; }
 
 /* Tres opciones que se leen como una lista de una sola columna: son alternativas
    de una misma pregunta y ninguna es más corta que las otras. */

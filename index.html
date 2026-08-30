@@ -492,6 +492,7 @@
               <li><strong>No cumplido</strong> (✕)</li>
               <li><strong>No requerido</strong> (–)</li>
             </ul>
+            <p>Arriba de la lista, el <strong>Cumplimiento diario</strong>: una cumplida suma un punto y una a medias, medio, sobre un punto por cada tarea que ese día cuenta. Cuentan las que el día pide y también las que hiciste sin que las pidiera —una de lunes a viernes hecha un domingo suma—, que son justamente las que se ven encendidas.</p>
           </div>
         </div>
 
@@ -571,6 +572,8 @@
               <li>El <strong>lápiz</strong> de cada fila abre su edición y sus tres acciones —<strong>Eliminar</strong>, <strong>Reordenar</strong> y <strong>Archivar</strong>—, las mismas que las de una tarea o una categoría. Es el único lugar desde donde se edita.</li>
               <li><strong>Reordenar</strong> lo sube o lo baja entre los de su misma categoría; el orden se ve en <strong>Categorías</strong>, porque <strong>Lista</strong> ordena por fecha. <strong>Archivar</strong> lo guarda en <strong>☰ → Archivo</strong>, junto a las categorías guardadas.</li>
               <li><strong>Calendarizar</strong> es opcional: le pone día a la tarea. Las que lo tienen aparecen en el calendario; las que no, viven solo en la lista.</li>
+              <li><strong>Comentarios</strong>, también opcional: hasta 200 caracteres para lo que no entra en el nombre —un teléfono al que llamar, qué papeles llevar—. En la lista aparece un <strong>⋯</strong> tenue al lado del nombre avisando que hay algo anotado; se lee y se escribe tocando el <strong>✎</strong>.</li>
+              <li>En <strong>Lista</strong> y en <strong>Categorías</strong> las tarjetas <strong>arrancan plegadas</strong>, con la cuenta de lo que tienen adentro al costado. El <strong>▸</strong> del encabezado abre la que quieras mirar.</li>
               <li>Al crear o editar una tarea pendiente, la <strong>categoría</strong> se elige en dos pasos: primero la principal y después, si tiene, su subcategoría. <strong>Toda tarea tiene categoría</strong>: la que viene puesta es <em>Varios</em>.</li>
               <li>Dos categorías principales no pueden llamarse igual; dos subcategorías sí, mientras cuelguen de categorías distintas.</li>
               <li><strong>Varios</strong> y su subcategoría vienen de fábrica y no se pueden eliminar ni archivar —son donde caen las tareas que no ordenaste en otro lado—, pero sí les podés cambiar el nombre.</li>
@@ -1202,6 +1205,17 @@
       <label class="field">
         <span class="field-label">Calendarizar <span class="field-nota">(opcional)</span></span>
         <input type="date" id="pendiente-fecha">
+      </label>
+
+      <!-- Para lo que no entra en el nombre: un teléfono al que llamar, qué
+           papeles llevar, dónde quedó anotado el número de trámite. El nombre
+           tiene 35 caracteres porque es el rótulo de una fila; esto tiene 200
+           porque es una nota, y una nota que no cabe se termina escribiendo en
+           otro lado. -->
+      <label class="field">
+        <span class="field-label">Comentarios <span class="field-nota">(opcional)</span></span>
+        <textarea id="pendiente-comentario" maxlength="200" rows="3"
+                  placeholder="Ej: llevar la partida y el DNI viejo"></textarea>
       </label>
 
       <p class="form-error" id="pendiente-error" role="alert" hidden></p>

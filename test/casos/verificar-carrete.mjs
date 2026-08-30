@@ -271,6 +271,37 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
   ok('el cumplimiento diario se recalcula', /%/.test(resumen), resumen);
 }
 
+// --- 5a. el resumen cuenta lo mismo que muestran las filas -----------------
+{
+  /* Domingo 26. «Trabajo» es de lunes a viernes: ese día no tocaba, pero está
+     hecha, así que la fila se ve encendida y tiene que contar 1 de 1.
+
+     Antes el resumen sumaba por tarea y con el tope de la meta de cada una: esa
+     fila se veía cumplida y valía 0 de 0. El mismo domingo decía un porcentaje
+     en la lista y otro en el gráfico de barras, que siempre contó por día. */
+  const tarea = (id, name, freq) => ({
+    id, name, freq, customMode: 'weekdays', weekdays: [], target: 12, start: null,
+  });
+  const { doc } = await montar({
+    months: { '2026-07': [tarea('d1', 'Leer', 'daily'), tarea('w1', 'Trabajo', 'weekdays')] },
+    status: { 'w1|2026-07-26': 'done' },
+    theme: 'light',
+  });
+  verDia(doc, '2026-07-26');
+
+  const fila = filas(doc).find(f => f.dataset.taskId === 'w1');
+  ok('la de lunes a viernes se ve encendida el domingo',
+    fila && !fila.classList.contains('is-optional'), fila?.className);
+
+  const resumen = doc.querySelector('#dia-resumen-valor').textContent;
+  const detalle = doc.querySelector('#dia-resumen').title;
+  console.log(`
+=== el domingo ===
+  ${resumen} · ${detalle}`);
+  ok('lo hecho un día que no tocaba entra en la cuenta', resumen === '50%', resumen);
+  ok('  y el detalle lo dice: 1 sobre 2', /1 sobre una meta de 2/.test(detalle), detalle);
+}
+
 // --- 5b. «no requerido» apaga la tarjeta entera ---------------------------
 {
   /* Un día que no cuenta para esa tarea se ve igual lo decida la frecuencia o
