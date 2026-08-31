@@ -39,8 +39,9 @@ const abrir = doc => {
  * y el soporte de push.
  */
 const renderizar = doc => {
-  doc.querySelector('#next-range').click();
-  doc.querySelector('#prev-range').click();
+  // Ir a un día y volver: cualquier movimiento del carrete redibuja.
+  doc.body.dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  doc.body.dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
 };
 
 /** Espera a que se resuelvan las promesas encoladas del diálogo. */

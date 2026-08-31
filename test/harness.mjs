@@ -130,6 +130,25 @@ export async function montar(estado, { ruta = '' } = {}) {
  *
  * @param {string} clave  fecha `YYYY-MM-DD`
  */
+/**
+ * Un deslizamiento de costado sobre un nodo: `sentido` -1 va a lo siguiente
+ * —el dedo va hacia la izquierda— y 1 a lo anterior.
+ *
+ * Los gestos de la app piden recorrido de sobra y bastante más ancho que alto,
+ * así que los números de acá están elegidos para pasar esas dos condiciones.
+ */
+export function deslizar(doc, nodo, sentido) {
+  const window = doc.defaultView;
+  const puntero = (tipo, x) => {
+    const e = new window.Event(tipo, { bubbles: true, cancelable: true });
+    Object.assign(e, { clientX: x, clientY: 300, pointerId: 1, button: 0, pointerType: 'touch' });
+    nodo.dispatchEvent(e);
+  };
+  puntero('pointerdown', 200);
+  puntero('pointermove', 200 + sentido * 120);
+  puntero('pointerup', 200 + sentido * 120);
+}
+
 export function verDia(doc, clave) {
   const window = doc.defaultView;
   const centro = () => doc.querySelector('.carrete-dia.is-centro')?.dataset.date;
@@ -145,9 +164,11 @@ export function verDia(doc, clave) {
   let vueltas = 0;
   while (centro() !== clave && vueltas++ < 800) {
     const delta = distancia();
-    // De a siete con las flechas mientras haya una semana entera de por medio.
+    /* De a siete deslizando el carrete mientras haya una semana entera de por
+       medio; el resto, de a uno con las teclas. El carrete tuvo flechas para
+       esto y ahora el gesto es el deslizamiento. */
     if (Math.abs(delta) >= 7) {
-      doc.querySelector(delta > 0 ? '#next-range' : '#prev-range').click();
+      deslizar(doc, doc.querySelector('#carrete'), delta > 0 ? -1 : 1);
     } else {
       doc.body.dispatchEvent(new window.KeyboardEvent('keydown', {
         key: delta > 0 ? 'ArrowRight' : 'ArrowLeft',

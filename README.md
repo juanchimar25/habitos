@@ -1408,10 +1408,35 @@ agrupar no hay tarjetas**, así que es la única de las tres que muestra algo ap
   > dedo o el lápiz**: con mouse están las flechas, y arrastrar para seleccionar texto no tiene por
   > qué cambiar de mes.
   >
-  > Es el mismo gesto que el del Diario y la misma función, `deslizarDeCostado`: las dos pantallas
-  > tienen un «antes» y un «después», y en las dos lo que se cambia se nombra arriba del todo. Lo
-  > único propio de cada una es qué pasa —un mes acá, un día allá— y qué gesto tiene que quedar
-  > afuera.
+  > Es el mismo gesto que los del Diario y la misma función, `deslizarDeCostado`. Lo único propio de
+  > cada uno es qué pasa y qué gesto tiene que quedar afuera:
+  >
+  > | Dónde | Qué pasa | Qué queda afuera |
+  > |---|---|---|
+  > | El calendario de Pendientes | Un **mes** | Arrastrar un pendiente de un día a otro |
+  > | El **carrete** del Diario | **Siete días**: la tira entera | — |
+  > | El resto del Diario —la lista— | Un **día**, como las teclas ← → | El carrete, que lo contiene |
+  >
+  > **La tira que entra se desliza desde el lado hacia el que fue el dedo.** Pasar de semana cambia
+  > los siete números de una vez, y sin eso no se veía de dónde salieron: parecía que la tira se
+  > había reescrito y no que se había movido. Son 180ms y un corrimiento del 35% —el ojo tiene que
+  > alcanzar a leer que son los mismos días corridos—, y el carrete recorta lo que se sale, que si no
+  > el corrimiento empuja el ancho de la pantalla. Moverse de a **un** día no anima nada: ahí la tira
+  > corre un lugar y se ve sola.
+  >
+  > Quien pidió reducir el movimiento no lo ve: la regla del final de `styles.css` le deja `.01ms` y
+  > acá eso es exactamente lo que corresponde —la tira aparece puesta, sin viaje—. Al revés que el
+  > ciclo de colores de la guía, que es infinito y ahí la misma regla lo dejaría temblando.
+  >
+  > Sobre la tira pasa de a siete porque **es la tira lo que se está moviendo**: correrla un solo día
+  > obligaría a repetir el gesto siete veces para ver la semana que sigue. Es lo que hacían las
+  > flechas `◀ ▶` que la abrazaban, y por eso se fueron: el gesto hace lo mismo con el pulgar donde
+  > ya está, y el ancho que ocupaban volvió a las fichas — que son lo que se toca—. La tira pasó de
+  > **nueve columnas a siete**.
+  >
+  > El del tablero **deja afuera al carrete**, que está adentro suyo. Sin eso, un dedo sobre la tira
+  > disparaba los dos y el día se iba **ocho** — la clase de error que se ve como «a veces se pasa de
+  > más», y por eso hay un caso que lo mira.
   >
   > El contenedor lleva `touch-action: pan-y`: sin eso el navegador se queda con el gesto horizontal
   > y el deslizamiento no llega nunca; con `none` la pantalla dejaría de desplazarse ahí adentro. Y

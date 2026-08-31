@@ -979,9 +979,6 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
    que el `‹` que reemplazaron, y a cuerpo pleno se comían el botón. */
 #jump-prev, #jump-next { font-size: .62rem; }
 
-/* Las del carrete, un poco más grandes: su botón dejó de medir 34px y pasó a
-   medir lo que una ficha de día, y en esa caja el triángulo chico se perdía. */
-#prev-range, #next-range { font-size: .82rem; }
 
 /* Los íconos heredan el color del botón, así que siguen al tema sin reglas aparte. */
 .cal-icon { width: 17px; height: 17px; display: block; }
@@ -1983,24 +1980,24 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 /* ---- el carrete ---- */
 
-/* Las flechas abrazan la pista, que es la que reparte los días. Todo mide por
-   columnas iguales y no por contenido: así el día del centro cae SIEMPRE en el
-   mismo punto de la pantalla, que es lo que hace que moverse no se sienta como
-   que el carrete salta.
+/* Siete columnas iguales, y nada más: la pista se lleva el ancho entero.
 
-   Nueve columnas: una flecha, siete días y la otra flecha. La pista se lleva
-   siete y adentro las vuelve a repartir con el MISMO `gap`, así que una ficha
-   mide igual que una flecha — que es lo que hace que la tira se lea pareja. */
+   Mide por columnas y no por contenido, que es lo que hace que el día del
+   centro caiga SIEMPRE en el mismo punto de la pantalla — moverse no se siente
+   como que el carrete salta.
+
+   Tuvo nueve —una flecha, siete días y la otra flecha—. Sin flechas, ese ancho
+   vuelve a las fichas, que son lo que se toca. */
 .carrete {
   flex: none;
   display: grid;
-  grid-template-columns: repeat(9, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   align-items: stretch;
   gap: var(--carrete-gap);
 }
 
 .carrete-pista {
-  grid-column: span 7;
+  grid-column: 1 / -1;
   min-width: 0;
   display: grid;
   grid-auto-flow: column;
@@ -2008,30 +2005,35 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   gap: var(--carrete-gap);
 }
 
-/* Las flechas son una ficha más: misma caja, mismo fondo, mismo radio. Lo que
-   traen de `.btn` —ancho fijo, alto propio, borde marcado— se deshace acá. */
-#prev-range,
-#next-range {
-  width: auto;
-  height: auto;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  background: var(--bg-elev);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
+
+/* La tira que entra se desliza desde el lado hacia el que fue el dedo.
+
+   Pasar de semana cambia los siete números de una vez, y sin esto no se veía de
+   dónde salieron: parecía que la tira se había reescrito y no que se había
+   movido. Con el deslizamiento, el gesto y lo que pasa en la pantalla son la
+   misma cosa.
+
+   Corta —180ms— y con una curva que frena al final: es un acuse de recibo, no
+   un viaje. Y entra desde un 35% y no desde el borde: el ojo tiene que alcanzar
+   a leer que son los mismos días corridos.
+
+   Quien pidió reducir el movimiento no lo ve: la regla del final del archivo le
+   deja `.01ms`, y acá eso es exactamente lo que corresponde —la tira aparece
+   puesta, sin viaje—. Al revés que el ciclo de colores de la guía, que es
+   infinito y ahí la misma regla lo dejaría temblando. */
+@keyframes carrete-entra-der {
+  from { transform: translateX(35%); opacity: 0; }
+  to   { transform: translateX(0);   opacity: 1; }
 }
-/* Solo donde hay un puntero de verdad. En una pantalla táctil el `:hover` se
-   queda pegado al último elemento tocado hasta que se toca otro, así que la
-   flecha se veía apretada mucho después de haberla soltado. */
-@media (hover: hover) {
-  #prev-range:hover:not(:disabled),
-  #next-range:hover:not(:disabled) {
-    background: var(--bg-sunken);
-    border-color: transparent;
-  }
+@keyframes carrete-entra-izq {
+  from { transform: translateX(-35%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
 }
+.carrete-pista.entra-der { animation: carrete-entra-der .18s cubic-bezier(.2, .7, .3, 1); }
+.carrete-pista.entra-izq { animation: carrete-entra-izq .18s cubic-bezier(.2, .7, .3, 1); }
+
+/* La tira se mueve adentro de su caja y no arrastra a la pantalla con ella. */
+.carrete { overflow: hidden; }
 
 /* Cada día es una ficha: el día de la semana arriba y el número abajo, como en
    el encabezado que tenía la planilla. */

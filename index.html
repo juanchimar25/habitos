@@ -391,9 +391,9 @@
 
              Tres controles para una sola cosa era de más: elegir mes es un
              salto largo —de julio a marzo—, y hacerlo a golpes de flecha nunca
-             fue el camino bueno. Para el paso a paso quedan las flechas del
-             rango, que al llegar al borde saltan al mes contiguo, «Hoy», y las
-             teclas ← →. -->
+             fue el camino bueno. Para el paso a paso quedan el carrete —que se
+             desliza de a siete días y al llegar al borde cruza de mes—, «Hoy» y
+             las teclas ← →. -->
         <button type="button" id="month-label" class="btn month-label"
                 aria-haspopup="dialog" title="Elegir mes">—</button>
 
@@ -497,7 +497,7 @@
 
         <li class="guia-paso">
           <span class="guia-muestra" aria-hidden="true"><span class="guia-tecla">↔</span></span>
-          <p>Deslizá la lista de costado para pasar al día anterior o al siguiente.</p>
+          <p>Deslizá de costado para moverte: la lista pasa de a un día y la tira de arriba, de a siete.</p>
         </li>
 
         <li class="guia-paso">
@@ -721,15 +721,13 @@
            decide qué mes se está trabajando: los del mes vecino se ven
            atenuados y, al elegirlos, el mes los sigue.
 
-           Las flechas lo abrazan y mueven de a un día. Antes vivían en la línea
-           del mes y movían la ventana de la vista activa; ahora la ventana es
-           siempre un día, así que su lugar es acá. -->
+           Los siete días ocupan el ancho entero. Tuvo flechas a los costados
+           para pasar de a siete; se fueron porque deslizar el carrete hace lo
+           mismo con el pulgar donde ya está, y el ancho que ocupaban vuelve a
+           las fichas — que es lo que se toca—. Con teclado y con mouse siguen
+           estando las teclas ← → y el calendario de meses. -->
       <div class="carrete" id="carrete">
-        <button type="button" id="prev-range" class="btn icon-btn"
-                aria-label="Ir al día anterior">◀</button>
         <div class="carrete-pista" id="carrete-pista" role="group" aria-label="Elegir día"></div>
-        <button type="button" id="next-range" class="btn icon-btn"
-                aria-label="Ir al día siguiente">▶</button>
       </div>
 
       <!-- Lo que se carga: una fila por tarea, con el estado de ESE día. La
@@ -1453,7 +1451,7 @@
   </dialog>
 
   <!-- Seleccionar mes: los saltos largos. Los cortos los hace el carrete, que
-       llega a cualquier día con las flechas y con las teclas ← →.
+       llega a cualquier día deslizándose y con las teclas ← →.
 
        Tuvo un segundo modo, de DÍAS, que se abría desde «☰ → Ir a una fecha…».
        Con el carrete moviéndose de a siete días y el mes a un toque, esa entrada

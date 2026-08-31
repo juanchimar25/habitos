@@ -44,10 +44,11 @@ const centro = doc => doc.querySelector('.carrete-dia.is-centro')?.dataset.date 
   ok('sin apartado «Día» en el cajón', doc.querySelector('#grupo-dia') === null);
   ok('  ni su entrada', doc.querySelector('#btn-pick-day') === null);
 
-  /* Las flechas abrazan la pista del carrete: son el paso a paso de todos los
-     días, y el salto largo es esto. */
-  ok('las flechas abrazan al carrete',
-    enCarrete.join(' ') === 'prev-range carrete-pista next-range', enCarrete.join(' · '));
+  /* El carrete es solo la pista de días. Tuvo flechas a los costados para pasar
+     de a siete; ahora eso lo hace deslizar la tira, y el salto largo sigue
+     siendo el calendario de meses. */
+  ok('el carrete es solo la pista de días',
+    enCarrete.join(' ') === 'carrete-pista', enCarrete.join(' · '));
   /* En la línea del mes viven el ☰ —que es de esta pantalla—, el nombre del mes
      —que abre su calendario—, «Hoy» —que aparece solo cuando el carrete está
      parado en otro día— y el remate de la selección masiva, que se turna con

@@ -281,6 +281,15 @@
      * el mes en el calendario. Es siempre la MISMA lista.
      */
     vistaPendientes: /** @type {'lista'|'calendario'} */ ('lista'),
+    /**
+     * Por qué lado tiene que entrar la tira de días en el próximo dibujado, o
+     * `null` si no tiene que entrar por ninguno.
+     *
+     * Solo lo pone el deslizamiento del carrete: es el único movimiento que
+     * cambia los siete días de una vez. Las teclas ← → corren la tira un lugar
+     * y ahí no hay nada que anunciar — se ve solo.
+     */
+    carreteEntraDesde: /** @type {'izquierda'|'derecha'|null} */ (null),
     /** El día del calendario que está abierto, si hay alguno. */
     diaDelCalendario: /** @type {string|null} */ (null),
     /**
@@ -1958,9 +1967,8 @@
 
   const el = {
     monthLabel: $('#month-label'),
-    prevRange: $('#prev-range'),
-    nextRange: $('#next-range'),
     hoy: $('#btn-hoy'),
+    carrete: $('#carrete'),
     carretePista: $('#carrete-pista'),
     dia: $('#dia'),
     diaLista: $('#dia-lista'),
@@ -2253,13 +2261,6 @@
       return;
     }
 
-    // Las flechas mueven el carrete de a una vuelta, en los dos sentidos.
-    el.prevRange.title = `Ver los ${CARRETE} días anteriores`;
-    el.nextRange.title = `Ver los ${CARRETE} días siguientes`;
-    for (const btn of [el.prevRange, el.nextRange]) {
-      btn.setAttribute('aria-label', btn.title);
-    }
-
     renderCarrete();
     renderAccionesDelMes();
 
@@ -2314,7 +2315,28 @@
     }
 
     el.carretePista.replaceChildren(frag);
+
+    /* Se saca siempre y se vuelve a poner solo si toca. Dos deslizamientos
+       seguidos son la misma clase dos veces, y sin quitarla en el medio el
+       navegador no reinicia la animación; leer `offsetWidth` fuerza ese corte.
+
+       Y sacarla en los dibujados que no entran por ningún lado es lo que hace
+       que la clase signifique «está entrando AHORA» y no «entró alguna vez»:
+       el `animationend` la limpia en un navegador, pero un dibujado cualquiera
+       puede llegar antes. */
+    el.carretePista.classList.remove('entra-izq', 'entra-der');
+    if (!ui.carreteEntraDesde) return;
+    void el.carretePista.offsetWidth;
+    el.carretePista.classList.add(
+      ui.carreteEntraDesde === 'derecha' ? 'entra-der' : 'entra-izq');
+    ui.carreteEntraDesde = null;
   }
+
+  /* Terminada, la clase se va: si se quedara, el próximo dibujado la
+     encontraría puesta y no habría animación que reiniciar. */
+  el.carretePista.addEventListener('animationend', () => {
+    el.carretePista.classList.remove('entra-izq', 'entra-der');
+  });
 
   // ---------------------------------------------------------
   // La lista del día
@@ -3286,9 +3308,28 @@
     return estado;
   }
 
-  /* La lista del día: deslizar pasa UN día, lo mismo que las teclas ← →. Las
-     flechas del carrete pasan siete, que es otra cosa —pasar de página—. */
-  const deslizDia = deslizarDeCostado(el.board, paso => shiftRangeOrMonth(paso));
+  /* Dos deslizamientos en la misma pantalla, y cada uno mueve lo que se está
+     tocando.
+
+     Sobre EL CARRETE pasa de página: siete días, la tira entera, que es lo que
+     hacían las flechas que estaban a los costados. Deslizar la tira de días y
+     que se corra un solo día sería mover el dedo siete veces más de lo que hace
+     falta.
+
+     Sobre EL RESTO —la lista del día— pasa UN día, lo mismo que las teclas
+     ← →: ahí lo que se mira es un día, no la tira.
+
+     El del tablero deja afuera al carrete —`salvo`—, porque lo contiene: sin
+     eso, un dedo sobre la tira disparaba los dos y el día se iba ocho. */
+  const deslizCarrete = deslizarDeCostado(el.carrete, paso => {
+    /* La tira nueva entra por donde fue el dedo: llevándolo a la izquierda se
+       ve venir la semana que sigue desde la derecha, como si la tira fuera más
+       larga que la pantalla. */
+    ui.carreteEntraDesde = paso > 0 ? 'derecha' : 'izquierda';
+    shiftRangeOrMonth(paso * CARRETE);
+  });
+  const deslizDia = deslizarDeCostado(el.board, paso => shiftRangeOrMonth(paso),
+    { salvo: '#carrete' });
 
   el.diaLista.addEventListener('click', e => {
     // El clic que cierra un deslizamiento no es un toque sobre lo que quedó
@@ -3354,6 +3395,13 @@
   /* Elegir un día del carrete. Los del mes vecino también valen: el mes de
      trabajo los sigue. */
   el.carretePista.addEventListener('click', e => {
+    /* El clic que cierra un deslizamiento no es un toque: la ficha que quedó
+       debajo del dedo ya es de otra semana. */
+    if (deslizCarrete.hubo) {
+      deslizCarrete.hubo = false;
+      return;
+    }
+
     const ficha = e.target.closest('[data-date]');
     if (ficha) irAlDia(parseDateKey(ficha.dataset.date));
   });
@@ -3428,8 +3476,6 @@
   /* Una vuelta entera: los siete días que se ven, no uno. Al costado de una
      tira, una flecha se lee como «la página anterior»; el paso de a uno lo
      dan las teclas ← → y tocar la ficha vecina, que ya están. */
-  el.prevRange.addEventListener('click', () => shiftRangeOrMonth(-CARRETE));
-  el.nextRange.addEventListener('click', () => shiftRangeOrMonth(CARRETE));
 
   /**
    * Cambia de mes. `landing` dice en qué punta caer, que es lo que hace que

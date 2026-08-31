@@ -2,7 +2,7 @@
    de doble entrada y a sus tres vistas.
 
    Arnés: hoy = jueves 30/07/2026, que es el día en el que abre. */
-import { montar, verDia, leer } from '../harness.mjs';
+import { montar, verDia, leer, deslizar } from '../harness.mjs';
 import { ESTADO_LLENO } from '../escenarios.mjs';
 
 let fallos = 0;
@@ -67,28 +67,34 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
   ok('con la lista del mes nuevo', filas(doc).length > 0, String(filas(doc).length));
 }
 
-// --- 3. las flechas pasan de página ---------------------------------------
+// --- 3. deslizar el carrete pasa de página --------------------------------
 {
-  /* Arnés parado en el 30/07: la tira va del 27/07 al 02/08. Una flecha muestra
-     los SIETE siguientes —del 03 al 09—, no el día de al lado. Como el salto es
-     de siete, el día de la semana no cambia: el centro sigue cayendo en jueves,
-     y la tira se lee como la página que sigue de la misma grilla. */
-  const { doc } = await montar(ESTADO_LLENO);
+  /* Arnés parado en el 30/07: la tira va del 27/07 al 02/08. Deslizar la tira
+     muestra los SIETE siguientes —del 03 al 09—, no el día de al lado: es la
+     tira lo que se está moviendo, y correrla un solo día obligaría a repetir el
+     gesto siete veces. Como el salto es de siete, el día de la semana no
+     cambia: el centro sigue cayendo en jueves, y la tira se lee como la página
+     que sigue de la misma grilla.
 
-  doc.querySelector('#next-range').click();
+     Tuvo flechas a los costados para esto. Se fueron: el gesto hace lo mismo
+     con el pulgar donde ya está, y el ancho que ocupaban volvió a las fichas. */
+  const { doc } = await montar(ESTADO_LLENO);
+  const carrete = () => doc.querySelector('#carrete');
+
+  deslizar(doc, carrete(), -1);
   ok('adelante, una vuelta entera', centro(doc) === '2026-08-06', centro(doc));
   ok('  cruzando de mes', /agosto 2026/i.test(mes(doc)), mes(doc));
   ok('  y sin cambiar de día de la semana',
     fichas(doc).find(f => f.classList.contains('is-centro'))
       ?.querySelector('.carrete-dow').textContent.toLowerCase().startsWith('jue'));
 
-  doc.querySelector('#prev-range').click();
+  deslizar(doc, carrete(), 1);
   ok('para atrás también', centro(doc) === '2026-07-30', centro(doc));
   ok('  y vuelve el mes', /julio 2026/i.test(mes(doc)), mes(doc));
 
   /* La tira que se ve después de tocar es, exactamente, la que seguía. */
   const antes = fichas(doc).map(f => f.dataset.date);
-  doc.querySelector('#next-range').click();
+  deslizar(doc, carrete(), -1);
   const despues = fichas(doc).map(f => f.dataset.date);
   ok('la tira nueva empieza donde terminaba la anterior',
     despues[0] === '2026-08-03' && antes[antes.length - 1] === '2026-08-02',
@@ -96,13 +102,14 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
   ok('  sin repetir ningún día', despues.every(d => !antes.includes(d)),
     despues.join(' '));
 
-  ok('se nombran por lo que hacen',
-    doc.querySelector('#prev-range').title === 'Ver los 7 días anteriores'
-    && doc.querySelector('#next-range').title === 'Ver los 7 días siguientes',
-    doc.querySelector('#next-range').title);
+  /* Y no quedó ninguna flecha: el ancho que ocupaban es de las fichas. */
+  ok('el carrete es solo la pista de días',
+    [...carrete().children].map(n => n.id).join(' ') === 'carrete-pista',
+    [...carrete().children].map(n => n.id || n.className).join(' · '));
+  ok('  con las siete a la vista', fichas(doc).length === 7, String(fichas(doc).length));
 }
 {
-  /* Las teclas ← → hacen lo mismo que las flechas. */
+  /* Las teclas ← → mueven de a UN día, que es otra cosa que el gesto. */
   const { window, doc } = await montar(ESTADO_LLENO);
   const tecla = key =>
     doc.body.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true }));
@@ -125,7 +132,7 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
      tenerlo. */
   ok('parado en hoy, no está', hoy.hidden === true);
 
-  doc.querySelector('#next-range').click();
+  deslizar(doc, doc.querySelector('#carrete'), -1);
   ok('en otro día aparece', hoy.hidden === false);
   ok('  y el día elegido se movió una vuelta', centro(doc) === '2026-08-06', centro(doc));
   ok('y dice a dónde lleva', /30 de julio/i.test(hoy.title), hoy.title);
@@ -147,7 +154,7 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
 {
   /* Fuera del Diario no hay carrete al que volver. */
   const { doc } = await montar(ESTADO_LLENO);
-  doc.querySelector('#next-range').click();
+  deslizar(doc, doc.querySelector('#carrete'), -1);
   doc.querySelector('[data-page="indicators"]').click();
   ok('en Análisis no se muestra', doc.querySelector('#btn-hoy').hidden === true);
 }
@@ -490,32 +497,29 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
   const carrete = bloque(/\n\.carrete \{[^}]*\}/);
   const pista = bloque(/\n\.carrete-pista \{[^}]*\}/);
 
-  ok('el carrete reparte nueve columnas iguales',
-    /grid-template-columns:\s*repeat\(9,\s*1fr\)/.test(carrete),
+  ok('el carrete reparte siete columnas iguales',
+    /grid-template-columns:\s*repeat\(7,\s*1fr\)/.test(carrete),
     carrete.replace(/\s+/g, ' ').trim());
-  ok('  y la pista se lleva siete', /grid-column:\s*span 7/.test(pista));
+  ok('  y la pista se las lleva todas', /grid-column:\s*1 \/ -1/.test(pista),
+    pista.replace(/\s+/g, ' ').trim());
 
   const gap = txt => txt.match(/[^-]gap:\s*([^;]+);/)?.[1]?.trim();
   ok('  las dos rejillas comparten la separación',
     Boolean(gap(carrete)) && gap(carrete) === gap(pista),
     `${gap(carrete)} vs ${gap(pista)}`);
 
-  /* Y las flechas se despegan de `.btn`, que les daba ancho fijo y alto propio:
-     con eso puesto, la rejilla las estiraba pero el ancho seguía siendo 34px. */
-  const flechas = bloque(/\n#prev-range,\n#next-range \{[^}]*\}/);
-  for (const [nombre, prop] of [['el ancho fijo', /width:\s*auto/],
-    ['el alto propio', /height:\s*auto/]]) {
-    ok(`  sueltan ${nombre} que traían de .btn`, prop.test(flechas),
-      flechas.replace(/\s+/g, ' ').trim());
-  }
-  ok('  y se pintan como una ficha', /background:\s*var\(--bg-elev\)/.test(flechas));
+  /* Y no quedó nada de las flechas: ni el estilo que las hacía parecer una
+     ficha ni el cuerpo reducido de su triángulo. Una regla huérfana no rompe
+     nada y por eso se queda para siempre. */
+  ok('  sin restos de las flechas en la hoja',
+    !/#prev-range|#next-range/.test(css));
 }
 
 // --- deslizar la lista cambia de día ---------------------------------------
 {
-  /* El mismo gesto que en el calendario de Pendientes, con la misma función:
-     acá pasa UN día, que es lo que hacen las teclas ← →. Las flechas del
-     carrete pasan siete, que es otra cosa — pasar de página—.
+  /* El mismo gesto que en el calendario de Pendientes, con la misma función.
+     Sobre la LISTA pasa un día, que es lo que hacen las teclas ← →; sobre el
+     carrete pasa siete, que es otra cosa — mover la tira entera—.
 
      Deslizar sobre la lista del día es lo único que puede confundirse con
      marcar una celda, y por eso lo importante de acá abajo es que el clic que
@@ -581,6 +585,99 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
   ok('el tablero deja pasar el gesto de costado',
     /\n\.board \{[\s\S]*?touch-action:\s*pan-y/.test(css),
     css.match(/\n\.board \{[\s\S]*?\n\}/)?.[0]?.replace(/\s+/g, ' ').slice(0, 90));
+}
+
+// --- los dos deslizamientos no se pisan ------------------------------------
+{
+  /* En la misma pantalla hay dos, y cada uno mueve lo que se está tocando: la
+     tira pasa de a siete y la lista de a uno. El del tablero contiene al del
+     carrete, así que si no lo dejara afuera un dedo sobre la tira dispararía los
+     dos y el día se iría OCHO.
+
+     Es la clase de error que se ve como «a veces se pasa de más». */
+  const { doc } = await montar(ESTADO_LLENO);
+  const carrete = () => doc.querySelector('#carrete');
+  const lista = () => doc.querySelector('#dia-lista');
+
+  ok('arranca en hoy', centro(doc) === '2026-07-30', centro(doc));
+
+  deslizar(doc, carrete(), -1);
+  ok('deslizar la tira pasa siete días', centro(doc) === '2026-08-06', centro(doc));
+
+  deslizar(doc, lista(), 1);
+  ok('deslizar la lista pasa uno solo', centro(doc) === '2026-08-05', centro(doc));
+
+  deslizar(doc, carrete(), 1);
+  ok('  y la tira sigue pasando siete', centro(doc) === '2026-07-29', centro(doc));
+
+  /* Y el clic que cierra el gesto de la tira no es un toque: la ficha que quedó
+     debajo del dedo ya es de otra semana. */
+  const antes = centro(doc);
+  deslizar(doc, carrete(), -1);
+  fichas(doc)[0].click();
+  ok('el clic que cierra el gesto no elige un día',
+    centro(doc) !== antes && centro(doc) === '2026-08-05', centro(doc));
+
+  // Pero el toque que viene después sí elige.
+  fichas(doc)[0].click();
+  ok('  y el toque siguiente sí', centro(doc) === fichas(doc)[0].dataset.date
+    || centro(doc) !== '2026-08-05', centro(doc));
+}
+
+// --- la tira entra deslizándose ---------------------------------------------
+{
+  /* Pasar de semana cambia los siete números de una vez, y sin animación no se
+     veía de dónde salieron: parecía que la tira se había reescrito y no que se
+     había movido. Entra por el lado hacia el que fue el dedo, así el gesto y lo
+     que pasa en la pantalla son la misma cosa.
+
+     jsdom no anima, así que lo que se mira acá es lo que la app DECIDE: qué
+     clase queda puesta y con qué dirección. El movimiento en sí lo hace el CSS,
+     y de eso se ocupan las comprobaciones sobre la hoja, más abajo. */
+  const { doc } = await montar(ESTADO_LLENO);
+  const pista = () => doc.querySelector('#carrete-pista');
+  const entrada = () => [...pista().classList].filter(c => c.startsWith('entra-')).join(',');
+
+  ok('quieta, no entra por ningún lado', entrada() === '', entrada());
+
+  deslizar(doc, doc.querySelector('#carrete'), -1);
+  ok('llevando el dedo a la izquierda, la semana que sigue entra por la derecha',
+    entrada() === 'entra-der', entrada() || '(ninguna)');
+
+  deslizar(doc, doc.querySelector('#carrete'), 1);
+  ok('  y al revés, por la izquierda', entrada() === 'entra-izq', entrada() || '(ninguna)');
+
+  /* Las teclas corren la tira UN lugar: ahí no hay nada que anunciar, se ve
+     solo. Animar eso sería un aviso para algo que no pasó. */
+  doc.body.dispatchEvent(new doc.defaultView.KeyboardEvent('keydown',
+    { key: 'ArrowRight', bubbles: true }));
+  ok('moverse de a un día no anima nada', entrada() === '', entrada());
+}
+
+{
+  /* Y el movimiento, leído de la hoja. */
+  const css = leer('styles.css');
+  const bloque = re => css.match(re)?.[0] ?? '';
+
+  for (const [lado, signo] of [['der', ''], ['izq', '-']]) {
+    const marco = bloque(new RegExp(`@keyframes carrete-entra-${lado} \\{[\\s\\S]*?\\n\\}`));
+    ok(`la tira que entra por ${lado} arranca corrida`,
+      marco.includes(`translateX(${signo}35%)`), marco.replace(/\s+/g, ' '));
+    ok('  y termina en su lugar', /translateX\(0\)/.test(marco));
+    /* Corta y con una curva que frena al final: es un acuse de recibo, no un
+       viaje. Más de un cuarto de segundo y la tira se siente pesada. */
+    const regla = bloque(new RegExp(`\\n\\.carrete-pista\\.entra-${lado} \\{[^}]*\\}`));
+    const dura = Number(regla.match(/([\d.]+)s /)?.[1]);
+    ok(`  en menos de un cuarto de segundo`, dura > 0 && dura < .25, `${dura}s`);
+  }
+
+  /* La tira se mueve adentro de su caja: sin esto, el 35% de corrimiento
+     empujaba el ancho de la pantalla y aparecía una barra de desplazamiento
+     durante la animación. */
+  ok('el carrete recorta lo que se sale',
+    /\n\.carrete \{[^}]*overflow:\s*hidden/.test(css)
+      || /\n\.carrete \{ overflow: hidden; \}/.test(css),
+    bloque(/\n\.carrete \{[^}]*\}/).replace(/\s+/g, ' '));
 }
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');
