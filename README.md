@@ -351,6 +351,7 @@ Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue f
 | `sincronizacion` | Cómo se sube: agrupado, de a uno, con reintento y sin las preferencias |
 | `vista` | Los dos desplegables, y las posturas de la fila que abre «Opciones» |
 | `dia-cerrado` | El cierre automático de los días transcurridos y la vuelta de medianoche |
+| `identificadores` | Ningún `id` repetido en el marcado |
 | `guias` | Las tres guías: que cada ☰ ofrezca la suya, que se abra la que dice y que cada una hable solo de su pantalla |
 
 Corren en **procesos separados** a propósito: cada uno instala su propio jsdom con reloj,
@@ -499,15 +500,34 @@ Antes de borrar nada se pasa por **dos puertas**:
 > navegador pintando donde ya no está. Se veía **vacío** hasta que algo forzaba un recálculo — abrir
 > el inspector, por ejemplo, que fue como apareció el síntoma—.
 >
-> Son **dos botones y no uno con parches**: mientras espera se le saca `.btn-danger` y se le pone
-> `.btn-espera`. Como modificador encima del rojo había que ganarle a dos reglas —el relleno de
-> `.btn-danger` y el 45% de `.btn:disabled`—, y bastaba con que alguna se moviera de lugar para que
-> volviera a ser un **rectángulo vacío**: un rojo al 45% con texto blanco al 45% no es un botón
-> apagado, es un botón invisible. Estuvo así dos versiones.
+> **La clase del botón no cambia nunca**: es `.btn-danger` de principio a fin, y lo único que
+> distingue esperar de poder tocar es `:disabled`.
+>
+> Costó llegar ahí. Primero fue `.btn-danger` apagado a secas —`.btn:disabled` lo deja al 45%, y un
+> rojo al 45% con letra blanca al 45% no es un botón apagado, es uno invisible—. Después fueron dos
+> clases que se turnaban, y **las dos tocaban el fondo**, una poniéndolo `transparent`: entre una y
+> otra hay una transición de `background`, así que existía un momento con el fondo transparente y la
+> letra ya blanca. Blanco sobre nada es un rectángulo vacío, y así se veía.
+>
+> Lo que lo cierra no es ganar una pelea de especificidad sino **no tener la pelea**: una sola clase,
+> y las dos caras con colores visibles —relleno pálido con letra oscura contra relleno pleno con
+> letra blanca—, así ninguna transición puede pasar por el vacío por más que se demore.
+>
+> El diagnóstico salió de medir en el navegador, que era el único lugar donde se veía: `fondo:
+> rgba(0,0,0,0)` con `letra: rgb(255,255,255)`. jsdom no resuelve `var()` ni pinta nada, así que
+> desde los casos esto era invisible — lo que sí pueden cuidar es que la regla del estado de espera
+> tenga relleno de verdad y no `transparent`, y eso es lo que comprueban.
 >
 > La espera se arma **antes** de mostrar el diálogo: si no, el botón aparece un instante con el
 > rótulo entero y encendido, y recién después se apaga — un parpadeo que invita justo al toque que
 > la espera quiere evitar.
+>
+> **Las dos puertas son dos PASOS del mismo diálogo, no dos diálogos.** Cerrarlo y volver a abrirlo
+> en el mismo tic lo saca de la capa superior y lo devuelve en el mismo cuadro, y el navegador se
+> queda pintando lo de antes hasta que algo lo obligue a recalcular — abrir el inspector, por
+> ejemplo—. Es lo único que este flujo hacía y ninguna otra confirmación de la app, y por eso era el
+> único que se veía mal. `showModal()` sobre un diálogo abierto además es un error, así que reusarlo
+> es también lo que la API pide.
 >
 > **`close()` no dispara su evento en el acto: lo encola.** Encadenando dos confirmaciones, el orden
 > real es cerrar, armar la segunda, y recién entonces correr la tarea encolada — que llega tarde,

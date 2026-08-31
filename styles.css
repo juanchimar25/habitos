@@ -717,29 +717,27 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn-danger:hover { filter: brightness(1.08); background: var(--danger); border-color: var(--danger); }
 
-/* El que todavía no se puede tocar, mientras cuenta los segundos.
+/* El rojo mientras todavía no se puede tocar: el mismo relleno pálido que usan
+   las marcas de «no cumplido», con la letra oscura encima.
 
-   Es un botón APARTE y no `.btn-danger` con parches encima: mientras espera se
-   le saca esa clase y se le pone esta. Puesto como modificador sobre el rojo,
-   había que ganarle a dos reglas —el relleno de `.btn-danger` y el 45% de
-   `.btn:disabled`—, y bastaba con que alguna se moviera de lugar para que el
-   botón volviera a ser un rectángulo vacío: rojo al 45% con texto blanco al 45%
-   no es un botón apagado, es un botón invisible.
+   La clase del botón NO cambia —siempre `.btn-danger`—; lo único que cambia es
+   `:disabled`. Antes eran dos clases que se turnaban y las dos tocaban el fondo,
+   una de ellas poniéndolo TRANSPARENTE. Entre una y otra hay una transición de
+   `background`, así que existía un momento en que el fondo era transparente y
+   la letra ya era blanca: blanco sobre nada es un botón vacío, y así se veía.
 
-   Contorno mientras espera y relleno cuando se abre: es el mismo par que
-   distingue «Cerrar sesión» de «Eliminar cuenta» en Ajustes, y acá separa el
-   «todavía no» del «ahora sí» sin que haya que leer el número.
+   Las dos caras son colores VISIBLES, así que la transición no puede pasar por
+   el vacío por más que se demore. Y repone la opacidad que `.btn:disabled` deja
+   en 45%: un rojo al 45% con letra al 45% tampoco se lee.
 
-   La opacidad se repone con `:disabled` en el propio selector —más específico
-   que `.btn:disabled`, gane quien gane el orden del archivo—, y el cursor dice
-   `default` y no `not-allowed`: no está prohibido, está por abrirse. */
-/* El hueco de la cuenta atrás. Mide siempre lo mismo mientras el botón la
-   tenga —también cuando ya está vacío—, así el botón no cambia de ancho al
-   caer de «(10)» a «(9)» ni al terminar.
+   `cursor: default` y no `not-allowed`: no está prohibido, está por abrirse. */
+/* El hueco de la cuenta atrás: mide lo que « (10)», que es lo más ancho que
+   llega a tener. Así el botón no se achica al caer a « (9)» y el rótulo no se
+   corre con cada segundo.
 
-   No es cosmética. Con el diálogo en la capa superior, un botón que se achica
-   con cada dígito deja al navegador pintando donde ya no está: se veía VACÍO
-   hasta que algo forzaba un recálculo, como abrir el inspector.
+   Reserva lo justo. Reservando de más —y peor, de los dos lados para centrar el
+   rótulo— el botón se iba del ancho del diálogo y los dos botones de la fila se
+   estiraban para entrar; «Cancelar» no tenía por qué moverse.
 
    `tabular-nums` remata lo mismo por dentro: sin eso el 1 es más angosto que
    el 8 y el rótulo tiembla aunque la caja no se mueva. */
@@ -748,14 +746,13 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   font-variant-numeric: tabular-nums;
 }
 #confirm-ok.con-cuenta .confirm-cuenta {
-  min-width: 3.6ch;
+  min-width: 4.4ch;
   text-align: right;
 }
 
-.btn.btn-espera,
-.btn.btn-espera:disabled {
-  background: transparent;
-  color: var(--danger);
+.btn-danger:disabled {
+  background: var(--missed-bg);
+  color: var(--missed-fg);
   border-color: var(--danger);
   opacity: 1;
   cursor: default;
@@ -1177,6 +1174,42 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 /* ---------------- Análisis ---------------- */
 
+/* El ejemplo de la pantalla vacía: un mes inventado, en gris y adentro de un
+   borde punteado.
+
+   Las dos cosas dicen lo mismo por dos caminos distintos. El punteado es el
+   convenio de «esto todavía no está» —el mismo de un borrador o un hueco por
+   llenar— y el gris le saca lo único que en esta pantalla significa algo: el
+   color, que en toda la app dice cuánto se cumplió. Sin color, el dibujo puede
+   mostrar la FORMA sin afirmar ningún dato.
+
+   `grayscale(1)` y no una paleta gris aparte: el ejemplo usa los mismos nodos y
+   las mismas clases que el gráfico de verdad, así que si alguien cambia un
+   verde, el ejemplo lo sigue solo. Una paleta propia sería una segunda
+   definición que envejece por su cuenta. */
+.grafico-ejemplo {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: .9rem;
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+
+/* Arriba y no al pie: lo primero que hay que saber de este dibujo es que no es
+   tuyo, y abajo llegaría tarde. */
+.ejemplo-rotulo {
+  margin: 0;
+  font-size: .78rem;
+  color: var(--text-faint);
+}
+
+.ejemplo-dibujo {
+  filter: grayscale(1);
+  opacity: .75;
+}
+
+
 /* Estas dos sí desplazan por dentro: son largas y no tienen una planilla que
    se quede con el alto. */
 /* Las secciones que no son la planilla desplazan por dentro, igual que ella:
@@ -1505,6 +1538,18 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   font-size: .85rem;
 }
 .guia-pct { font-weight: 700; color: var(--text); font-size: .78rem; }
+
+/* El dibujo del botón de orden, dentro de su tecla: el mismo `path` que lleva
+   en la línea del mes, a escala de guía. Un glifo parecido obligaría a
+   traducir del dibujo de la guía al del botón de verdad. */
+.guia-orden {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
 
 /* El botón de estado de una tarea pendiente: dice su nombre y no lo cifra en
    un color, igual que en la lista. */

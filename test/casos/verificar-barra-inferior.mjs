@@ -187,8 +187,22 @@ const TABS = [
   ok('    y sin el rojo del aviso, que es de la última puerta',
     !texto().classList.contains('es-irreversible'), texto().className);
 
-  // La segunda: la pregunta sola, en rojo.
+  /* La segunda puerta es otro PASO del mismo diálogo, no otro diálogo: se
+     reusa el que ya está abierto. Cerrarlo y volver a abrirlo en el mismo tic
+     lo saca de la capa superior y lo devuelve en el mismo cuadro, y el
+     navegador se queda pintando lo de antes hasta que algo lo obligue a
+     recalcular — así se veía el botón vacío—.
+
+     Se espía `close` porque es lo único que distingue las dos formas: el
+     resultado en pantalla es idéntico. */
+  let cerrado = 0;
+  const cerrarDeVerdad = dialogo.close.bind(dialogo);
+  dialogo.close = () => { cerrado++; cerrarDeVerdad(); };
+
   doc.querySelector('#confirm-ok').click();
+  ok('  la segunda puerta reusa el diálogo, no lo cierra y lo reabre',
+    cerrado === 0 && dialogo.hasAttribute('open'), `cerrado ${cerrado} vez/veces`);
+  dialogo.close = cerrarDeVerdad;
   ok('  confirmar abre una segunda pantalla', dialogo.hasAttribute('open'));
   ok('    preguntando si de verdad', /¿Seguro\?/.test(texto().textContent),
     texto().textContent);
@@ -216,14 +230,14 @@ const TABS = [
   ok('    arrancando apagado', boton().disabled === true);
   ok('    con los segundos a la vista, desde el primer dibujado',
     boton().textContent === 'Eliminar definitivamente (10)', boton().textContent);
-  /* Contorno mientras espera y relleno cuando se abre: el «todavía no» y el
-     «ahora sí» se distinguen sin leer el número.
+  /* La clase NO cambia en toda la cuenta: el botón es `.btn-danger` de
+     principio a fin, y lo que distingue esperar de poder tocar es `:disabled`.
 
-     Y no alcanza con apagarlo: `.btn:disabled` lo deja al 45%, y un rojo al 45%
-     con texto blanco al 45% se ve como un botón VACÍO. */
-  ok('    y con el aspecto de lo que todavía no se puede tocar',
-    boton().classList.contains('btn-espera') && !boton().classList.contains('btn-danger'),
-    boton().className);
+     Turnando dos clases que ambas tocan el fondo —una poniéndolo transparente—,
+     la transición de `background` pasaba por el vacío con la letra ya blanca, y
+     blanco sobre nada es un botón vacío. Así se veía. */
+  ok('    sin cambiarle la clase, que es lo que lo dejaba en blanco',
+    boton().classList.contains('btn-danger'), boton().className);
 
   // El reloj es el de la ventana: se lo maneja desde acá para no esperarlo.
   tic();
@@ -235,8 +249,7 @@ const TABS = [
   ok('    y al llegar a cero se abre', boton().disabled === false);
   ok('      con el rótulo limpio', boton().textContent === 'Eliminar definitivamente',
     boton().textContent);
-  ok('      y el relleno rojo, que es el de la acción que ya se puede hacer',
-    !boton().classList.contains('btn-espera') && boton().classList.contains('btn-danger'),
+  ok('      con la misma clase de siempre', boton().classList.contains('btn-danger'),
     boton().className);
 
   /* Y los dos aspectos, leídos de la hoja. El que espera fue un rectángulo
@@ -247,16 +260,20 @@ const TABS = [
   const css = leer('styles.css');
   const bloque = re => css.match(re)?.[0] ?? '';
 
-  const espera = bloque(/\n\.btn\.btn-espera,\n\.btn\.btn-espera:disabled \{[^}]*\}/);
+  const espera = bloque(/\n\.btn-danger:disabled \{[^}]*\}/);
   ok('el que espera se pinta con su propia regla', Boolean(espera), '(sin regla)');
-  ok('  de contorno rojo y sin relleno',
-    /background:\s*transparent/.test(espera) && /color:\s*var\(--danger\)/.test(espera),
+  /* Las dos caras tienen que ser colores VISIBLES. Con una en transparente, la
+     transición de `background` pasa por el vacío justo cuando la letra ya es
+     blanca — y ahí el botón desaparece. Así se veía. */
+  ok('  con relleno de verdad y no transparente',
+    /background:\s*var\(--/.test(espera) && !/transparent/.test(espera),
     espera.replace(/\s+/g, ' '));
-  /* Lo que lo volvía invisible. La regla se nombra a sí misma con `:disabled`
-     para ganarle a `.btn:disabled` por especificidad y no por orden. */
+  ok('  y letra oscura encima, que es lo que se lee sobre un relleno pálido',
+    /color:\s*var\(--missed-fg\)/.test(espera), espera.replace(/\s+/g, ' '));
+  /* Y repone la opacidad: `.btn:disabled` la deja en 45%, y un rojo al 45% con
+     letra al 45% tampoco se lee. */
   ok('  reponiendo la opacidad que le saca «.btn:disabled»',
-    /opacity:\s*1/.test(espera) && espera.includes('.btn.btn-espera:disabled'),
-    espera.replace(/\s+/g, ' '));
+    /opacity:\s*1/.test(espera), espera.replace(/\s+/g, ' '));
 
   const rojo = bloque(/\n\.btn-danger \{[^}]*\}/);
   ok('y el que ya se puede tocar va rojo sólido con letras blancas',
@@ -275,10 +292,20 @@ const TABS = [
       && Boolean(doc.querySelector('#confirm-ok-cuenta')));
 
   const hueco = bloque(/\n#confirm-ok\.con-cuenta \.confirm-cuenta \{[^}]*\}/);
-  ok('  y el del número mide siempre lo mismo', /min-width/.test(hueco),
+  ok('  y el del número mide lo que el número más ancho', /min-width/.test(hueco),
     hueco.replace(/\s+/g, ' ') || '(sin regla)');
-  ok('    también cuando ya está vacío, al final de la cuenta',
-    doc.querySelector('#confirm-ok').classList.contains('con-cuenta'),
+
+  /* Reserva lo JUSTO, y de un solo lado. Reservando de más —y peor, de los dos
+     lados para centrar el rótulo— el botón se iba del ancho del diálogo y los
+     dos de la fila se estiraban para entrar; «Cancelar» no tenía por qué
+     moverse. */
+  ok('    sin un espejo del otro lado, que ensanchaba el botón de más',
+    !/#confirm-ok\.con-cuenta::before/.test(css));
+
+  /* Y terminada la cuenta el hueco se va con ella: el rótulo queda solo y
+     centrado, y el botón vuelve a medir lo que dice. */
+  ok('    y al terminar la cuenta el hueco se va',
+    !doc.querySelector('#confirm-ok').classList.contains('con-cuenta'),
     doc.querySelector('#confirm-ok').className);
   /* Y por dentro, cifras de ancho parejo: sin eso el 1 es más angosto que el 8
      y el rótulo tiembla aunque la caja no se mueva. */
@@ -311,9 +338,7 @@ const TABS = [
 
   ok('el «close» que llega tarde no le pisa el botón a la segunda puerta',
     boton().textContent === 'Eliminar definitivamente (10)', boton().textContent);
-  ok('  ni le devuelve el color del que ya se puede tocar',
-    boton().classList.contains('btn-espera') && !boton().classList.contains('btn-danger'),
-    boton().className);
+  ok('  ni le apaga la cuenta atrás', boton().disabled === true, boton().className);
   doc.querySelector('#confirm-dialog [data-close-dialog]').click();
 
   /* Y la espera no se le pega a la próxima confirmación: cualquier otra abre
@@ -321,7 +346,7 @@ const TABS = [
   doc.querySelector('#confirm-dialog [data-close-dialog]').click();
   doc.querySelector('#btn-delete-account').click();
   ok('  la primera puerta no hace esperar',
-    boton().disabled === false && !boton().classList.contains('btn-espera'),
+    boton().disabled === false && !boton().classList.contains('con-cuenta'),
     boton().className);
 
   /* Y el rojo tampoco se queda pegado: la próxima confirmación de cualquier

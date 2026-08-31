@@ -507,7 +507,7 @@
 
         <li class="guia-paso">
           <span class="guia-muestra" aria-hidden="true"><span class="guia-pct">%</span></span>
-          <p>El porcentaje de arriba de la lista dice cuánto cumpliste de lo requerido ese día.</p>
+          <p>El porcentaje de arriba de la lista dice cuánto cumpliste de lo requerido para ese día.</p>
         </li>
 
         <li class="guia-paso">
@@ -521,35 +521,43 @@
         <h2>Cómo usar Análisis</h2>
 
         <ol class="guia-pasos">
-        <li class="guia-paso guia-paso-suelto">
-          <p>Todo lo que ves acá es del mes que estés mirando.</p>
-        </li>
-
         <li class="guia-paso">
-          <span class="guia-muestra" aria-hidden="true"><span class="guia-pct">78%</span></span>
-          <p>Arriba, cuánto llevás hecho del mes.</p>
+          <span class="guia-muestra" aria-hidden="true"><span class="guia-pct">%</span></span>
+          <p>El porcentaje de arriba de la lista dice cuánto cumpliste de lo requerido para ese mes.</p>
         </li>
 
         <li class="guia-paso">
           <span class="guia-muestra" aria-hidden="true"><span class="guia-tecla">☰</span></span>
-          <p>En el menú elegís cuál de los tres gráficos mirar:</p>
+          <p>En el menú elegí qué gráfico mirar.</p>
         </li>
 
-        <li class="guia-paso guia-paso-suelto">
+        <!-- Cada gráfico con el MISMO glifo que lo nombra en el menú: es lo que
+             se toca para llegar a él, así que verlo acá ahorra tener que
+             traducir del nombre al dibujo. -->
+        <li class="guia-paso">
+          <span class="guia-muestra" aria-hidden="true"><span class="guia-tecla">⣿</span></span>
           <p><strong>Puntos</strong>: una fila por hábito y un punto por día, del color de su estado. Para ver rachas.</p>
         </li>
 
-        <li class="guia-paso guia-paso-suelto">
+        <li class="guia-paso">
+          <span class="guia-muestra" aria-hidden="true"><span class="guia-tecla">▤</span></span>
           <p><strong>Porcentajes</strong>: a cuánto llegó cada hábito en el mes.</p>
         </li>
 
-        <li class="guia-paso guia-paso-suelto">
+        <li class="guia-paso">
+          <span class="guia-muestra" aria-hidden="true"><span class="guia-tecla">▥</span></span>
           <p><strong>Barras</strong>: qué días de la semana te va mejor. Necesita al menos 7 días cargados.</p>
         </li>
 
+        <!-- El botón de orden, con su propio dibujo: el mismo `svg` que lleva en
+             la línea del mes, no un glifo parecido. -->
         <li class="guia-paso">
-          <span class="guia-muestra" aria-hidden="true"><span class="guia-tecla">⇅</span></span>
-          <p>El botón de la derecha del mes cambia el orden de los hábitos.</p>
+          <span class="guia-muestra" aria-hidden="true"><span class="guia-tecla">
+            <svg class="guia-orden" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M5 7.5h13M5 12h9M5 16.5h5"/>
+            </svg>
+          </span></span>
+          <p>Usá este botón para cambiar el orden en que se muestran los hábitos.</p>
         </li>
         </ol>
       </div>
@@ -1167,21 +1175,6 @@
             <path d="M5 12.5l4.5 4.5L19 7"/>
           </svg>
         </button>
-      </div>
-    </div>
-  </dialog>
-
-  <!-- Un día del calendario: lo que cae ahí y la puerta para agregar algo más.
-       El título es la fecha, así que las filas no repiten el día —lo dirían
-       todas, y sería el mismo—. -->
-  <dialog id="pend-dia-dialog" class="dialog">
-    <div class="dialog-form">
-      <button type="button" class="dialog-close" data-close-dialog
-              aria-label="Cerrar" title="Cerrar">✕</button>
-      <h2 id="pend-dia-title" tabindex="-1"></h2>
-      <div id="pend-dia-lista"></div>
-      <div class="dialog-actions">
-        <button type="button" class="btn" id="btn-dia-nueva">Nueva tarea pendiente</button>
       </div>
     </div>
   </dialog>

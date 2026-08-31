@@ -2802,7 +2802,9 @@
        estar coronando al lunes con un solo lunes medido. */
     const medibles = diasMedibles(days);
     if (medibles.length < MINIMO_DIAS) {
-      card.appendChild(emptyChart(avisoMinimoDias(medibles.length)));
+      card.appendChild(sinNingunHabito()
+        ? ejemploDeGrafico('barras')
+        : emptyChart(avisoMinimoDias(medibles.length)));
       return card;
     }
 
@@ -2813,15 +2815,28 @@
       avg: byJs.get(w.js)?.pct ?? null,
       tareas: byJs.get(w.js)?.tareas ?? 0,
     }));
-    const values = data.filter(d => d.avg !== null).map(d => d.avg);
 
     /* Un día puede no tener nada que medir —ninguna tarea le pedía nada— y viene
        en `null`, así que el vacío se decide sobre los valores que quedaron y no
        sobre la cantidad de días. */
+    const values = data.filter(d => d.avg !== null).map(d => d.avg);
     if (!values.length || values.every(v => v === 0)) {
       card.appendChild(emptyChart('Todavía no hay datos cargados'));
       return card;
     }
+
+    return dibujarBarras(card, data);
+  }
+
+  /**
+   * Las barras, ya con los datos resueltos.
+   *
+   * Separado de `weekdayChart` para que el ejemplo de la pantalla vacía pueda
+   * dibujar las mismas barras con números inventados: si fuera un dibujo aparte,
+   * el ejemplo mostraría algo que la app no hace.
+   */
+  function dibujarBarras(card, data) {
+    const values = data.filter(d => d.avg !== null).map(d => d.avg);
 
     /* El podio compara lo MISMO que se muestra —el porcentaje redondeado— y,
        cuando eso empata, mira cuántas tareas se hicieron en promedio ese día:
@@ -2934,7 +2949,9 @@
 
     const filas = tareasOrdenadas(days);
     if (!filas.length) {
-      card.appendChild(emptyChart('Todavía no hay tareas este mes'));
+      card.appendChild(sinNingunHabito()
+        ? ejemploDeGrafico('porcentajes')
+        : emptyChart('Todavía no hay tareas este mes'));
       return card;
     }
 
@@ -2984,6 +3001,93 @@
 
   function emptyChart(text) {
     return elem('p', 'chart-empty', text);
+  }
+
+  // ---- El ejemplo de la pantalla vacía ---------------------------------
+
+  /**
+   * Un mes inventado para quien todavía no cargó nada.
+   *
+   * «Todavía no hay tareas este mes» dice qué falta pero no PARA QUÉ sirve la
+   * pantalla: quien recién llega no tiene forma de saber qué va a ver ahí, y por
+   * lo tanto tampoco por qué le convendría cargar algo.
+   *
+   * Va en gris y con borde punteado. Es la misma diferencia que hay entre un
+   * plano y una foto: si se viera igual que lo de verdad, el primer mes la
+   * pantalla mentiría — y peor, el día que aparezcan los datos propios nadie
+   * notaría el cambio.
+   *
+   * El dibujo es el MISMO que el de la app —las mismas filas, los mismos
+   * puntos, las mismas barras—; lo único inventado son los números. Un dibujo
+   * aparte terminaría mostrando algo que la app no hace.
+   */
+  /**
+   * Ni un hábito en NINGÚN mes: la app está recién estrenada.
+   *
+   * No alcanza con que el mes visible esté vacío. Quien ya usa la app puede
+   * pararse en un mes anterior a su primera tarea, y ahí un ejemplo sería
+   * explicarle lo que ya sabe — y peor, taparle el aviso que sí dice algo:
+   * que ese mes es anterior a su comienzo de uso.
+   */
+  const sinNingunHabito = () => Object.values(state.months)
+    .every(lista => !Array.isArray(lista) || lista.length === 0);
+
+  const EJEMPLO_TAREA = { id: '(ejemplo)', name: 'Tomar agua', freq: 'daily' };
+
+  /** Un mes de marcas plausible: bastante cumplido, con algún tropiezo. */
+  const EJEMPLO_MARCAS = ['done', 'done', 'partial', 'done', 'done', 'missed', 'done'];
+
+  function ejemploDeGrafico(clave) {
+    const caja = elem('div', 'grafico-ejemplo');
+
+    /* El rótulo va ARRIBA y no al pie: lo primero que hay que saber de este
+       dibujo es que no es tuyo. Abajo llegaría tarde. */
+    caja.appendChild(elem('p', 'ejemplo-rotulo',
+      'Ejemplo — así se va a ver cuando cargues tus hábitos'));
+
+    const dibujo = elem('div', 'ejemplo-dibujo');
+    /* Para un lector de pantalla es ruido: no es información, es una muestra, y
+       el rótulo de arriba ya la anuncia. */
+    dibujo.setAttribute('aria-hidden', 'true');
+    dibujo.appendChild(clave === 'barras' ? ejemploDeBarras() : ejemploDeFila(clave));
+    caja.appendChild(dibujo);
+
+    return caja;
+  }
+
+  /** La fila de una tarea, con sus puntos o con su barra. */
+  function ejemploDeFila(clave) {
+    const lista = elem('ul', 'dots-list');
+    const fila = elem('li', 'dots-row');
+
+    const info = elem('div', 'task-info');
+    info.append(elem('span', 'task-name', EJEMPLO_TAREA.name),
+      elem('span', 'task-freq', freqLabel(EJEMPLO_TAREA)));
+
+    if (clave === 'puntos') {
+      const puntos = elem('div', 'dots');
+      /* Un mes entero de puntos, que es lo que hace que la fila se lea como una
+         racha y no como una lista de colores. */
+      for (let i = 0; i < 30; i++) {
+        puntos.appendChild(elem('span', `dot st-${EJEMPLO_MARCAS[i % EJEMPLO_MARCAS.length]}`));
+      }
+      fila.append(info, puntos);
+    } else {
+      fila.append(info, barraDeTarea(EJEMPLO_TAREA, { status: 'done', ratio: 82 }));
+    }
+
+    lista.appendChild(fila);
+    return lista;
+  }
+
+  /** Siete días con porcentajes inventados, dibujados por el gráfico de verdad. */
+  function ejemploDeBarras() {
+    /* Bajos el lunes y el sábado, altos en el medio: un mes cualquiera, con un
+       mejor y un peor día para que el podio tenga algo que coronar. */
+    const inventados = [58, 74, 91, 83, 96, 45, 67];
+    return dibujarBarras(elem('div'), WEEKDAYS.map((w, i) => ({
+      w, avg: inventados[i], tareas: 3,
+    })));
   }
 
   // ---- Puntos: el mes día por día, tarea por tarea ---------------------
@@ -3142,7 +3246,9 @@
        la dejaba ordenada por un número que no muestra. */
     const filas = tareasOrdenadas(days, 'puntos');
     if (!filas.length) {
-      card.appendChild(emptyChart('Todavía no hay tareas este mes'));
+      card.appendChild(sinNingunHabito()
+        ? ejemploDeGrafico('puntos')
+        : emptyChart('Todavía no hay tareas este mes'));
       return card;
     }
 
@@ -4703,11 +4809,17 @@
       /* Se INTERCAMBIAN las clases: mientras espera no es el botón rojo apagado
          —que se ve vacío— sino otro botón, de contorno. El «todavía no» y el
          «ahora sí» se distinguen sin leer el número. */
-      el.confirmOk.classList.toggle('btn-espera', esperando);
-      el.confirmOk.classList.toggle('btn-danger', !esperando);
-      /* El rótulo no se toca: solo cambia el hueco del número, que mide
-         siempre lo mismo. El botón no cambia de ancho en toda la cuenta. */
+      /* La clase no se toca: el botón es `.btn-danger` de principio a fin, y lo
+         que distingue esperar de poder tocar es `:disabled`. Turnando dos clases
+         que ambas tocan el fondo, la transición pasaba por transparente con la
+         letra ya blanca — y blanco sobre nada es un botón vacío.
+
+         El rótulo tampoco: solo cambia el hueco del número, que mide siempre lo
+         mismo, así que el botón no cambia de ancho en toda la cuenta. */
       el.confirmOkCuenta.textContent = esperando ? ` (${restan})` : '';
+      /* Terminada la cuenta, el hueco se va con ella: el rótulo queda solo y
+         centrado, y el botón vuelve a medir lo que dice. */
+      el.confirmOk.classList.toggle('con-cuenta', esperando);
     };
     pintar();
 
@@ -4750,7 +4862,7 @@
     el.confirmOkTexto.textContent = rotulo;
     el.confirmOkCuenta.textContent = '';
     el.confirmOk.disabled = false;
-    el.confirmOk.classList.remove('btn-espera', 'con-cuenta');
+    el.confirmOk.classList.remove('con-cuenta');
     /* El rojo es una advertencia, no una decoración: se guarda para lo que
        borra o reemplaza. Confirmar una corrección sobre un día viejo no
        destruye nada, y pintarla de rojo diría lo contrario. */
@@ -4765,15 +4877,26 @@
     if (opts.esperar) abrirDespuesDe(ESPERA_CONFIRMAR, rotulo);
 
     ui.onConfirm = onOk;
-    el.confirmDialog.showModal();
+    /* Si ya está abierto es porque una confirmación llevó a otra —la baja de
+       cuenta pasa por dos puertas—: se reusa, que además es lo que `showModal`
+       exige. Llamarlo sobre un diálogo abierto es un error. */
+    if (!el.confirmDialog.open) el.confirmDialog.showModal();
   }
 
   el.confirmOk.addEventListener('click', () => {
     frenarCuentaAtras();
-    el.confirmDialog.close();
+
     const fn = ui.onConfirm;
     ui.onConfirm = null;
+    /* Se corre ANTES de cerrar. Si lo que sigue es otra pregunta, vuelve a
+       armar este mismo diálogo —que sigue abierto— en vez de cerrarlo y abrirlo
+       de nuevo en el mismo tic: eso lo saca de la capa superior y lo devuelve
+       en el mismo cuadro, y el navegador se queda pintando lo de antes hasta
+       que algo lo obligue a recalcular. */
     if (fn) fn();
+
+    // Nadie volvió a armarlo: la pregunta terminó y el diálogo se va.
+    if (!ui.onConfirm) el.confirmDialog.close();
   });
 
   for (const btn of document.querySelectorAll('[data-close-dialog]')) {

@@ -297,16 +297,71 @@ const marcar = (desde, hasta, fn) => {
   ok('cada punto se nombra solo', /Leer, .* de julio: cumplido/.test(leer[0].title),
     leer[0].title);
 }
+// --- sin un solo hábito: un ejemplo en vez de un aviso ---------------------
 {
-  // Sin tareas no hay filas que dibujar, y lo dice.
-  const { doc } = await montar({ ...estado({}), months: { '2026-07': [] } });
-  verGrafico(doc, 'puntos');
-  const tarjeta = [...doc.querySelectorAll('#charts .chart-card')]
-    .find(c => c.getAttribute('aria-label') === 'Puntos');
+  /* «Todavía no hay tareas este mes» dice qué falta pero no PARA QUÉ sirve la
+     pantalla: quien recién llega no tiene forma de saber qué va a ver ahí, y por
+     lo tanto tampoco por qué le convendría cargar algo.
 
-  ok('sin tareas el gráfico lo dice',
-    /Todavía no hay tareas/.test(tarjeta.querySelector('.chart-empty')?.textContent ?? ''),
-    tarjeta.querySelector('.chart-empty')?.textContent);
+     El ejemplo usa el dibujo de verdad —las mismas filas, los mismos puntos, las
+     mismas barras— y solo inventa los números: uno aparte terminaría mostrando
+     algo que la app no hace. */
+  const { doc } = await montar({ ...estado({}), months: { '2026-07': [] } });
+  const ejemplo = () => doc.querySelector('#charts .grafico-ejemplo');
+
+  verGrafico(doc, 'puntos');
+  ok('sin un solo hábito, «Puntos» muestra un ejemplo', Boolean(ejemplo()),
+    doc.querySelector('#charts').textContent.trim().slice(0, 60));
+  ok('  diciendo que es un ejemplo antes del dibujo',
+    /^Ejemplo/.test(ejemplo().querySelector('.ejemplo-rotulo')?.textContent ?? ''),
+    ejemplo().querySelector('.ejemplo-rotulo')?.textContent);
+  /* No es información sino una muestra, y el rótulo ya la anuncia: para un
+     lector de pantalla el dibujo es ruido. */
+  ok('  con el dibujo fuera del alcance de un lector de pantalla',
+    ejemplo().querySelector('.ejemplo-dibujo')?.getAttribute('aria-hidden') === 'true');
+
+  const fila = ejemplo().querySelector('.dots-row');
+  ok('  con «Tomar agua» y sus puntos',
+    fila?.querySelector('.task-name')?.textContent === 'Tomar agua'
+      && ejemplo().querySelectorAll('.dot').length === 30,
+    `${fila?.querySelector('.task-name')?.textContent} · ${ejemplo().querySelectorAll('.dot').length} puntos`);
+  /* Los puntos son los de verdad, con sus clases de estado: por eso alcanza con
+     el gris de la caja para apagarlos, sin una paleta aparte que envejezca. */
+  ok('    que son los puntos de verdad, con sus estados',
+    [...ejemplo().querySelectorAll('.dot')].some(p => p.classList.contains('st-done'))
+      && [...ejemplo().querySelectorAll('.dot')].some(p => p.classList.contains('st-missed')));
+
+  verGrafico(doc, 'porcentajes');
+  ok('«Porcentajes» también, con la misma tarea',
+    ejemplo()?.querySelector('.task-name')?.textContent === 'Tomar agua'
+      && Boolean(ejemplo().querySelector('.meter-fill')),
+    ejemplo()?.textContent?.trim().slice(0, 60));
+
+  verGrafico(doc, 'barras');
+  const valores = [...(ejemplo()?.querySelectorAll('.bar-value') ?? [])].map(v => v.textContent);
+  ok('y «Barras» simula los siete días', valores.length === 7, valores.join(' '));
+  /* Con un mejor y un peor día, para que el podio tenga algo que coronar: es
+     parte de lo que el ejemplo tiene que mostrar. */
+  ok('  con podio, que es la mitad de lo que hay para ver ahí',
+    ejemplo().querySelectorAll('.podio-mejor, .podio-peor').length === 2,
+    String(ejemplo().querySelectorAll('.podio-mejor, .podio-peor').length));
+}
+
+{
+  /* Pero con hábitos cargados en OTRO mes, el mes vacío no lleva ejemplo: quien
+     ya usa la app no necesita que le expliquen la pantalla, y el ejemplo taparía
+     el aviso que sí dice algo. */
+  const s2 = marcar(1, 10, iso => ({ [`d1|${iso}`]: 'done' }));
+  const { doc } = await montar(estado(s2));
+  moverMeses(doc, -1);
+  verGrafico(doc, 'puntos');
+
+  ok('con hábitos en otro mes, el mes vacío no lleva ejemplo',
+    doc.querySelector('#charts .grafico-ejemplo') === null,
+    doc.querySelector('#charts').textContent.trim().slice(0, 60));
+  ok('  y sigue diciendo qué falta',
+    /Todavía no hay tareas/.test(doc.querySelector('#charts .chart-empty')?.textContent ?? ''),
+    doc.querySelector('#charts .chart-empty')?.textContent);
 }
 
 // --- el color de las barras y el podio -------------------------------------

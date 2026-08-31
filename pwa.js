@@ -55,6 +55,20 @@ if ('serviceWorker' in navigator) {
       return;
     }
 
+    /* Y con la app EN PANTALLA tampoco: recargar es dibujar todo, borrarlo y
+       volver a dibujarlo, y eso se ve como un par de pantallazos justo al
+       abrir. Se espera a que la app deje de estar a la vista —cambiar de app,
+       bloquear el teléfono, cerrar la pestaña— y ahí la recarga no la ve nadie:
+       cuando se vuelve, ya está la versión nueva.
+
+       Antes se recargaba en el acto. La razón sigue en pie —sin recargar, la
+       pantalla queda corriendo el código viejo y el síntoma se lee como «la app
+       no hace lo que dice»—; lo que cambió es el CUÁNDO, no el si. */
+    if (document.visibilityState === 'visible') {
+      document.addEventListener('visibilitychange', recargar, { once: true });
+      return;
+    }
+
     recargando = true;
     window.location.reload();
   };
