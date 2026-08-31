@@ -562,7 +562,7 @@
           <span class="guia-muestra" aria-hidden="true"><svg class="guia-fab" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M12 5.5v13M5.5 12h13"/>
             </svg></span>
-          <p>Agregá con este botón lo que hay que hacer una sola vez. No suma puntos ni entra en ningún cálculo.</p>
+          <p>Con este botón agregás lo que hay que hacer una sola vez —no suma puntos ni entra en ningún cálculo— y también categorías para ordenarlo.</p>
         </li>
 
         <li class="guia-paso">
@@ -572,22 +572,27 @@
 
         <li class="guia-paso">
           <span class="guia-muestra" aria-hidden="true"><span class="guia-lapiz">✎</span></span>
-          <p>El lápiz abre la tarea: ahí le ponés categoría, fecha y comentarios, y también la reordenás, archivás o eliminás.</p>
+          <p>El lápiz abre la tarea: ahí le ponés categoría, fecha y comentarios, y también la reordenás, archivás o eliminás. Si te falta una categoría, creala desde el mismo desplegable.</p>
         </li>
 
         <li class="guia-paso">
           <span class="guia-muestra" aria-hidden="true">
-            <span class="guia-vistas"><span class="is-activa">Lista</span><span>Categorías</span></span>
+            <span class="guia-vistas"><span class="is-activa">Lista</span><span>Calendario</span></span>
           </span>
-          <p>Arriba elegís cómo mirar lo mismo: <strong>Lista</strong> por estado, <strong>Categorías</strong> por dónde está y <strong>Calendario</strong> por día.</p>
+          <p>Arriba elegís cómo mirar lo mismo: una <strong>lista</strong> o el <strong>calendario</strong> del mes.</p>
+        </li>
+
+        <li class="guia-paso">
+          <span class="guia-muestra" aria-hidden="true"><span class="guia-tecla">⇅</span></span>
+          <p>El ícono de la derecha tiene dos cosas: cómo se <strong>agrupa</strong> la lista —por categoría, por estado o sin agrupar— y cómo se <strong>ordena</strong> lo que quedó junto.</p>
         </li>
 
         <li class="guia-paso guia-paso-suelto">
-          <p>Las tarjetas arrancan cerradas, con la cuenta de lo que tienen adentro. Tocá el <strong>▸</strong> para abrir una.</p>
+          <p>Agrupada, las tarjetas arrancan cerradas con la cuenta de lo que tienen adentro. Tocá el <strong>▸</strong> para abrir una.</p>
         </li>
 
         <li class="guia-paso guia-paso-suelto">
-          <p>En el calendario, tocá un día para agregar algo ahí, arrastrá una tarea de un día a otro, y deslizá de costado para cambiar de mes.</p>
+          <p>En el calendario, tocá un día para ver lo que cae ahí y agregar más, arrastrá una tarea de un día a otro, y deslizá de costado para cambiar de mes.</p>
         </li>
 
         <li class="guia-paso">
@@ -611,17 +616,19 @@
         <button type="button" id="btn-pend-menu" class="btn icon-btn menu-btn"
                 aria-label="Abrir menú" title="Menú" aria-controls="drawer">☰</button>
 
+        <!-- Dos y no tres: una lista o un almanaque. «Categorías» era la
+             tercera y no era una vista distinta sino una forma de agrupar la
+             MISMA lista, al lado de «por estado» y «sin agrupar» — vive en el
+             ícono de la derecha, junto al orden. -->
         <div class="pend-vistas" role="group" aria-label="Cómo se ven los pendientes">
           <button type="button" class="pend-vista is-activa" id="btn-pend-lista"
                   data-vista="lista" aria-pressed="true">Lista</button>
-          <button type="button" class="pend-vista" id="btn-pend-categorias"
-                  data-vista="categorias" aria-pressed="false">Categorías</button>
           <button type="button" class="pend-vista" id="btn-pend-calendario"
                   data-vista="calendario" aria-pressed="false">Calendario</button>
         </div>
 
-        <!-- Cambia el orden de lo que se está mirando. Solo en las dos vistas
-             que son listas: el calendario lo ordena el almanaque. -->
+        <!-- Cómo se ve la lista: cómo se agrupa y cómo se ordena. Solo en la
+             lista: el calendario no agrupa nada y lo ordena el almanaque. -->
         <button type="button" id="btn-pend-orden" class="btn icon-btn pend-orden"
                 aria-haspopup="dialog" hidden>
           <!-- El mismo dibujo y la misma clase que el orden de Análisis: es el
@@ -1129,14 +1136,86 @@
     </div>
   </dialog>
 
-  <!-- Las opciones las pone `renderOrdenPendientes`: cambian según la vista, y
-       tenerlas en el marcado obligaría a esconder la mitad cada vez. -->
-  <dialog id="pend-orden-dialog" class="dialog">
+  <!-- Dos apartados, porque son dos preguntas: la VISTA junta unas cosas con
+       otras y el ORDEN acomoda lo que quedó junto. Las opciones las pone
+       `renderOrdenPendientes`: cuál está puesta cambia, y una de las de orden
+       se apaga según la vista. -->
+  <!-- Sin título propio: los dos que hay adentro ya dicen de qué se trata, y
+       uno arriba de ellos era un tercer encabezado para lo mismo. El nombre del
+       diálogo vive en su `aria-label`, que es donde lo busca un lector de
+       pantalla. -->
+  <dialog id="pend-orden-dialog" class="dialog" aria-label="Cómo se ve la lista">
     <div class="dialog-form">
       <button type="button" class="dialog-close" data-close-dialog
               aria-label="Cerrar" title="Cerrar">✕</button>
-      <h2 id="pend-orden-title" tabindex="-1">Ordenar</h2>
-      <div class="orden-opciones" id="pend-orden-opciones"></div>
+
+      <div class="opciones-grupo">
+        <h3 id="pend-orden-title" tabindex="-1">Vista</h3>
+        <div class="orden-opciones" id="pend-vista-opciones"></div>
+      </div>
+
+      <div class="opciones-grupo">
+        <h3>Ordenar</h3>
+        <div class="orden-opciones" id="pend-orden-opciones"></div>
+      </div>
+
+      <!-- Las dos elecciones se confirman juntas. Aplicando cada toque al
+           instante, elegir vista Y orden eran dos aperturas del mismo diálogo, y
+           entre una y otra la lista se redibujaba con media elección puesta. -->
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-brand btn-ok" id="pend-orden-ok"
+                title="Aplicar" aria-label="Aplicar">
+          <svg class="ok-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M5 12.5l4.5 4.5L19 7"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Un día del calendario: lo que cae ahí y la puerta para agregar algo más.
+       El título es la fecha, así que las filas no repiten el día —lo dirían
+       todas, y sería el mismo—. -->
+  <dialog id="pend-dia-dialog" class="dialog">
+    <div class="dialog-form">
+      <button type="button" class="dialog-close" data-close-dialog
+              aria-label="Cerrar" title="Cerrar">✕</button>
+      <h2 id="pend-dia-title" tabindex="-1"></h2>
+      <div id="pend-dia-lista"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="btn-dia-nueva">Nueva tarea pendiente</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Un día del calendario: lo que cae ahí y la puerta para agregar algo más.
+       El título es la fecha, así que las filas no repiten el día —lo dirían
+       todas, y sería el mismo—. -->
+  <dialog id="pend-dia-dialog" class="dialog">
+    <div class="dialog-form">
+      <button type="button" class="dialog-close" data-close-dialog
+              aria-label="Cerrar" title="Cerrar">✕</button>
+      <h2 id="pend-dia-title" tabindex="-1"></h2>
+      <div id="pend-dia-lista"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="btn-dia-nueva">Nueva tarea pendiente</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- El «+» de Pendientes vuelve a preguntar qué se crea. Lo había dejado de
+       hacer cuando «Categorías» era una vista: la pantalla ya contestaba. Sin
+       esa vista, la pregunta no la contesta nadie, y una categoría no se puede
+       crear solo de paso, al cargar una tarea. -->
+  <dialog id="pend-nuevo-dialog" class="dialog">
+    <div class="dialog-form">
+      <button type="button" class="dialog-close" data-close-dialog
+              aria-label="Cerrar" title="Cerrar">✕</button>
+      <h2 id="pend-nuevo-title" tabindex="-1">Qué querés crear</h2>
+      <div class="orden-opciones">
+        <button type="button" class="btn orden-opcion" id="btn-nuevo-pendiente">Tarea pendiente</button>
+        <button type="button" class="btn orden-opcion" id="btn-nueva-categoria">Categoría</button>
+      </div>
     </div>
   </dialog>
 
@@ -1165,6 +1244,7 @@
         <span class="field-label">Subcategoría</span>
         <select class="field-select" id="pendiente-subcategoria"></select>
       </label>
+
 
       <fieldset class="field">
         <legend class="field-label">Estado</legend>

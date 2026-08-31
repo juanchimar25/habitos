@@ -1186,7 +1186,7 @@ estado (`state.pendientes`), no entre las tareas.
 
 El **lápiz** de cada fila es la única puerta a su edición —nombre, categoría, fecha, comentarios— y a sus tres
 acciones, las mismas que las de una tarea o una categoría: **Eliminar**, **Reordenar** —entre los de
-su misma categoría; ese orden se ve en *Categorías*, porque *Lista* ordena por fecha— y
+su misma categoría; ese orden se ve agrupando por categoría— y
 **Archivar**, que lo guarda en ☰ → Archivo junto a las categorías guardadas. El nombre es el rótulo de la fila y no
 abre nada; en el **calendario** los pendientes son etiquetas que se arrastran, y editarlos sale de
 la lista.
@@ -1281,20 +1281,20 @@ tira lo que no se puede leer: sin nombre, sin id o con el id repetido.
 
 ### El orden de cada vista
 
-El botón de la derecha de la fila cambia el orden de lo que se está mirando, con las opciones que le
-tocan a cada vista —ordenan cosas distintas—. En el calendario no aparece: ahí ordena el almanaque.
+El ícono de la derecha de la fila abre las dos elecciones —cómo se agrupa y cómo se ordena—, que
+están descritas en [Cómo se agrupa y cómo se ordena](#cómo-se-agrupa-y-cómo-se-ordena). En el
+calendario no aparece: ahí no hay nada que agrupar y ordena el almanaque.
 
-| Vista | Qué ofrece |
-|---|---|
-| **Lista** | *Personalizado*, *por fecha* o *alfabético*. El **estado manda siempre**, en el orden del avance: primero lo que no arrancó, después lo que está en curso y al final lo terminado, que ya no pide nada. Lo que se elige es cómo se desempata adentro de cada grupo. |
-| **Categorías** | *Personalizado*, *alfabético* o *por cantidad de tareas*, de la más cargada a la más vacía. |
+**El ícono no lleva rótulo**, así que el nombre de lo que está puesto va en su `title` y en su
+`aria-label` —«Vista: por estado · por fecha»—: es lo único que dice, sin abrirlo, qué se está
+mirando.
 
-**Personalizado** es el orden del arreglo, que es el que mueven las flechas de *Reordenar*. Mover
-algo a mano **lo elige solo**: con un orden automático puesto, la flecha guardaba el cambio y la
-pantalla no se movía, que se lee como que el botón está roto.
+**Personalizado** es el orden propio de cada nivel: las categorías entre sí, las subcategorías dentro
+de su madre y las tareas dentro de su contenedor. Es el que mueven las flechas de *Reordenar*, y
+mover algo a mano **lo elige solo**: con un orden automático puesto, la flecha guardaba el cambio y
+la pantalla no se movía, que se lee como que el botón está roto.
 
-Cada vista se acuerda de lo suyo, y no se persiste: es una postura de pantalla, como el orden de
-Análisis.
+Nada de esto se persiste: es una postura de pantalla, como el orden de Análisis.
 
 ### El ☰ de Pendientes
 
@@ -1324,19 +1324,58 @@ calendario aparece **debajo** la línea del mes.
 > sección, debajo del par de vistas, y vuelve a su lugar al salir. Un segundo botón de mes sería un
 > segundo lugar donde arreglar lo mismo.
 
-- **Lista** — sin categorías, en **tres tarjetas plegables**: *Sin iniciar*, *En proceso* y
-  *Finalizada*, siempre las tres y en el orden del avance. Contesta «qué sigue», que es otra
-  pregunta que «dónde está»: el estado deja de ser algo que hay que leer fila por fila y pasa a ser
-  el encabezado del bloque, y lo que no interesa hoy —lo terminado, casi siempre— se pliega entero.
-  Adentro de cada tarjeta manda el orden elegido; por fecha, lo que no tiene fecha va al final.
-- **Categorías** — el árbol: cada categoría es una tarjeta con sus pendientes y sus subcategorías
-  adentro. Cada encabezado se pliega y deja a la vista la cuenta de lo que tiene, contando lo de sus
-  subcategorías.
+- **Lista** — la misma lista, agrupada de una de tres maneras. Cuál, se elige en el ícono de la
+  derecha (ver [Cómo se agrupa y cómo se ordena](#cómo-se-agrupa-y-cómo-se-ordena)).
+- **Calendario** — el mes, con cada tarea en su día.
 
-**Las dos abren plegadas.** Lo primero que se ve es el mapa —los tres estados, las categorías— con
-su cuenta al costado, y se abre lo que se quiere mirar. Con unas pocas tareas daba igual; con
-treinta, entrar a Pendientes era caer en el medio de un muro de filas y tener que plegar a mano para
-poder mirar algo. La cuenta es lo que hace que plegado no sea lo mismo que vacío.
+#### Cómo se agrupa y cómo se ordena
+
+Son **dos preguntas distintas** y viven juntas en el menú del ícono, cada una en **su propia
+tarjeta** — una lista corrida de siete botones las hacía parecer una sola de la que se elige uno—:
+
+| Vista — qué junta con qué | Ordenar — cómo se acomoda lo que quedó junto |
+|---|---|
+| **Por categoría**: el árbol, cada categoría con sus subcategorías y sus tareas adentro | **Personalizado**: el orden propio de cada nivel, el que mueven las flechas de *Reordenar* |
+| **Por estado**: tres tarjetas —*Sin iniciar*, *En proceso*, *Finalizada*—, siempre las tres | **Por fecha**: lo que vence antes primero; lo que no tiene fecha, al final |
+| **Sin agrupar**: todo seguido, en una sola lista | **Alfabéticamente** |
+| | **Por cantidad de tareas**: solo agrupando por categoría |
+
+**Las dos se confirman juntas, con el ✓.** Tocar una opción la marca y nada más; lo que cambia la
+pantalla es el botón. Aplicando cada toque al instante, elegir vista **y** orden eran dos aperturas
+del mismo diálogo, y entre una y otra la lista se redibujaba con media elección puesta — con la
+vista nueva y el orden viejo, que a veces ni siquiera valía ahí—. Cerrar con la ✕ no aplica nada: el
+borrador se descarta solo, porque la próxima apertura lo vuelve a copiar de lo que está puesto.
+
+> El **apagado sigue al borrador y no a lo puesto**: al marcar *por categoría*, *por cantidad de
+> tareas* se enciende en el acto, sin esperar al ✓. Si no, habría que confirmar una elección para
+> poder hacer la otra, que es exactamente lo que el ✓ vino a evitar.
+>
+> El diálogo **no lleva título propio**: los dos de adentro ya dicen de qué se trata, y uno arriba de
+> ellos era un tercer encabezado para lo mismo. Su nombre vive en el `aria-label`, que es donde lo
+> busca un lector de pantalla.
+
+> **Antes eran dos vistas y no una elección.** *Lista* y *Categorías* eran botones hermanos del
+> *Calendario*, y cada una ofrecía **sus** órdenes: una podía ir por fecha y la otra por cantidad de
+> tareas, pero nunca al revés. La asimetría no era un descuido, era el síntoma: adentro de un mismo
+> botón estaban mezcladas la agrupación y el orden. Separarlas destapó además lo que faltaba —ver
+> todo seguido, sin ninguna división— y dejó los tres órdenes disponibles en las tres agrupaciones.
+>
+> **«Por cantidad de tareas» ordena grupos por su tamaño**, así que pide grupos que alguien haya
+> armado: solo se enciende agrupando por categoría. Las tres tarjetas de estado van siempre en el
+> orden del avance —no son grupos, son un progreso— y sin agrupar no hay grupos. Queda **apagada y
+> no escondida**: una opción que desaparece hace dudar de si estaba y uno se la perdió. Al salir de
+> las categorías con ella puesta, el orden cae en alfabético; dejarla marcada como activa estando
+> apagada sería peor.
+>
+> **Por fecha no mueve las categorías.** Una categoría no tiene fecha, así que esa elección habla de
+> las tareas de adentro y no tiene por qué reordenar lo de afuera: las tarjetas se quedan en su orden
+> propio.
+
+**Agrupada, las tarjetas abren plegadas.** Lo primero que se ve es el mapa —los tres estados, las
+categorías— con su cuenta al costado, y se abre lo que se quiere mirar. Con unas pocas tareas daba
+igual; con treinta, entrar a Pendientes era caer en el medio de un muro de filas y tener que plegar a
+mano para poder mirar algo. La cuenta es lo que hace que plegado no sea lo mismo que vacío. **Sin
+agrupar no hay tarjetas**, así que es la única de las tres que muestra algo apenas se entra.
 
 > Se anota **cuáles se abrieron**, no el estado de cada una: son las menos, y una categoría recién
 > creada no necesita que nadie la marque para verse como las demás. Antes arrancaban abiertas y
@@ -1347,8 +1386,17 @@ poder mirar algo. La cuenta es lo que hace que plegado no sea lo mismo que vací
   entran en la rejilla, así que se los **cuenta al pie**: si no, cambiar de vista parecería haberlos
   perdido.
 
-  Ahí el calendario también se edita: **tocar un día** abre el alta con esa fecha puesta, y
-  **arrastrar un pendiente a otro día** se la cambia. Y **deslizando de costado se cambia de mes**:
+  Ahí el calendario también se edita: **tocar un día** lo abre —lo que cae ahí, y un botón para
+  agregar algo más con esa fecha puesta—, y **arrastrar un pendiente a otro día** se la cambia.
+
+  > Antes tocar el día abría el alta directo. Agregar es lo que más se hace, pero ver qué hay
+  > obligaba a leerlo en la celda —donde entran dos o tres etiquetas y el resto se corta— o a irse a
+  > la lista y buscar la fecha. Un toque más para crear, a cambio de que mirar un día sea posible.
+  >
+  > Adentro van **las mismas filas de la lista**, así que los mismos toques: el estado cicla y el
+  > lápiz edita. Sin la etiqueta de la fecha, eso sí — la dice el título, y repetirla en cada fila
+  > sería decir lo mismo tantas veces como tareas haya. Un día sin nada **lo dice**: «Sin tareas
+  > aún», porque un diálogo con el título y nada abajo se lee como algo que no llegó a cargar. Y **deslizando de costado se cambia de mes**:
   a la izquierda el siguiente, a la derecha el anterior. El calendario ocupa la pantalla y el nombre
   del mes queda arriba del todo, así que pasar de mes era subir el pulgar, apuntar a una flecha y
   volver a bajar.
@@ -1382,10 +1430,51 @@ la misma app serían dos cosas que aprender para lo mismo.
 
 ### El «+»
 
-El botón redondo de la esquina crea **lo que la vista muestra**: una tarea en Hábitos, una **tarea
-pendiente** en *Lista* y en *Calendario*, y una **categoría** en *Categorías*. Sin paso intermedio:
-la pantalla ya está contestando cuál de las dos cosas se quiere, y preguntarlo de nuevo era un paso
-de más. El rótulo del botón lo dice en cada vista.
+El botón redondo de la esquina crea lo de la sección: una tarea en Hábitos y, en Pendientes, una
+**tarea pendiente** o una **categoría** — ahí pregunta cuál.
+
+> **Preguntar volvió a tener sentido.** Dejó de hacerlo cuando *Categorías* era una vista: parado
+> ahí, la pantalla ya contestaba, y volver a preguntarlo era un paso de más. Ahora las categorías son
+> una forma de agrupar y no un lugar donde se está, así que la pregunta no la contesta nadie.
+>
+> Hay un **segundo camino** para las categorías, y es el que se usa más seguido: los dos selectores
+> del diálogo de la tarea terminan en **+ Nueva categoría…**. Es para el momento en que ya estás
+> cargando algo y te das cuenta de que le falta dónde ir; sin eso habría que cancelar, crear la
+> categoría y volver a escribir la tarea.
+>
+> Elegirla **sale al formulario de categorías de siempre** —no a una copia reducida: una categoría se
+> crea igual venga de donde venga, y un segundo formulario para lo mismo son dos lugares donde
+> arreglar cada cosa—. Y al terminar **vuelve al alta**, con lo que ya se había escrito y la
+> categoría recién hecha puesta.
+>
+> **El «Dentro de» viene decidido y apagado.** El desplegable del que se salió ya contestó de qué
+> nivel es la que hace falta: desde el de arriba, una de primer nivel; desde el de abajo, una que
+> cuelga de la que ya estaba elegida. Elegir otra cosa ahí la mandaría a un lugar distinto del que se
+> pidió. La opción que no corresponde queda **apagada y no borrada**, para que se lea cuál era la
+> alternativa descartada en vez de parecer que la lista está incompleta.
+>
+> **Se cierra el alta en vez de abrir el otro encima.** Apilar dos modales en un teléfono deja al de
+> abajo tapado y sin salida visible; cerrando, la pantalla dice una sola cosa por vez y el regreso se
+> nota. Cerrar el formulario **sin guardar también vuelve**, con lo escrito y con la categoría que
+> estaba antes de tocar la opción — el desplegable había quedado marcando *«+ Nueva categoría…»*, que
+> no es una categoría.
+>
+> Ese regreso cuelga de `cerrarDialogo` y no del evento `close`, que sería lo natural: **jsdom no
+> dispara `close`**, así que colgarse de él dejaba el camino de vuelta sin ningún caso que lo
+> cuidara. `Esc` sí necesita el evento —cierra por su cuenta— y ahí queda como red, sin repetir el
+> regreso: lo primero que hace es limpiar el viaje.
+>
+> **La categoría no existe hasta que la tarea se confirma.** Vuelve puesta en el desplegable y se ve
+> como cualquier otra, pero vive en un borrador aparte hasta el ✓ del alta: guardarla al cerrar su
+> propio formulario dejaba una categoría vacía cada vez que la tarea se cancelaba, imposible de
+> distinguir de una hecha a propósito. Y **solo nacen las que la tarea usa**: si se creó una, se
+> cambió de idea y se eligió otra, la primera no llega a existir — no se pidió una categoría, se
+> pidió una tarea que fuera ahí.
+>
+> El borrador vive fuera de `state` y no adentro con una marca: cualquier `save()` de por medio
+> —marcar una celda en otra pantalla, una sincronización— lo habría escrito. Lo que sí mira son los
+> **nombres repetidos**: dos categorías pedidas en la misma alta chocan igual que dos guardadas, y
+> descubrirlo recién al confirmar sería avisar tarde.
 
 ## Atajos de teclado
 

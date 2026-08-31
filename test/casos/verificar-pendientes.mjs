@@ -50,24 +50,32 @@ const irAPendientes = doc => {
   desplegarTodo(doc);
 };
 
-/** La vista del árbol, que es donde viven las tarjetas de categoría. */
-const verCategorias = doc => {
-  doc.querySelector('#btn-pend-categorias').click();
+/**
+ * Cómo se agrupa la lista. Las tres muestran lo mismo; lo que cambia es qué
+ * junta con qué. Se elige en el menú del ícono, junto al orden.
+ */
+const agrupar = (doc, clave) => {
+  doc.querySelector('#btn-pend-orden').click();
+  doc.querySelector(`#pend-vista-opciones [data-agrupacion="${clave}"]`).click();
+  doc.querySelector('#pend-orden-ok').click();   // las dos elecciones se confirman juntas
   desplegarTodo(doc);
 };
 
-/**
- * Toca el «+» parado en la vista donde crea lo que se quiere, y deja la
- * pantalla en la vista que estaba: el «+» crea lo que la vista muestra.
- */
-const agregar = (doc, que) => {
-  const vistaDe = { categoria: 'categorias', pendiente: 'lista' };
-  const previa = [...doc.querySelectorAll('.pend-vista')]
-    .find(b => b.getAttribute('aria-pressed') === 'true')?.dataset.vista;
+/** Y el orden, del mismo menú. */
+const ordenar = (doc, clave) => {
+  doc.querySelector('#btn-pend-orden').click();
+  doc.querySelector(`#pend-orden-opciones [data-orden="${clave}"]`).click();
+  doc.querySelector('#pend-orden-ok').click();
+  desplegarTodo(doc);
+};
 
-  doc.querySelector(`#btn-pend-${vistaDe[que]}`).click();
+/** El árbol, que es donde viven las tarjetas de categoría. */
+const verCategorias = doc => agrupar(doc, 'categoria');
+
+/** El «+» y, en el diálogo que abre, cuál de las dos cosas se crea. */
+const agregar = (doc, que) => {
   doc.querySelector('#btn-fab').click();
-  if (previa && previa !== vistaDe[que]) doc.querySelector(`#btn-pend-${previa}`).click();
+  doc.querySelector(que === 'categoria' ? '#btn-nueva-categoria' : '#btn-nuevo-pendiente').click();
 };
 
 /** Crea una categoría; `padre` es el nombre de la que la contiene. */
@@ -109,6 +117,8 @@ const nuevoPendiente = (doc, nombre,
   desplegarTodo(doc);
 };
 
+const mismoTexto = (a, b) => a.localeCompare(b, 'es-AR', { sensitivity: 'base' }) === 0;
+
 const nombres = doc => [...doc.querySelectorAll('#pend-lista .pend-nombre')]
   .map(n => n.textContent);
 /* Las categorías que arma cada escenario. «Varios» y su subcategoría están
@@ -137,28 +147,33 @@ const editarCategoria = (doc, nombre) => {
   /* El cartel de bienvenida mira que no haya NADA anotado: «Varios» viene de
      fábrica y no cuenta como algo que alguien haya cargado. */
   ok('  con el cartel de bienvenida', doc.querySelector('#pend-vacio').hidden === false);
-  /* El «+» es el mismo botón de Hábitos y acá crea lo que la vista muestra. */
+  /* El «+» es el mismo botón de Hábitos. Acá no dice qué crea porque pregunta:
+     crea las dos cosas, y cuál ya no lo contesta la pantalla. */
   const rotuloFab = () => doc.querySelector('#btn-fab').getAttribute('aria-label');
-  ok('  y el «+» a mano, diciendo qué crea',
+  ok('  y el «+» a mano',
     doc.querySelector('#btn-fab').hidden === false
-      && rotuloFab() === 'Agregar tarea pendiente', rotuloFab());
+      && rotuloFab() === 'Agregar en Pendientes', rotuloFab());
   /* En la lista no hay mes que elegir: el selector es del calendario. */
   ok('  sin ☰ ni línea de mes',
     doc.querySelector('#btn-menu').hidden === true
       && doc.querySelector('.controls').hidden === true);
-  /* Las dos cosas que la pantalla contiene —lo que hay que hacer y dónde va—
-     cuelgan del «+», así que la barra se quedó solo con el par de vistas. */
-  /* La barra: el ☰ a la izquierda, el par de vistas centrado y el orden a la
-     derecha. Crear categorías se mudó al «+». */
+  /* La barra: el ☰ a la izquierda, el par de vistas centrado y el ícono a la
+     derecha. Son DOS vistas —una lista o un almanaque—; «Categorías» era una
+     tercera y no era una vista distinta sino una forma de agrupar la misma
+     lista, así que se fue adentro del ícono. */
   const enBarra = [...doc.querySelectorAll('.pend-barra button')].map(b2 => b2.id);
-  ok('  con el ☰ a un lado y el orden al otro',
-    enBarra.join(',') === 'btn-pend-menu,btn-pend-lista,btn-pend-categorias,'
-      + 'btn-pend-calendario,btn-pend-orden',
+  ok('  con el ☰ a un lado y el ícono al otro',
+    enBarra.join(',') === 'btn-pend-menu,btn-pend-lista,btn-pend-calendario,btn-pend-orden',
     enBarra.join(','));
 
-  /* Sin paso intermedio: en «Lista» abre el alta de una tarea pendiente… */
+  /* El «+» pregunta qué crear. Dejó de preguntarlo cuando «Categorías» era una
+     vista —parado ahí, la pantalla contestaba—, y vuelve ahora que no lo es. */
   doc.querySelector('#btn-fab').click();
-  ok('el «+» abre el alta de una tarea pendiente',
+  ok('el «+» pregunta qué crear',
+    doc.querySelector('#pend-nuevo-dialog').hasAttribute('open'),
+    doc.querySelector('#pend-nuevo-dialog').outerHTML.slice(0, 60));
+  doc.querySelector('#btn-nuevo-pendiente').click();
+  ok('  y de ahí sale el alta de una tarea pendiente',
     doc.querySelector('#pendiente-dialog').hasAttribute('open')
       && doc.querySelector('#pendiente-dialog-title').textContent === 'Nueva tarea pendiente',
     doc.querySelector('#pendiente-dialog-title').textContent);
@@ -167,12 +182,10 @@ const editarCategoria = (doc, nombre) => {
     doc.querySelector('#pendiente-name').getAttribute('maxlength'));
   doc.querySelector('#pendiente-dialog').close();
 
-  // …y en «Categorías», el de una categoría: crea lo que la vista muestra.
-  verCategorias(doc);
-  ok('  y en «Categorías» dice que agrega una categoría',
-    rotuloFab() === 'Agregar categoría', rotuloFab());
+  // Y la otra opción del mismo diálogo abre el alta de una categoría.
   doc.querySelector('#btn-fab').click();
-  ok('  abriendo su formulario',
+  doc.querySelector('#btn-nueva-categoria').click();
+  ok('  y la otra opción, el alta de una categoría',
     doc.querySelector('#categoria-dialog').hasAttribute('open'));
   /* Una categoría puede ser suelta o colgar de otra, y el formulario lo dice
      antes de que haya que adivinarlo. */
@@ -185,7 +198,6 @@ const editarCategoria = (doc, nombre) => {
     doc.querySelector('#categoria-name').getAttribute('maxlength') === '35',
     doc.querySelector('#categoria-name').getAttribute('maxlength'));
   doc.querySelector('#categoria-dialog').close();
-  doc.querySelector('#btn-pend-lista').click();
 
   doc.querySelector('#btn-pend-calendario').click();
   ok('en el calendario aparece la línea del mes',
@@ -620,8 +632,8 @@ const editarCategoria = (doc, nombre) => {
   nuevoPendiente(doc, 'Para el 3', { categoria: 'Casa', fecha: '2026-07-03' });
   nuevoPendiente(doc, 'Para el 12', { fecha: '2026-07-12' });
 
-  doc.querySelector('#btn-pend-lista').click();
-  console.log(`\n=== la vista Lista ===\n  ${nombres(doc).join(' · ')}`);
+  agrupar(doc, 'estado');
+  console.log(`\n=== agrupada por estado ===\n  ${nombres(doc).join(' · ')}`);
 
   ok('«Lista» ordena por fecha de completado',
     nombres(doc).join(',') === 'Para el 3,Para el 12,Para el 25,Sin fecha',
@@ -660,8 +672,8 @@ const editarCategoria = (doc, nombre) => {
      manera, no otra lista. */
   doc.querySelectorAll('.pend-cat-editar')[0].click();
   doc.querySelector('#categoria-archive').click();
-  doc.querySelector('#btn-pend-lista').click();
-  ok('lo archivado tampoco está en «Lista»',
+  agrupar(doc, 'estado');
+  ok('lo archivado tampoco está agrupando por estado',
     nombres(doc).join(',') === 'Para el 12,Para el 25', nombres(doc).join(','));
 }
 
@@ -727,13 +739,14 @@ const editarCategoria = (doc, nombre) => {
     JSON.stringify(guardado(window).pendientes.items.map(p => [p.name, p.archivado])));
 }
 
-// --- 6g. el orden de cada vista --------------------------------------------
+// --- 6g. el ícono: cómo se agrupa y cómo se ordena -------------------------
 {
-  /* El botón de la derecha cambia el orden de lo que se está mirando, con las
-     opciones que le tocan a cada vista: ordenan cosas distintas. */
+  /* Dos preguntas en un solo menú. Antes eran una sola cosa mal repartida:
+     «Lista» y «Categorías» eran vistas distintas y cada una ofrecía SUS
+     órdenes, así que no había forma de ver todo seguido sin división ni de
+     ordenar por fecha adentro del árbol. */
   const { doc } = await montar(VACIO);
   irAPendientes(doc);
-  verCategorias(doc);
   nuevaCategoria(doc, 'Zapatería');       // 1 tarea
   nuevaCategoria(doc, 'Almacén');         // 3 tareas
   nuevoPendiente(doc, 'Botas', { categoria: 'Zapatería', fecha: '2026-07-05', estado: 'finalizada' });
@@ -742,64 +755,85 @@ const editarCategoria = (doc, nombre) => {
   nuevoPendiente(doc, 'Bananas', { categoria: 'Almacén', fecha: '2026-07-12' });
 
   const boton = () => doc.querySelector('#btn-pend-orden');
-  const elegir = clave => {
-    boton().click();
-    doc.querySelector(`#pend-orden-opciones [data-orden="${clave}"]`).click();
-  };
+  const vistas = () => [...doc.querySelectorAll('#pend-vista-opciones [data-agrupacion]')]
+    .map(b => b.dataset.agrupacion);
   const opciones = () => [...doc.querySelectorAll('#pend-orden-opciones [data-orden]')]
     .map(b => b.dataset.orden);
+  const apagadas = () => [...doc.querySelectorAll('#pend-orden-opciones [data-orden]')]
+    .filter(b => b.disabled).map(b => b.dataset.orden);
 
-  // --- «Lista»: el estado manda, y el botón desempata ---
-  doc.querySelector('#btn-pend-lista').click();
-  ok('el botón de orden está en «Lista»', boton().hidden === false);
-  ok('  y dice en qué orden está', /por fecha/.test(boton().title), boton().title);
+  ok('el ícono está en la lista', boton().hidden === false);
+  ok('  y dice qué se está mirando, que es lo único que dice sin abrirlo',
+    /Vista: por estado · por fecha/.test(boton().title), boton().title);
 
   boton().click();
-  ok('  ofreciendo el personalizado, fecha o alfabético',
-    opciones().join(',') === 'personalizado,fecha,alfabetico', opciones().join(','));
+  console.log(`\n=== el menú ===\n  vista: ${vistas().join(' · ')}`
+    + `\n  orden: ${opciones().join(' · ')}`);
+  ok('  ofreciendo las tres agrupaciones',
+    vistas().join(',') === 'categoria,estado,sin', vistas().join(','));
+  ok('  y los cuatro órdenes, los mismos siempre',
+    opciones().join(',') === 'personalizado,fecha,alfabetico,cantidad', opciones().join(','));
+  /* «Por cantidad» ordena GRUPOS por su tamaño: pide grupos que alguien haya
+     armado. Apagada y no escondida — una opción que desaparece hace dudar de si
+     estaba y uno se la perdió—, y el título dice por qué. */
+  ok('  con «por cantidad» apagada fuera de las categorías',
+    apagadas().join(',') === 'cantidad', apagadas().join(','));
+  ok('    diciendo por qué',
+    /por categoría/.test(doc.querySelector('#pend-orden-opciones [data-orden="cantidad"]').title),
+    doc.querySelector('#pend-orden-opciones [data-orden="cantidad"]').title);
   doc.querySelector('#pend-orden-dialog [data-close-dialog]').click();
 
-  console.log(`\n=== Lista, por fecha ===\n  ${nombres(doc).join(' · ')}`);
-  /* Primero lo que no arrancó —por fecha, y lo que no tiene al final—, después
-     lo que está en curso y al fondo lo terminado. */
-  ok('«Lista» agrupa por estado y desempata por fecha',
+  // --- por estado: el avance manda y el orden desempata adentro ---
+  console.log(`\n=== por estado · por fecha ===\n  ${nombres(doc).join(' · ')}`);
+  ok('por estado, la fecha desempata adentro de cada tarjeta',
     nombres(doc).join(',') === 'Bananas,Aceite,Café,Botas', nombres(doc).join(','));
 
-  elegir('alfabetico');
+  ordenar(doc, 'alfabetico');
   console.log(`  alfabético: ${nombres(doc).join(' · ')}`);
   ok('  y alfabético reordena adentro de cada estado',
     nombres(doc).join(',') === 'Aceite,Bananas,Café,Botas', nombres(doc).join(','));
   ok('  sin romper los grupos: lo terminado sigue al final',
     nombres(doc).at(-1) === 'Botas', nombres(doc).join(','));
 
-  // --- «Categorías»: el orden de las tarjetas ---
-  verCategorias(doc);
-  ok('el botón sigue estando en «Categorías»', boton().hidden === false);
-  boton().click();
-  ok('  con sus propias opciones',
-    opciones().join(',') === 'personalizado,alfabetico,cantidad', opciones().join(','));
-  doc.querySelector('#pend-orden-dialog [data-close-dialog]').click();
-
-  ok('arranca en el orden en que se armaron',
-    categorias(doc).join(',') === 'Zapatería,Almacén', categorias(doc).join(','));
-
-  elegir('alfabetico');
-  ok('alfabético las ordena por nombre',
+  // --- por categoría: el mismo orden, ahora también sobre las tarjetas ---
+  agrupar(doc, 'categoria');
+  ok('con el alfabético puesto, las categorías van por nombre',
     categorias(doc).join(',') === 'Almacén,Zapatería', categorias(doc).join(','));
 
-  elegir('cantidad');
-  console.log(`\n=== Categorías, por cantidad ===\n  ${categorias(doc).join(' · ')}`);
+  boton().click();
+  ok('acá «por cantidad» se enciende', apagadas().length === 0, apagadas().join(','));
+  doc.querySelector('#pend-orden-dialog [data-close-dialog]').click();
+
+  ordenar(doc, 'cantidad');
+  console.log(`\n=== por categoría · por cantidad ===\n  ${categorias(doc).join(' · ')}`);
   ok('y por cantidad, la más cargada primero',
     categorias(doc).join(',') === 'Almacén,Zapatería', categorias(doc).join(','));
 
-  /* Cada vista se acuerda de lo suyo: son dos elecciones distintas sobre dos
-     cosas distintas. */
-  doc.querySelector('#btn-pend-lista').click();
-  ok('cada vista conserva su orden', /alfabético/.test(boton().title), boton().title);
+  /* El orden es UNO y se arrastra entre agrupaciones. Pero «por cantidad» no
+     vale fuera de las categorías, así que al salir se cae en alfabético: dejarlo
+     puesto marcaría como activa una opción apagada. */
+  agrupar(doc, 'sin');
+  ok('al salir de las categorías, «por cantidad» cae en alfabético',
+    /por estado|sin agrupar/.test(boton().title) && /alfabéticamente/.test(boton().title),
+    boton().title);
 
-  // Y en el calendario no hay nada que ordenar.
+  // --- sin agrupar: todo seguido, sin una sola tarjeta ---
+  console.log(`\n=== sin agrupar ===\n  ${nombres(doc).join(' · ')}`);
+  ok('sin agrupar no hay ninguna tarjeta',
+    doc.querySelectorAll('#pend-lista .pend-bloque').length === 0,
+    String(doc.querySelectorAll('#pend-lista .pend-bloque').length));
+  /* Es la única de las tres que muestra algo apenas se entra: las otras arman
+     tarjetas, y las tarjetas arrancan plegadas. */
+  ok('  y están las cuatro, en una sola lista',
+    nombres(doc).join(',') === 'Aceite,Bananas,Botas,Café', nombres(doc).join(','));
+
+  ordenar(doc, 'fecha');
+  ok('  con el orden elegido mandando sobre todas',
+    nombres(doc).join(',') === 'Botas,Bananas,Aceite,Café', nombres(doc).join(','));
+
+  // Y en el calendario no hay nada que agrupar ni que ordenar.
   doc.querySelector('#btn-pend-calendario').click();
-  ok('en el calendario el botón no está', boton().hidden === true);
+  ok('en el calendario el ícono no está', boton().hidden === true);
 }
 
 // --- 6h. mover a mano elige el orden personalizado --------------------------
@@ -874,15 +908,16 @@ const editarCategoria = (doc, nombre) => {
   const hija = () => doc.querySelector('#pendiente-subcategoria');
 
   // Al abrir el alta: solo las principales, y la segunda lista apagada.
-  doc.querySelector('#btn-pend-lista').click();
-  doc.querySelector('#btn-fab').click();
+  agregar(doc, 'pendiente');
   console.log(`\n=== los dos desplegables ===\n  `
     + opciones('pendiente-categoria').join(' · '));
 
   /* Sin opción vacía: una tarea no puede quedar sin categoría, y «Varios» —que
      va última— es la que viene puesta. */
-  ok('el primer desplegable trae solo las principales',
-    opciones('pendiente-categoria').join(',') === 'Casa,Trabajo,Varios',
+  /* Y al final, la salida de emergencia: crear una acá mismo, sin salir del
+     alta a la que se vino. */
+  ok('el primer desplegable trae solo las principales, y la de crear una',
+    opciones('pendiente-categoria').join(',') === 'Casa,Trabajo,Varios,+ Nueva categoría…',
     opciones('pendiente-categoria').join(','));
   ok('  sin caminos ni subcategorías mezcladas',
     !opciones('pendiente-categoria').some(o => o.includes('›')));
@@ -899,14 +934,17 @@ const editarCategoria = (doc, nombre) => {
   madre().dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }));
   ok('elegir una categoría habilita sus subcategorías', hija().disabled === false);
   ok('  con las de esa categoría y ninguna más',
-    opciones('pendiente-subcategoria').join(',') === 'Ninguna,Cocina,Patio',
+    opciones('pendiente-subcategoria').join(',') === 'Ninguna,Cocina,Patio,+ Nueva categoría…',
     opciones('pendiente-subcategoria').join(','));
 
-  // Y una sin subcategorías vuelve a apagarlo.
+  /* Una sin subcategorías ya no apaga el segundo desplegable: sigue habiendo
+     algo que hacer ahí, que es darle la primera. */
   madre().value = [...madre().options].find(o => o.textContent === 'Trabajo').value;
   madre().dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }));
-  ok('una categoría sin subcategorías lo deja apagado', hija().disabled === true);
-  ok('  y lo dice', /no tiene subcategorías/.test(hija().title), hija().title);
+  ok('una categoría sin subcategorías igual deja crearle una',
+    hija().disabled === false
+      && opciones('pendiente-subcategoria').join(',') === 'Ninguna,+ Nueva categoría…',
+    opciones('pendiente-subcategoria').join(','));
   doc.querySelector('#pendiente-dialog').close();
 
   /* Al editar, lo guardado —que es UNA categoría de cualquiera de los dos
@@ -963,8 +1001,7 @@ const editarCategoria = (doc, nombre) => {
 
   /* Y sigue siendo la de por defecto después del cambio de nombre: lo que la
      identifica es el id, no el rótulo. */
-  doc.querySelector('#btn-pend-lista').click();
-  doc.querySelector('#btn-fab').click();
+  agregar(doc, 'pendiente');
   const madre = doc.querySelector('#pendiente-categoria');
   ok('sigue siendo la que viene puesta al crear una tarea',
     madre.options[madre.selectedIndex].textContent === 'Cajón de sastre',
@@ -1035,8 +1072,7 @@ const editarCategoria = (doc, nombre) => {
   ok('una tarea puede repetirse en otra categoría',
     nombres(doc).filter(n => n === 'Comprar filtros').length === 2, nombres(doc).join(','));
 
-  doc.querySelector('#btn-pend-lista').click();
-  doc.querySelector('#btn-fab').click();
+  agregar(doc, 'pendiente');
   doc.querySelector('#pendiente-name').value = 'Comprar filtros';
   const madre = doc.querySelector('#pendiente-categoria');
   madre.value = [...madre.options].find(o => o.textContent === 'Casa').value;
@@ -1125,20 +1161,62 @@ const editarCategoria = (doc, nombre) => {
   irAPendientes(doc);
   doc.querySelector('#btn-pend-calendario').click();
 
-  const dia20 = doc.querySelector('.pend-cal-dia[data-fecha="2026-07-20"]');
-  dia20.click();
+  const dia20 = () => doc.querySelector('.pend-cal-dia[data-fecha="2026-07-20"]');
+  dia20().click();
 
-  ok('tocar un día abre el alta', doc.querySelector('#pendiente-dialog').hasAttribute('open')
+  /* Tocar el día abre EL DÍA, no el alta. Agregar es lo que más se hace, pero
+     ver qué hay obligaba a leerlo en la celda —donde entran dos o tres etiquetas
+     y el resto se corta— o a irse a la lista y buscar la fecha. */
+  ok('tocar un día abre ese día', doc.querySelector('#pend-dia-dialog').hasAttribute('open'));
+  ok('  con la fecha de título',
+    doc.querySelector('#pend-dia-title').textContent === 'Lunes, 20 de julio',
+    doc.querySelector('#pend-dia-title').textContent);
+  /* Vacío se dice: un diálogo con el título y nada abajo se lee como algo que no
+     llegó a cargar. */
+  ok('  y sin nada, lo dice',
+    doc.querySelector('#pend-dia-lista').textContent === 'Sin tareas aún',
+    doc.querySelector('#pend-dia-lista').textContent);
+  ok('  y lo dice antes de tocarlo', /20 de julio/.test(dia20().title), dia20().title);
+
+  // De ahí sale el alta, con la fecha puesta.
+  doc.querySelector('#btn-dia-nueva').click();
+  ok('de ahí sale el alta', doc.querySelector('#pendiente-dialog').hasAttribute('open')
     && doc.querySelector('#pendiente-dialog-title').textContent === 'Nueva tarea pendiente');
   ok('  con esa fecha ya puesta', doc.querySelector('#pendiente-fecha').value === '2026-07-20',
     doc.querySelector('#pendiente-fecha').value);
-  ok('  y lo dice antes de tocarlo', /20 de julio/.test(dia20.title), dia20.title);
 
   doc.querySelector('#pendiente-name').value = 'Ir al dentista';
   enviar(doc, '#pendiente-form');
   ok('  y el pendiente queda en ese día',
     doc.querySelector('.pend-cal-dia[data-fecha="2026-07-20"] .pend-cal-item')?.textContent
       === 'Ir al dentista');
+
+  // Y ahora el día muestra lo que cae ahí.
+  dia20().click();
+  const filas = () => [...doc.querySelectorAll('#pend-dia-lista .pend-item')];
+  ok('con algo cargado, el día lo muestra',
+    filas().map(f => f.querySelector('.pend-nombre').textContent).join(',') === 'Ir al dentista',
+    doc.querySelector('#pend-dia-lista').textContent);
+  /* La fecha no se repite en cada fila: la dice el título, y sería la misma en
+     todas. */
+  ok('  sin repetir la fecha en la fila',
+    filas()[0].querySelector('.pend-fecha') === null,
+    filas()[0].textContent);
+
+  // Las mismas filas de la lista, así que los mismos toques.
+  filas()[0].querySelector('.pend-estado').click();
+  ok('  el estado se cicla desde acá',
+    filas()[0].querySelector('.pend-estado').textContent === 'En proceso',
+    filas()[0].querySelector('.pend-estado').textContent);
+
+  filas()[0].querySelector('.pend-editar').click();
+  ok('  y el lápiz abre la tarea',
+    doc.querySelector('#pendiente-dialog').hasAttribute('open')
+      && doc.querySelector('#pendiente-name').value === 'Ir al dentista',
+    doc.querySelector('#pendiente-name').value);
+  ok('    cerrando el día, que ya cumplió',
+    doc.querySelector('#pend-dia-dialog').hasAttribute('open') === false);
+  doc.querySelector('#pendiente-dialog').close();
 }
 
 // --- 10. arrastrar de un día a otro -----------------------------------------
@@ -1456,18 +1534,23 @@ const editarCategoria = (doc, nombre) => {
   ok('    y muestra lo suyo', nombres(doc).join(',') === 'Llamar al banco,Pagar expensas',
     nombres(doc).join(','));
 
-  doc.querySelector('#btn-pend-categorias').click();
-  ok('«Categorías» también abre plegada',
+  doc.querySelector('#btn-pend-orden').click();
+  doc.querySelector('#pend-vista-opciones [data-agrupacion="categoria"]').click();
+  doc.querySelector('#pend-orden-ok').click();
+  ok('agrupando por categoría también abre plegada',
     flechas().length > 0 && abiertas().length === 0,
     `${abiertas().length} de ${flechas().length} abiertas`);
   ok('  con «Casa» y «Varios» a la vista y nada colgando',
     categorias(doc).join(',') === 'Casa' && nombres(doc).length === 0,
     `${categorias(doc).join(',')} · ${nombres(doc).join(',')}`);
 
-  /* Lo que se abrió en «Lista» no se arrastra: son tarjetas distintas —una es
-     un estado y la otra una categoría— y cada una anota la suya. */
-  doc.querySelector('#btn-pend-lista').click();
-  ok('volver a «Lista» conserva la que se había abierto', abiertas().length === 1,
+  /* Lo que se abrió agrupando por estado no se arrastra a las categorías: son
+     tarjetas distintas —una es un estado y la otra una categoría— y cada una
+     anota la suya. */
+  doc.querySelector('#btn-pend-orden').click();
+  doc.querySelector('#pend-vista-opciones [data-agrupacion="estado"]').click();
+  doc.querySelector('#pend-orden-ok').click();
+  ok('volver a las de estado conserva la que se había abierto', abiertas().length === 1,
     `${abiertas().length} de ${flechas().length} abiertas`);
 }
 
@@ -1556,6 +1639,214 @@ const editarCategoria = (doc, nombre) => {
   ok('el calendario deja pasar el gesto de costado',
     /\n\.pend-calendario \{[^}]*touch-action:\s*pan-y/.test(css),
     css.match(/\n\.pend-calendario \{[^}]*\}/)?.[0] ?? '(sin regla)');
+}
+
+// --- crear una categoría desde el alta de la tarea --------------------------
+{
+  /* La segunda puerta. La primera es el «+», que pregunta qué crear; esta es
+     para el momento en que ya estás cargando algo y te das cuenta de que le
+     falta dónde ir. Sin ella habría que cancelar, crear la categoría y volver a
+     escribir la tarea.
+
+     Va al formulario de categorías de siempre y no a una copia reducida: una
+     categoría se crea igual venga de donde venga, y un segundo formulario para
+     lo mismo son dos lugares donde arreglar cada cosa. Lo que cambia es que el
+     nivel viene decidido —lo contestó el desplegable del que se salió— y que al
+     terminar se vuelve al alta con la categoría puesta. */
+  const { doc, window } = await montar(VACIO);
+  irAPendientes(doc);
+  nuevaCategoria(doc, 'Casa');
+
+  const madre = () => doc.querySelector('#pendiente-categoria');
+  const hija = () => doc.querySelector('#pendiente-subcategoria');
+  const padre = () => doc.querySelector('#categoria-padre');
+  const abierto = id => doc.querySelector(id).hasAttribute('open');
+  const puesta = select => select().options[select().selectedIndex]?.textContent;
+  const elegirNueva = select => {
+    select().value = '__nueva';
+    select().dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }));
+  };
+  const cats = () => guardado(window).pendientes.categorias;
+
+  // --- una de primer nivel ---
+  agregar(doc, 'pendiente');
+  doc.querySelector('#pendiente-name').value = 'Renovar el pasaporte';
+  doc.querySelector('#pendiente-comentario').value = 'Turno a las 9:40';
+  elegirNueva(madre);
+
+  ok('elegir «+ Nueva categoría…» sale del alta', abierto('#pendiente-dialog') === false);
+  ok('  y abre el formulario de categorías', abierto('#categoria-dialog'));
+  /* El nivel ya está contestado por el desplegable del que se salió: elegir otra
+     cosa acá la mandaría a un lugar distinto del que se pidió. */
+  ok('  con «Dentro de» apagado', padre().disabled === true);
+  ok('    puesto en primer nivel', puesta(padre) === 'Ninguna (primer nivel)', puesta(padre));
+  /* Apagadas y no borradas: se lee cuál era la alternativa descartada, en vez
+     de parecer que la lista está incompleta. */
+  ok('    y las demás opciones apagadas',
+    [...padre().options].filter(o => o.disabled).map(o => o.value).join(',')
+      === [...padre().options].filter(o => o.value).map(o => o.value).join(','),
+    [...padre().options].map(o => `${o.textContent}:${o.disabled}`).join(' · '));
+
+  doc.querySelector('#categoria-name').value = 'trámites';
+  enviar(doc, '#categoria-form');
+
+  ok('guardarla vuelve al alta', abierto('#pendiente-dialog'));
+  ok('  con lo que ya se había escrito',
+    doc.querySelector('#pendiente-name').value === 'Renovar el pasaporte'
+      && doc.querySelector('#pendiente-comentario').value === 'Turno a las 9:40',
+    doc.querySelector('#pendiente-name').value);
+  ok('  y la categoría recién creada puesta', puesta(madre) === 'Trámites', puesta(madre));
+
+  /* Pero todavía NO existe: nace con la tarea, o no nace. Guardarla al cerrar su
+     formulario dejaba una categoría vacía cada vez que el alta se cancelaba. */
+  ok('    que todavía no está guardada', !cats().some(c => c.name === 'Trámites'),
+    cats().map(c => c.name).join(' · '));
+
+  enviar(doc, '#pendiente-form');
+  const tarea = () => guardado(window).pendientes.items.find(p => p.name === 'Renovar el pasaporte');
+  ok('confirmar la tarea es lo que la crea',
+    cats().some(c => c.name === 'Trámites' && c.padre === null),
+    cats().map(c => `${c.name}/${c.padre}`).join(' · '));
+  ok('  y la tarea queda adentro',
+    tarea()?.categoria === cats().find(c => c.name === 'Trámites')?.id);
+
+  // --- una subcategoría de la que ya está elegida ---
+  agregar(doc, 'pendiente');
+  doc.querySelector('#pendiente-name').value = 'Cambiar la canilla';
+  madre().value = [...madre().options].find(o => o.textContent === 'Casa').value;
+  madre().dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }));
+  elegirNueva(hija);
+
+  ok('desde el segundo desplegable también sale al formulario', abierto('#categoria-dialog'));
+  ok('  con «Dentro de» apagado y puesto en la madre', padre().disabled === true
+    && puesta(padre) === 'Casa', `${padre().disabled} · ${puesta(padre)}`);
+  /* Acá la apagada es la otra: se pidió una SUBcategoría, así que «primer
+     nivel» es lo que no puede ser. */
+  ok('    y «Ninguna» apagada, que es lo que no puede ser',
+    [...padre().options].find(o => o.value === '').disabled === true);
+
+  doc.querySelector('#categoria-name').value = 'Cocina';
+  enviar(doc, '#categoria-form');
+
+  ok('al volver quedan puestas las dos',
+    puesta(madre) === 'Casa' && puesta(hija) === 'Cocina',
+    `${puesta(madre)} › ${puesta(hija)}`);
+  enviar(doc, '#pendiente-form');
+
+  const casa = cats().find(c => c.name === 'Casa');
+  const cocina = cats().find(c => c.name === 'Cocina');
+  ok('  y al confirmar cuelga de la que estaba elegida', cocina?.padre === casa?.id,
+    `${cocina?.padre} vs ${casa?.id}`);
+
+  // --- cancelar el viaje ---
+  doc.querySelector('#pendiente-dialog').close();
+  agregar(doc, 'pendiente');
+  doc.querySelector('#pendiente-name').value = 'Algo';
+  madre().value = [...madre().options].find(o => o.textContent === 'Casa').value;
+  madre().dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }));
+
+  const antes = cats().length;
+  elegirNueva(madre);
+  doc.querySelector('#categoria-dialog [data-close-dialog]').click();
+
+  ok('cerrar el formulario sin guardar vuelve al alta igual', abierto('#pendiente-dialog'));
+  ok('  sin perder lo escrito', doc.querySelector('#pendiente-name').value === 'Algo',
+    doc.querySelector('#pendiente-name').value);
+  /* El desplegable había quedado marcando «+ Nueva categoría…», que no es una
+     categoría: vuelve a la que estaba antes de tocarla. */
+  ok('  y con la categoría que estaba antes', puesta(madre) === 'Casa', puesta(madre));
+  ok('  sin haber creado nada', cats().length === antes, String(cats().length - antes));
+
+  /* Y lo mismo si se llega hasta el final del formulario de categorías pero
+     después se abandona la tarea: la categoría se va con ella. */
+  elegirNueva(madre);
+  doc.querySelector('#categoria-name').value = 'Fantasma';
+  enviar(doc, '#categoria-form');
+  ok('la categoría vuelve puesta en el alta', puesta(madre) === 'Fantasma', puesta(madre));
+  doc.querySelector('#pendiente-dialog').close();
+  ok('  pero abandonar la tarea se la lleva',
+    !cats().some(c => c.name === 'Fantasma'), cats().map(c => c.name).join(' · '));
+
+  /* Y una que se creó y después se descartó tampoco llega a existir: no se pidió
+     una categoría, se pidió una tarea que fuera ahí. */
+  agregar(doc, 'pendiente');
+  doc.querySelector('#pendiente-name').value = 'Otra cosa';
+  elegirNueva(madre);
+  doc.querySelector('#categoria-name').value = 'Descartada';
+  enviar(doc, '#categoria-form');
+  madre().value = [...madre().options].find(o => o.textContent === 'Casa').value;
+  madre().dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }));
+  enviar(doc, '#pendiente-form');
+  ok('la que se creó y se descartó no llega a existir',
+    !cats().some(c => c.name === 'Descartada'), cats().map(c => c.name).join(' · '));
+  ok('  y la tarea va donde se la dejó',
+    guardado(window).pendientes.items.find(p => p.name === 'Otra cosa')?.categoria === casa?.id);
+}
+
+// --- el menú se confirma con el ✓ ------------------------------------------
+{
+  /* Las dos elecciones se aplican JUNTAS. Aplicando cada toque al instante,
+     cambiar vista y orden eran dos aperturas del mismo diálogo, y entre una y
+     otra la lista se redibujaba con media elección puesta — con la vista nueva
+     y el orden viejo, que a veces ni siquiera valía ahí. */
+  const { doc } = await montar(VACIO);
+  irAPendientes(doc);
+  nuevaCategoria(doc, 'Casa');
+  nuevoPendiente(doc, 'Pagar expensas', { categoria: 'Casa' });
+
+  const boton = () => doc.querySelector('#btn-pend-orden');
+  const puesta = zona => [...doc.querySelectorAll(`#${zona} [aria-pressed="true"]`)]
+    .map(b => b.dataset.agrupacion ?? b.dataset.orden).join(',');
+
+  boton().click();
+  ok('el diálogo abre en lo que está puesto',
+    puesta('pend-vista-opciones') === 'estado' && puesta('pend-orden-opciones') === 'fecha',
+    `${puesta('pend-vista-opciones')} · ${puesta('pend-orden-opciones')}`);
+
+  // Tocar una opción la marca, pero todavía no cambia nada abajo.
+  doc.querySelector('#pend-vista-opciones [data-agrupacion="categoria"]').click();
+  ok('tocar una opción la marca', puesta('pend-vista-opciones') === 'categoria',
+    puesta('pend-vista-opciones'));
+  ok('  sin cambiar la pantalla todavía', /por estado/.test(boton().title), boton().title);
+
+  /* Y el apagado sigue al borrador, no a lo puesto: «por cantidad» se enciende
+     apenas se elige la vista donde sirve, sin esperar al ✓. */
+  ok('  pero «por cantidad» ya se enciende',
+    doc.querySelector('#pend-orden-opciones [data-orden="cantidad"]').disabled === false);
+
+  doc.querySelector('#pend-orden-opciones [data-orden="cantidad"]').click();
+  ok('  y se puede elegir el orden en el mismo viaje',
+    puesta('pend-orden-opciones') === 'cantidad', puesta('pend-orden-opciones'));
+
+  doc.querySelector('#pend-orden-ok').click();
+  ok('el ✓ aplica las dos de una vez',
+    /por categoría · por cantidad de tareas/.test(boton().title), boton().title);
+  ok('  y cierra el diálogo',
+    doc.querySelector('#pend-orden-dialog').hasAttribute('open') === false);
+
+  /* Cerrar con la ✕ no aplica nada: el borrador se descarta solo, porque la
+     próxima apertura lo vuelve a copiar de lo que está puesto. */
+  boton().click();
+  doc.querySelector('#pend-vista-opciones [data-agrupacion="sin"]').click();
+  doc.querySelector('#pend-orden-dialog [data-close-dialog]').click();
+  ok('cerrar sin confirmar no cambia nada',
+    /por categoría · por cantidad de tareas/.test(boton().title), boton().title);
+
+  boton().click();
+  ok('  y al reabrir vuelve a estar lo puesto',
+    puesta('pend-vista-opciones') === 'categoria', puesta('pend-vista-opciones'));
+  doc.querySelector('#pend-orden-dialog [data-close-dialog]').click();
+
+  /* Los dos apartados son dos tarjetas con su título: una lista corrida de
+     siete botones los hacía parecer una sola de la que se elige uno. */
+  const titulos = [...doc.querySelectorAll('#pend-orden-dialog .opciones-grupo h3')]
+    .map(h => h.textContent);
+  ok('el diálogo tiene los dos apartados, cada uno con su título',
+    titulos.join(' · ') === 'Vista · Ordenar', titulos.join(' · '));
+  ok('  y ninguno arriba de los dos', doc.querySelector('#pend-orden-dialog h2') === null);
+  ok('  con el diálogo nombrándose solo',
+    doc.querySelector('#pend-orden-dialog').getAttribute('aria-label') === 'Cómo se ve la lista',
+    doc.querySelector('#pend-orden-dialog').getAttribute('aria-label'));
 }
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');

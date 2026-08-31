@@ -67,21 +67,31 @@ const ok = (n, cond, det = '') => {
   const fab = doc.querySelector('#btn-fab');
 
   ok('en Pendientes sigue estando', fab.hidden === false);
-  ok('pero se llama «Agregar tarea pendiente»',
-    fab.getAttribute('aria-label') === 'Agregar tarea pendiente',
+  /* No dice qué crea porque crea las dos cosas de la sección —una tarea
+     pendiente o una categoría— y pregunta cuál. */
+  ok('pero se llama «Agregar en Pendientes»',
+    fab.getAttribute('aria-label') === 'Agregar en Pendientes',
     fab.getAttribute('aria-label'));
   /* El atajo `N` es del alta de tareas: nombrarlo acá prometería algo que no
      pasa. */
   ok('y su ayuda ya no habla del atajo de tareas', !/atajo/.test(fab.title), fab.title);
 
-  /* Abre el alta de pendientes y no la de tareas: el botón es uno solo, y lo
-     que crea es lo que la sección contiene. */
+  /* Nada del alta de tareas: el botón es uno solo, y lo que ofrece es lo que la
+     sección contiene. */
   fab.click();
   ok('no abre el alta de tareas', doc.querySelector('#task-dialog').hasAttribute('open') === false);
-  /* Crea lo que la vista muestra, sin paso intermedio: en «Lista» —la que abre
-     por defecto— una tarea pendiente. En «Categorías» abre el alta de una
-     categoría, que se comprueba en su propio caso. */
-  ok('abre el alta de una tarea pendiente',
+
+  /* Pregunta cuál de las dos. Dejó de preguntarlo mientras «Categorías» fue una
+     vista —parado ahí, la pantalla contestaba—, y vuelve a preguntarlo ahora que
+     las categorías son una forma de agrupar y no un lugar donde se está. */
+  ok('pregunta qué crear', doc.querySelector('#pend-nuevo-dialog').hasAttribute('open'));
+  const cuales = [...doc.querySelectorAll('#pend-nuevo-dialog .orden-opcion')]
+    .map(b => b.textContent.trim());
+  ok('  con las dos cosas de la sección', cuales.join(' · ') === 'Tarea pendiente · Categoría',
+    cuales.join(' · '));
+
+  doc.querySelector('#btn-nuevo-pendiente').click();
+  ok('  y de ahí sale el alta de una tarea pendiente',
     doc.querySelector('#pendiente-dialog').hasAttribute('open')
       && doc.querySelector('#pendiente-dialog-title').textContent === 'Nueva tarea pendiente',
     doc.querySelector('#pendiente-dialog-title').textContent);

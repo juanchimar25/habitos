@@ -280,7 +280,16 @@
      * Cómo se miran los pendientes: todo junto y por fecha, por categoría, o
      * el mes en el calendario. Es siempre la MISMA lista.
      */
-    vistaPendientes: /** @type {'lista'|'categorias'|'calendario'} */ ('lista'),
+    vistaPendientes: /** @type {'lista'|'calendario'} */ ('lista'),
+    /** El día del calendario que está abierto, si hay alguno. */
+    diaDelCalendario: /** @type {string|null} */ (null),
+    /**
+     * Cómo se agrupa la lista de Pendientes. Es una pregunta distinta que la
+     * del orden —qué junta con qué, contra cómo se ordena lo que quedó junto—,
+     * y tenerlas mezcladas era lo que hacía que «Lista» y «Categorías»
+     * ofrecieran juegos de orden diferentes.
+     */
+    agrupacion: /** @type {'categoria'|'estado'|'sin'} */ ('estado'),
     /**
      * Las tarjetas de Pendientes que están abiertas — todas arrancan plegadas.
      *
@@ -297,9 +306,7 @@
      * otra sin perder lo elegido es lo que se espera. No se persiste: es una
      * postura de pantalla, como el orden de Análisis.
      */
-    ordenPend: /** @type {{lista: 'personalizado'|'fecha'|'alfabetico',
-     *   categorias: 'personalizado'|'alfabetico'|'cantidad'}} */
-      ({ lista: 'fecha', categorias: 'personalizado' }),
+    ordenPend: /** @type {'personalizado'|'fecha'|'alfabetico'|'cantidad'} */ ('fecha'),
     /** Qué pendiente y qué categoría están abiertos en su diálogo. */
     editandoPendiente: /** @type {string|null} */ (null),
     editandoCategoria: /** @type {string|null} */ (null),
@@ -2051,6 +2058,12 @@
     pendOrden: $('#btn-pend-orden'),
     pendOrdenDialog: $('#pend-orden-dialog'),
     pendOrdenOpciones: $('#pend-orden-opciones'),
+    pendVistaOpciones: $('#pend-vista-opciones'),
+    pendOrdenOk: $('#pend-orden-ok'),
+    pendNuevoDialog: $('#pend-nuevo-dialog'),
+    pendDiaDialog: $('#pend-dia-dialog'),
+    pendDiaTitle: $('#pend-dia-title'),
+    pendDiaLista: $('#pend-dia-lista'),
     grupoPendientes: $('#grupo-pendientes'),
     pendArchivoBtn: $('#btn-pend-archivo'),
     pendArchivoDialog: $('#pend-archivo-dialog'),
@@ -2428,9 +2441,8 @@
     el.fab.hidden = !(ui.page === 'home' || enPendientes);
     if (el.fab.hidden) return;
 
-    const label = enPendientes
-      ? (ui.vistaPendientes === 'categorias' ? 'Agregar categoría' : 'Agregar tarea pendiente')
-      : 'Agregar tarea';
+    // En Pendientes no dice qué crea porque pregunta: crea las dos cosas.
+    const label = enPendientes ? 'Agregar en Pendientes' : 'Agregar tarea';
     el.fab.setAttribute('aria-label', label);
     el.fab.title = enPendientes ? label : 'Crear una tarea nueva (atajo: N)';
   }
@@ -4566,7 +4578,24 @@
   });
 
   for (const btn of document.querySelectorAll('[data-close-dialog]')) {
-    btn.addEventListener('click', () => btn.closest('dialog').close());
+    btn.addEventListener('click', () => cerrarDialogo(btn.closest('dialog')));
+  }
+
+  /**
+   * Cerrar sin guardar, por cualquiera de las tres puertas: la ✕, el velo o
+   * `Esc`.
+   *
+   * Existe para que la vuelta del viaje a «nueva categoría» tenga un solo lugar
+   * donde engancharse. El evento `close` sería el natural —lo disparan las tres
+   * puertas—, pero jsdom no lo dispara, así que colgarse de él dejaría el
+   * regreso sin ningún caso que lo cuide. Así queda cubierto lo que se toca.
+   */
+  function cerrarDialogo(dlg) {
+    dlg.close();
+    /* Salirse del formulario de categorías estando en un viaje devuelve al alta
+       de la tarea, con lo escrito y la categoría que tenía antes. Sin esto, la
+       tarea a medio cargar quedaba en el olvido. */
+    if (dlg === el.categoriaDialog && viajeACategoria) volverDelViaje(null);
   }
 
   /* Tocar afuera cierra, como la ✕ y como `Esc`.
@@ -4577,7 +4606,7 @@
      interior—, y por eso la comparación alcanza para distinguirlos. */
   for (const dlg of document.querySelectorAll('dialog')) {
     dlg.addEventListener('click', e => {
-      if (e.target === dlg) dlg.close();
+      if (e.target === dlg) cerrarDialogo(dlg);
     });
   }
 
@@ -4587,12 +4616,22 @@
   el.fab.addEventListener('click', () => {
     if (ui.page !== 'todos') return openTaskDialog();
 
-    /* En Pendientes crea lo que la vista muestra: una categoría donde se ven
-       las categorías, y una tarea pendiente donde se ven las tareas. Antes
-       preguntaba cuál de las dos, que es un paso de más para la respuesta que
-       la pantalla ya está dando. */
-    if (ui.vistaPendientes === 'categorias') openCategoriaDialog();
-    else openPendienteDialog();
+    /* En Pendientes pregunta qué de las dos cosas. Dejó de preguntarlo cuando
+       «Categorías» era una vista —parado ahí, la pantalla ya contestaba—, y
+       vuelve a preguntarlo ahora que las categorías son una forma de agrupar y
+       no un lugar donde se está. Una categoría también se crea sobre la marcha,
+       desde el selector del diálogo de la tarea. */
+    abrirDialogo(el.pendNuevoDialog, '#pend-nuevo-title');
+  });
+
+  $('#btn-nuevo-pendiente').addEventListener('click', () => {
+    el.pendNuevoDialog.close();
+    openPendienteDialog();
+  });
+
+  $('#btn-nueva-categoria').addEventListener('click', () => {
+    el.pendNuevoDialog.close();
+    openCategoriaDialog();
   });
 
   // ---------------------------------------------------------
@@ -4639,18 +4678,48 @@
    * no comparten opciones ni elección. En «Lista» el estado manda siempre y lo
    * que se elige es el desempate; en «Categorías» se elige el orden entero.
    */
-  const ORDENES_PEND = {
-    lista: [
-      { clave: 'personalizado', nombre: 'personalizado' },
-      { clave: 'fecha', nombre: 'por fecha' },
-      { clave: 'alfabetico', nombre: 'alfabético' },
-    ],
-    categorias: [
-      { clave: 'personalizado', nombre: 'personalizado' },
-      { clave: 'alfabetico', nombre: 'alfabético' },
-      { clave: 'cantidad', nombre: 'por cantidad de tareas' },
-    ],
-  };
+  /**
+   * Cómo se agrupa la misma lista. Las tres muestran TODO lo que hay; lo que
+   * cambia es qué junta con qué.
+   */
+  const AGRUPACIONES = [
+    { clave: 'categoria', nombre: 'por categoría' },
+    { clave: 'estado', nombre: 'por estado' },
+    { clave: 'sin', nombre: 'sin agrupar' },
+  ];
+
+  /**
+   * Y cómo se ordena lo que quedó junto. Los tres primeros valen siempre.
+   *
+   * «Por cantidad de tareas» ordena GRUPOS por su tamaño, así que pide grupos
+   * que el usuario haya armado: solo tiene sentido agrupando por categoría. Las
+   * tres tarjetas de estado van siempre en el orden del avance —eso no lo
+   * cambia ningún orden— y sin agrupar no hay grupos.
+   */
+  const ORDENES_PEND = [
+    { clave: 'personalizado', nombre: 'personalizado' },
+    { clave: 'fecha', nombre: 'por fecha' },
+    { clave: 'alfabetico', nombre: 'alfabéticamente' },
+    { clave: 'cantidad', nombre: 'por cantidad de tareas', soloCon: 'categoria' },
+  ];
+
+  const nombreDeAgrupacion = clave =>
+    AGRUPACIONES.find(a => a.clave === clave)?.nombre ?? '';
+  const nombreDeOrden = clave => ORDENES_PEND.find(o => o.clave === clave)?.nombre ?? '';
+
+  /**
+   * Lo elegido MIENTRAS el diálogo está abierto, que no es lo puesto todavía.
+   *
+   * Las dos elecciones se confirman juntas con el ✓. Aplicando cada toque al
+   * instante, cambiar vista y orden eran dos aperturas del mismo diálogo, y
+   * entre una y otra la lista se redibujaba con media elección puesta — con la
+   * vista nueva y el orden viejo, que a veces ni siquiera valía ahí.
+   */
+  const borrador = { agrupacion: 'estado', orden: 'fecha' };
+
+  /* Contra el borrador y no contra lo puesto: la opción se apaga en cuanto se
+     elige una vista donde no sirve, sin esperar a confirmar. */
+  const ordenSirve = orden => !orden.soloCon || orden.soloCon === borrador.agrupacion;
 
   /** Compara textos como los lee una persona: sin acentos ni mayúsculas. */
   const porNombre = (a, b) => a.name.localeCompare(b.name, LOCALE, { sensitivity: 'base' });
@@ -4703,40 +4772,92 @@
   }
 
   /**
-   * El botón de orden: qué ofrece y qué dice.
+   * El ícono de la derecha: qué ofrece y qué dice.
    *
-   * Solo en las dos vistas que son listas —el calendario lo ordena el
-   * almanaque— y con las opciones de la vista puesta, que ordenan cosas
-   * distintas.
+   * Dos apartados, porque son dos preguntas: la VISTA junta unas cosas con
+   * otras y el ORDEN acomoda lo que quedó junto. Mezcladas, «Lista» y
+   * «Categorías» terminaban ofreciendo juegos de orden distintos y no había
+   * forma de ver todo seguido sin ninguna división.
+   *
+   * Solo en la lista: el calendario no agrupa nada y lo ordena el almanaque.
+   *
+   * El ícono no lleva rótulo, así que el nombre de la vista va en el `title` y
+   * en el `aria-label`: es lo único que dice, sin abrir, qué se está mirando.
    */
   function renderOrdenPendientes() {
-    const vista = ui.vistaPendientes;
-    const opciones = ORDENES_PEND[vista];
-    el.pendOrden.hidden = !opciones;
-    if (!opciones) return;
+    el.pendOrden.hidden = ui.vistaPendientes !== 'lista';
+    if (el.pendOrden.hidden) return;
 
-    const actual = opciones.find(o => o.clave === ui.ordenPend[vista]) ?? opciones[0];
-    el.pendOrden.title = `Orden: ${actual.nombre}`;
-    el.pendOrden.setAttribute('aria-label', `Ordenar. Ahora: ${actual.nombre}`);
+    const vista = nombreDeAgrupacion(ui.agrupacion);
+    const orden = nombreDeOrden(ui.ordenPend);
+    el.pendOrden.title = `Vista: ${vista} · ${orden}`;
+    el.pendOrden.setAttribute('aria-label',
+      `Cómo se ve la lista. Ahora: ${vista}, ${orden}`);
+
+    dibujarOpciones();
+  }
+
+  /** Las dos listas de botones, marcando lo que el borrador tiene elegido. */
+  function dibujarOpciones() {
+    el.pendVistaOpciones.innerHTML = '';
+    for (const opcion of AGRUPACIONES) {
+      const btn = elem('button', 'btn orden-opcion', capitalizeFirstLetter(opcion.nombre));
+      btn.type = 'button';
+      btn.dataset.agrupacion = opcion.clave;
+      btn.setAttribute('aria-pressed', String(opcion.clave === borrador.agrupacion));
+      el.pendVistaOpciones.appendChild(btn);
+    }
 
     el.pendOrdenOpciones.innerHTML = '';
-    for (const opcion of opciones) {
+    for (const opcion of ORDENES_PEND) {
       const btn = elem('button', 'btn orden-opcion', capitalizeFirstLetter(opcion.nombre));
       btn.type = 'button';
       btn.dataset.orden = opcion.clave;
-      btn.setAttribute('aria-pressed', String(opcion.clave === actual.clave));
+      /* Apagada y diciendo por qué: una opción que desaparece hace dudar de si
+         estaba y uno se la perdió. */
+      btn.disabled = !ordenSirve(opcion);
+      if (btn.disabled) {
+        btn.title = `Solo sirve viendo ${nombreDeAgrupacion(opcion.soloCon)}: `
+          + 'es lo único que arma grupos que se puedan contar';
+      }
+      btn.setAttribute('aria-pressed', String(opcion.clave === borrador.orden));
       el.pendOrdenOpciones.appendChild(btn);
     }
   }
 
   el.pendOrden.addEventListener('click', () => {
+    // Se abre en lo que está puesto: el borrador arranca siendo la realidad.
+    Object.assign(borrador, { agrupacion: ui.agrupacion, orden: ui.ordenPend });
+    dibujarOpciones();
     abrirDialogo(el.pendOrdenDialog, '#pend-orden-title');
   });
 
-  el.pendOrdenOpciones.addEventListener('click', e => {
-    const opcion = e.target.closest('[data-orden]');
-    if (!opcion) return;
-    ui.ordenPend[ui.vistaPendientes] = opcion.dataset.orden;
+  el.pendOrdenDialog.addEventListener('click', e => {
+    const vista = e.target.closest('[data-agrupacion]');
+    if (vista) {
+      borrador.agrupacion = vista.dataset.agrupacion;
+
+      /* El orden elegido puede no valer en la vista nueva. Dejarlo marcado
+         dejaría como activa una opción apagada; se cae en alfabético, que es el
+         otro orden calculado y el más parecido a lo que se quería. */
+      if (!ordenSirve(ORDENES_PEND.find(o => o.clave === borrador.orden) ?? {})) {
+        borrador.orden = 'alfabetico';
+      }
+      return dibujarOpciones();
+    }
+
+    const orden = e.target.closest('[data-orden]');
+    if (!orden || orden.disabled) return;
+    borrador.orden = orden.dataset.orden;
+    dibujarOpciones();
+  });
+
+  /* El ✓ es lo único que cambia la pantalla. Cerrar con la ✕ deja todo como
+     estaba: el borrador se descarta solo, porque la próxima apertura lo vuelve
+     a copiar de lo que está puesto. */
+  el.pendOrdenOk.addEventListener('click', () => {
+    ui.agrupacion = borrador.agrupacion;
+    ui.ordenPend = borrador.orden;
     el.pendOrdenDialog.close();
     renderPendientes();
   });
@@ -4767,44 +4888,38 @@
 
     renderOrdenPendientes();
 
-    if (vista === 'lista') renderPendientesPlana();
-    else if (vista === 'categorias') renderPendientesCategorias();
-    else renderPendientesCalendario();
+    if (enCalendario) renderPendientesCalendario();
+    else if (ui.agrupacion === 'categoria') renderPendientesCategorias();
+    else if (ui.agrupacion === 'estado') renderPorEstado();
+    else renderSinAgrupar();
   }
 
   /**
-   * Todo junto, sin categorías, ordenado por fecha de completado.
+   * Los pendientes en el orden elegido.
    *
-   * Contesta «qué sigue», que es otra pregunta que «dónde está»: por eso las
-   * filas van sueltas y no adentro de la tarjeta de su categoría. Lo que no
-   * tiene fecha va al final: sin fecha no hay lugar en una línea de tiempo, y
-   * ponerlo primero taparía lo que sí vence pronto.
+   * Uno solo para las tres agrupaciones: qué junta con qué es otra pregunta, y
+   * mezclarlas era lo que hacía que cada vista ofreciera órdenes distintos.
+   *
+   * «Por cantidad» no aparece acá: ordena GRUPOS por su tamaño, no tareas.
+   *
+   * @param {Array} lista
+   * @param {Array} propios El arreglo del que sale el orden «personalizado»,
+   *   que es el que mueven las flechas de «Reordenar». Se pasa aparte porque en
+   *   cada agrupación es otro: el de sus hermanos de categoría, o el de todos.
    */
-  function renderPendientesPlana() {
-    el.pendLista.innerHTML = '';
+  function ordenarPendientes(lista, propios = state.pendientes.items) {
+    const orden = ui.ordenPend;
+    if (orden === 'personalizado' || orden === 'cantidad') {
+      const propio = new Map(propios.map((p, i) => [p.id, i]));
+      return [...lista].sort((a, b) => propio.get(a.id) - propio.get(b.id));
+    }
+    if (orden === 'alfabetico') return [...lista].sort(porNombre);
 
-    /* El estado manda SIEMPRE, en el orden del avance: primero lo que no
-       arrancó, después lo que está en curso y al final lo terminado, que ya no
-       pide nada. Lo que se elige en el botón es cómo se desempata adentro de
-       cada grupo. */
-    const porEstado = p => ESTADOS_PENDIENTE.findIndex(e => e.id === p.estado);
-    const orden = ui.ordenPend.lista;
-
-    /* «Personalizado» es el orden del arreglo, que es el que mueven las flechas
-       de «Reordenar». Sigue agrupado por estado: eso no lo cambia ningún orden,
-       y una tarea terminada no vuelve arriba por haberla movido. */
-    const vivos = pendientesVivos();
-    const propio = new Map(vivos.map((p, i) => [p.id, i]));
-
-    const items = [...vivos].sort((a, b) => {
-      const grupos = porEstado(a) - porEstado(b);
-      if (grupos) return grupos;
-      if (orden === 'personalizado') return propio.get(a.id) - propio.get(b.id);
-      if (orden === 'alfabetico') return porNombre(a, b);
-
-      /* Por fecha: lo que vence antes va primero y lo que no tiene fecha, al
-         final —sin fecha no hay lugar en una línea de tiempo—. Con la misma
-         fecha decide el nombre, que si no el orden quedaba al azar. */
+    /* Por fecha: lo que vence antes va primero y lo que no tiene fecha, al
+       final —sin fecha no hay lugar en una línea de tiempo, y ponerlo primero
+       taparía lo que sí vence pronto—. Con la misma fecha decide el nombre,
+       que si no el orden quedaba al azar. */
+    return [...lista].sort((a, b) => {
       if (a.fecha !== b.fecha) {
         if (!a.fecha) return 1;
         if (!b.fecha) return -1;
@@ -4812,13 +4927,42 @@
       }
       return porNombre(a, b);
     });
-    /* Una tarjeta por estado, siempre las tres y en el orden del avance. El
-       estado deja de ser algo que hay que ir leyendo fila por fila: es el
-       encabezado del bloque, y lo que no interesa hoy se pliega entero —lo
-       terminado, casi siempre—. */
+  }
+
+  /**
+   * Sin agrupar: todo lo que hay, seguido, en una sola lista.
+   *
+   * Es la única de las tres donde se ve algo apenas se entra —las otras arman
+   * tarjetas y las tarjetas arrancan plegadas—, y la única que contesta
+   * «cuántas cosas tengo pendientes» sin sumar de a grupos.
+   */
+  function renderSinAgrupar() {
+    el.pendLista.innerHTML = '';
+    const items = ordenarPendientes(pendientesVivos());
+    if (!items.length) return;
+    el.pendLista.appendChild(listaDePendientes(items));
+  }
+
+  /**
+   * Por estado: una tarjeta por cada uno, siempre las tres.
+   *
+   * Contesta «qué sigue», que es otra pregunta que «dónde está»: el estado deja
+   * de ser algo que hay que ir leyendo fila por fila y pasa a ser el encabezado
+   * del bloque, y lo que no interesa hoy —lo terminado, casi siempre— se pliega
+   * entero.
+   *
+   * Las tres van SIEMPRE en el orden del avance: primero lo que no arrancó,
+   * después lo que está en curso y al final lo terminado, que ya no pide nada.
+   * Eso no lo cambia ningún orden —no son grupos que alguien armó, son un
+   * progreso—; lo elegido acomoda adentro de cada una.
+   */
+  function renderPorEstado() {
+    el.pendLista.innerHTML = '';
+    const vivos = pendientesVivos();
+
     for (const estado of ESTADOS_PENDIENTE) {
-      el.pendLista.appendChild(
-        bloqueDeEstado(estado, items.filter(p => p.estado === estado.id)));
+      const suyos = ordenarPendientes(vivos.filter(p => p.estado === estado.id), vivos);
+      el.pendLista.appendChild(bloqueDeEstado(estado, suyos));
     }
   }
 
@@ -4877,14 +5021,21 @@
    * por eso mover algo a mano vuelve a poner este —ver `reordenarCategoria`—.
    */
   function ordenarCategorias(lista) {
-    const orden = ui.ordenPend.categorias;
-    if (orden === 'personalizado') return lista;
+    const orden = ui.ordenPend;
     if (orden === 'alfabetico') return [...lista].sort(porNombre);
 
     /* Por cantidad, de la más cargada a la más vacía: la cuenta es la misma que
        muestra la categoría —lo suyo más lo de sus subcategorías—, y entre dos
        iguales decide el nombre. */
-    return [...lista].sort((a, b) => (cuentaDe(b) - cuentaDe(a)) || porNombre(a, b));
+    if (orden === 'cantidad') {
+      return [...lista].sort((a, b) => (cuentaDe(b) - cuentaDe(a)) || porNombre(a, b));
+    }
+
+    /* «Personalizado» es el orden del arreglo, que es el que mueven las flechas
+       de «Reordenar». Y «por fecha» también lo deja como está: una categoría no
+       tiene fecha, así que esa elección habla de las tareas de adentro y no
+       tiene por qué mover lo de afuera. */
+    return lista;
   }
 
   /**
@@ -4929,7 +5080,9 @@
     bloque.appendChild(cabecera);
     if (plegada) return bloque;
 
-    const propios = pendientesDe(cat.id);
+    /* Las de esta categoría, en el orden elegido. «Personalizado» es el del
+       arreglo, que es justo el que mueven sus flechas de «Reordenar». */
+    const propios = ordenarPendientes(pendientesDe(cat.id), pendientesDe(cat.id));
     /* Adentro de una archivada se muestran TODAS sus subcategorías: se
        guardaron con ella, no cada una por su cuenta. */
     const subs = ordenarCategorias(archivada
@@ -4946,13 +5099,19 @@
     return bloque;
   }
 
-  function listaDePendientes(items) {
+  function listaDePendientes(items, opciones) {
     const lista = elem('ul', 'pend-items');
-    for (const p of items) lista.appendChild(filaDePendiente(p));
+    for (const p of items) lista.appendChild(filaDePendiente(p, opciones));
     return lista;
   }
 
-  function filaDePendiente(p) {
+  /**
+   * @param {object} p
+   * @param {{ conFecha?: boolean }} [opciones] En el diálogo de un día la fecha
+   *   sobra: la dice el título, y repetirla en cada fila sería decir lo mismo
+   *   tantas veces como tareas haya.
+   */
+  function filaDePendiente(p, { conFecha = true } = {}) {
     const fila = elem('li', `pend-item est-${p.estado}`);
 
     /* El estado se cambia tocándolo, con el mismo ciclo que la celda de la
@@ -4988,7 +5147,7 @@
        del día en Hábitos, donde el lápiz precede al recuadro de estado. */
     fila.append(nombre);
     if (p.comentario) fila.appendChild(marcaDeNota(p));
-    if (p.fecha) fila.appendChild(chipDeFecha(p));
+    if (p.fecha && conFecha) fila.appendChild(chipDeFecha(p));
     fila.append(lapiz, estado);
     return fila;
   }
@@ -5093,6 +5252,19 @@
    * de primer nivel —dos pueden llamarse igual colgando de madres distintas—;
    * donde ya se sabe de cuál cuelgan, alcanza con su nombre.
    */
+  /**
+   * El valor de «+ Nueva categoría…». Empieza con dos guiones bajos para que no
+   * pueda chocar con un id de verdad, que son hexadecimales.
+   */
+  const NUEVA = '__nueva';
+
+  /** Le agrega a un desplegable la salida de emergencia: crear una ahí mismo. */
+  function conNuevaCategoria(select) {
+    const op = elem('option', '', '+ Nueva categoría…');
+    op.value = NUEVA;
+    select.appendChild(op);
+  }
+
   function llenarSelect(select, lista, elegida, vacia, conCamino = false) {
     select.innerHTML = '';
     const ninguna = elem('option', '', vacia);
@@ -5122,13 +5294,14 @@
    * desplegable apagado y mudo manda a adivinar.
    */
   function opcionesDeSubcategoria(madre, elegida) {
-    const hijas = madre ? subcategoriasDe(madre) : [];
+    const hijas = madre ? hijasDelAlta(madre) : [];
     llenarSelect(el.pendienteSub, hijas, elegida, 'Ninguna');
 
-    el.pendienteSub.disabled = hijas.length === 0;
-    el.pendienteSub.title = hijas.length
-      ? ''
-      : (madre ? 'Esta categoría no tiene subcategorías' : 'Elegí una categoría primero');
+    /* Con una madre elegida siempre hay algo que hacer acá, aunque no tenga
+       hijas: crearle una. Sin madre no, que colgaría de la nada. */
+    if (madre) conNuevaCategoria(el.pendienteSub);
+    el.pendienteSub.disabled = !madre;
+    el.pendienteSub.title = madre ? '' : 'Elegí una categoría primero';
   }
 
   /**
@@ -5136,7 +5309,7 @@
    * @param {{ fecha?: string }} [opciones] `fecha` precarga el campo en un alta:
    *   es lo que hace que tocar un día del calendario cree justo ahí.
    */
-  function openPendienteDialog(id = null, { fecha = '' } = {}) {
+  function openPendienteDialog(id = null, { fecha = '', volviendo = false } = {}) {
     const p = id ? pendientePorId(id) : null;
     ui.editandoPendiente = p ? p.id : null;
 
@@ -5153,6 +5326,11 @@
     mostrarFlechasPendiente(false);
     el.pendienteError.hidden = true;
 
+    /* Cada alta arranca sin categorías pendientes: las del alta anterior se
+       fueron con ella. Volviendo de crear una, en cambio, hay que conservarlas:
+       es la misma alta, que salió y está entrando de nuevo. */
+    if (!volviendo) categoriasEnBorrador = [];
+
     el.pendienteName.value = p ? p.name : '';
 
     /* Lo guardado es UNA categoría, que puede ser de cualquiera de los dos
@@ -5162,9 +5340,11 @@
        lo que no se ordena en otro lado. Por eso el desplegable tampoco tiene
        una opción vacía. */
     const madre = suya?.padre ?? suya?.id ?? VARIOS;
-    llenarSelect(el.pendienteCategoria, categoriasRaiz(), madre, '');
+    llenarSelect(el.pendienteCategoria, raicesDelAlta(), madre, '');
     el.pendienteCategoria.querySelector('option[value=""]')?.remove();
+    conNuevaCategoria(el.pendienteCategoria);
     opcionesDeSubcategoria(madre, suya ? (suya.padre ? suya.id : '') : VARIOS_SUB);
+    categoriaEnElAlta = suya?.id ?? VARIOS_SUB;
     const estado = p ? p.estado : 'sin-iniciar';
     el.pendienteForm
       .querySelector(`input[name="pendiente-estado"][value="${estado}"]`).checked = true;
@@ -5204,7 +5384,15 @@
 
   el.pendienteComentario.addEventListener('input', estirarComentario);
 
-  function openCategoriaDialog(id = null) {
+  /**
+   * @param {string|null} id  la categoría que se edita, o nada para una nueva
+   * @param {{ madre?: string|null, fijo?: boolean }} [opciones] Con `fijo`, el
+   *   «Dentro de» viene decidido y no se toca: se llega acá desde el alta de una
+   *   tarea, donde el desplegable del que se salió ya contestó de qué nivel es
+   *   la categoría que hace falta. Elegir otra cosa acá la mandaría a un lugar
+   *   distinto del que se pidió.
+   */
+  function openCategoriaDialog(id = null, { madre = null, fijo = false } = {}) {
     const cat = id ? categoriaPorId(id) : null;
     ui.editandoCategoria = cat ? cat.id : null;
 
@@ -5249,7 +5437,21 @@
         || (cat && (otra.id === cat.id || subcategoriasDe(cat.id).length > 0));
       if (prohibida) op.remove();
     }
-    el.categoriaPadre.value = cat?.padre ?? '';
+    el.categoriaPadre.value = (fijo ? madre : cat?.padre) ?? '';
+
+    /* Con el nivel ya decidido, el desplegable entero se apaga: no hay nada que
+       elegir, y lo que muestra es un dato —de dónde va a colgar— y no una
+       pregunta. Se apaga además la opción que no corresponde, para que se lea
+       cuál era la alternativa descartada y no parezca que la lista está rota. */
+    el.categoriaPadre.disabled = fijo;
+    for (const op of [...el.categoriaPadre.options]) {
+      op.disabled = fijo && (madre ? op.value === '' : op.value !== '');
+    }
+    el.categoriaPadre.title = fijo
+      ? (madre
+        ? `Sale de la subcategoría de «${categoriaPorId(madre)?.name ?? ''}»`
+        : 'Sale del desplegable de categorías: esta va de primer nivel')
+      : '';
 
     el.categoriaDialog.showModal();
     el.categoriaName.focus();
@@ -5300,9 +5502,64 @@
     // Soltar sobre un pendiente tampoco crea nada.
     if (e.target.closest('[data-pendiente]')) return;
 
-    // Tocar el día crea ahí: la fecha es el dato que el calendario ya sabe.
+    // Tocar el día lo abre: la fecha es el dato que el calendario ya sabe.
     const celda = e.target.closest('.pend-cal-dia');
-    if (celda) openPendienteDialog(null, { fecha: celda.dataset.fecha });
+    if (celda) abrirDiaDelCalendario(celda.dataset.fecha);
+  });
+
+  /**
+   * Un día del calendario: lo que cae ahí, y la puerta para agregar algo más.
+   *
+   * Antes tocar el día abría el alta directo. Agregar es lo que más se hace,
+   * pero ver qué hay obligaba a leerlo en la celda —donde entran dos o tres
+   * etiquetas y el resto se corta— o a irse a la lista y buscar la fecha. Un
+   * toque más para crear, a cambio de que mirar un día sea posible.
+   */
+  function abrirDiaDelCalendario(iso) {
+    if (!RE_DIA.test(iso ?? '')) return;
+    ui.diaDelCalendario = iso;
+    renderDiaDelCalendario();
+    abrirDialogo(el.pendDiaDialog, '#pend-dia-title');
+  }
+
+  function renderDiaDelCalendario() {
+    const iso = ui.diaDelCalendario;
+    if (!iso) return;
+
+    el.pendDiaTitle.textContent = capitalizeFirstLetter(
+      fmtFull.format(parseDateKey(iso)));
+
+    const items = ordenarPendientes(pendientesVivos().filter(p => p.fecha === iso));
+    el.pendDiaLista.innerHTML = '';
+    /* Vacío se dice, no se esconde: un diálogo con el título y nada abajo se
+       lee como algo que no llegó a cargar. */
+    if (!items.length) {
+      el.pendDiaLista.appendChild(elem('p', 'pend-cat-vacia', 'Sin tareas aún'));
+      return;
+    }
+    el.pendDiaLista.appendChild(listaDePendientes(items, { conFecha: false }));
+  }
+
+  /* Las mismas filas de la lista, así que los mismos toques: el estado cicla y
+     el lápiz edita. Un solo oyente, porque las filas se redibujan enteras. */
+  el.pendDiaLista.addEventListener('click', e => {
+    const boton = e.target.closest('button');
+    if (!boton) return;
+
+    if (boton.dataset.estado) {
+      ciclarEstado(boton.dataset.estado);
+      return renderDiaDelCalendario();
+    }
+    if (boton.dataset.pendiente) {
+      el.pendDiaDialog.close();
+      openPendienteDialog(boton.dataset.pendiente);
+    }
+  });
+
+  $('#btn-dia-nueva').addEventListener('click', () => {
+    const iso = ui.diaDelCalendario;
+    el.pendDiaDialog.close();
+    openPendienteDialog(null, { fecha: iso });
   });
 
   /* ---- arrastrar para cambiar de día ------------------------------------
@@ -5440,7 +5697,7 @@
       /* Mover a mano ES elegir el orden personalizado: con otro puesto, la
          flecha guardaba el cambio y la pantalla no se movía, que se lee como
          que el botón está roto. */
-      ui.ordenPend.categorias = 'personalizado';
+      ui.ordenPend = 'personalizado';
       return true;
     },
   });
@@ -5499,7 +5756,7 @@
       const vecino = hermanos[hermanos.indexOf(p) + delta];
       if (!vecino || !intercambiar(state.pendientes.items, p, vecino)) return false;
 
-      ui.ordenPend.lista = 'personalizado';
+      ui.ordenPend = 'personalizado';
       return true;
     },
   });
@@ -5521,8 +5778,147 @@
 
   /* Elegir otra categoría cambia de qué subcategorías se está hablando, así que
      la segunda lista se rehace y lo elegido antes deja de valer. */
+  /**
+   * El viaje de ida al formulario de categorías, y con qué volver.
+   *
+   * `null` cuando no se está en ese viaje. Guarda lo escrito en el alta —que
+   * todavía no existe en ningún lado— para poder devolverlo tal cual, y de qué
+   * madre iba a colgar la categoría nueva.
+   */
+  let viajeACategoria = /** @type {null | {borrador: object, madre: string|null}} */ (null);
+
+  /**
+   * La última categoría DE VERDAD elegida en el alta.
+   *
+   * «+ Nueva categoría…» ocupa el desplegable pero no es una categoría, y para
+   * cuando el `change` llega el valor anterior ya se perdió. Sin esto, cancelar
+   * el viaje devolvía la tarea a «Varios» en vez de a donde estaba.
+   */
+  let categoriaEnElAlta = VARIOS;
+
+  /**
+   * Las categorías pedidas desde el alta de una tarea y todavía no confirmadas.
+   *
+   * No están en `state`: existen recién cuando la tarea se guarda, y salir del
+   * alta se las lleva con ella. Antes se creaban al guardar el formulario de
+   * categorías y quedaban ahí aunque la tarea se cancelara — una categoría
+   * vacía que nadie pidió, imposible de distinguir de una hecha a propósito.
+   *
+   * Viven acá y no en `state` con una marca: cualquier `save()` de por medio
+   * —marcar una celda en otra pantalla, una sincronización— las habría
+   * escrito.
+   */
+  let categoriasEnBorrador = /** @type {Array<object>} */ ([]);
+
+  /** Lo que el alta puede ofrecer: lo que hay, más lo que se pidió en este alta. */
+  const categoriasDelAlta = () => [...state.pendientes.categorias, ...categoriasEnBorrador];
+  const catDelAlta = id => categoriasDelAlta().find(c => c.id === id) ?? null;
+  const raicesDelAlta = () => categoriasDelAlta().filter(c => !c.padre && !c.archivada);
+  const hijasDelAlta = madre => categoriasDelAlta()
+    .filter(c => c.padre === madre && !c.archivada);
+
+  /**
+   * Las categorías en borrador que la tarea necesita: la elegida y, si cuelga
+   * de otra que también está en borrador, esa.
+   *
+   * Solo las que hacen falta. Si se creó una, se cambió de idea y se eligió
+   * otra, la primera no llega a existir: no se pidió una categoría, se pidió una
+   * tarea que fuera ahí.
+   */
+  function borradoresNecesarios(categoria) {
+    const usados = [];
+    let id = categoria;
+    while (id) {
+      const enBorrador = categoriasEnBorrador.find(c => c.id === id);
+      if (!enBorrador) break;
+      usados.unshift(enBorrador);   // la madre primero, que es el orden del arreglo
+      id = enBorrador.padre;
+    }
+    return usados;
+  }
+
+  /**
+   * Sale del alta de una tarea al formulario de categorías.
+   *
+   * Es el mismo formulario de siempre y no una copia reducida: una categoría se
+   * crea igual venga de donde venga, y un segundo formulario para lo mismo son
+   * dos lugares donde arreglar cada cosa.
+   *
+   * Se CIERRA el alta en vez de abrir el otro encima. Apilar dos modales en un
+   * teléfono deja al de abajo tapado y sin salida visible; cerrando, la pantalla
+   * dice una sola cosa por vez y el regreso se nota.
+   *
+   * @param {string|null} madre De quién va a colgar, o `null` para una de
+   *   primer nivel. Decide además qué se apaga en «Dentro de».
+   */
+  function irACrearCategoria(madre) {
+    viajeACategoria = { borrador: borradorDelPendiente(), madre };
+    el.pendienteDialog.close();
+    openCategoriaDialog(null, { madre, fijo: true });
+  }
+
+  /** Lo cargado en el alta, que se pierde al cerrarla si no se anota. */
+  function borradorDelPendiente() {
+    return {
+      id: ui.editandoPendiente,
+      name: el.pendienteName.value,
+      // La de antes, para volver a ella si el viaje se cancela.
+      categoria: categoriaEnElAlta,
+      estado: el.pendienteForm
+        .querySelector('input[name="pendiente-estado"]:checked').value,
+      fecha: el.pendienteFecha.value,
+      comentario: el.pendienteComentario.value,
+    };
+  }
+
+  /**
+   * La vuelta: el alta otra vez, con lo que se había escrito y la categoría que
+   * corresponda.
+   *
+   * @param {string|null} creada La categoría recién hecha, o `null` si el viaje
+   *   se canceló — ahí vuelve a quedar la que estaba antes de tocar la opción.
+   */
+  function volverDelViaje(creada) {
+    const viaje = viajeACategoria;
+    if (!viaje) return;
+    viajeACategoria = null;
+
+    const { borrador: b } = viaje;
+    openPendienteDialog(b.id, { fecha: b.fecha, volviendo: true });
+
+    el.pendienteName.value = b.name;
+    el.pendienteComentario.value = b.comentario;
+    estirarComentario();
+    el.pendienteForm
+      .querySelector(`input[name="pendiente-estado"][value="${b.estado}"]`).checked = true;
+
+    elegirCategoriaEnElAlta(creada ?? b.categoria);
+  }
+
+  /** Pone una categoría —de cualquiera de los dos niveles— en los desplegables. */
+  function elegirCategoriaEnElAlta(id) {
+    const cat = catDelAlta(id);
+    const madre = cat?.padre ?? cat?.id ?? VARIOS;
+    el.pendienteCategoria.value = madre;
+    opcionesDeSubcategoria(madre, cat?.padre ? cat.id : '');
+    categoriaEnElAlta = cat?.id ?? VARIOS;
+  }
+
   el.pendienteCategoria.addEventListener('change', () => {
+    // Sale del alta al formulario de categorías y vuelve con la nueva puesta.
+    if (el.pendienteCategoria.value === NUEVA) return irACrearCategoria(null);
     opcionesDeSubcategoria(el.pendienteCategoria.value, '');
+    categoriaEnElAlta = catDelAlta(el.pendienteCategoria.value)?.id ?? VARIOS;
+  });
+
+  el.pendienteSub.addEventListener('change', () => {
+    if (el.pendienteSub.value === NUEVA) {
+      // Desde el segundo desplegable nace colgando de la que ya está elegida.
+      return irACrearCategoria(catDelAlta(el.pendienteCategoria.value)?.id ?? null);
+    }
+    categoriaEnElAlta = catDelAlta(el.pendienteSub.value)?.id
+      ?? catDelAlta(el.pendienteCategoria.value)?.id
+      ?? VARIOS;
   });
 
   el.pendienteForm.addEventListener('submit', e => {
@@ -5538,8 +5934,10 @@
 
     const datos = {
       name,
-      categoria: categoriaPorId(el.pendienteSub.value)?.id
-        ?? categoriaPorId(el.pendienteCategoria.value)?.id
+      /* `catDelAlta` y no `categoriaPorId`: la elegida puede ser una que se pidió
+         en esta misma alta y todavía no existe en `state`. */
+      categoria: catDelAlta(el.pendienteSub.value)?.id
+        ?? catDelAlta(el.pendienteCategoria.value)?.id
         ?? VARIOS,
       estado: el.pendienteForm
         .querySelector('input[name="pendiente-estado"]:checked').value,
@@ -5563,13 +5961,26 @@
       return;
     }
 
+    /* Acá nacen las categorías que se pidieron durante esta alta: la elegida y
+       la suya, si también estaba en borrador. Las que se crearon y después se
+       descartaron no llegan a existir — no se pidió una categoría, se pidió una
+       tarea que fuera ahí. */
+    const nuevas = borradoresNecesarios(datos.categoria);
+    const piso = state.pendientes.categorias.findIndex(c => c.id === VARIOS);
+    state.pendientes.categorias.splice(
+      piso < 0 ? state.pendientes.categorias.length : piso, 0, ...nuevas);
+    categoriasEnBorrador = [];
+
     if (actual) Object.assign(actual, datos);
     else state.pendientes.items.push({ id: newId(), ...datos, archivado: false });
 
     save();
     el.pendienteDialog.close();
     render();
+    for (const cat of nuevas) toast(`Categoría «${cat.name}» creada`);
   });
+
+
 
   el.pendienteDelete.addEventListener('click', () => {
     const p = ui.editandoPendiente ? pendientePorId(ui.editandoPendiente) : null;
@@ -5604,14 +6015,18 @@
       return;
     }
 
-    const padre = categoriaPorId(el.categoriaPadre.value)?.id ?? null;
+    const padre = catDelAlta(el.categoriaPadre.value)?.id ?? null;
     const actual = ui.editandoCategoria ? categoriaPorId(ui.editandoCategoria) : null;
 
     /* Únicas entre sus hermanas y no en toda la app: dos «Compras» colgando de
        madres distintas se distinguen por dónde están, y esa es justamente la
        razón de tener subcategorías. Dos de primer nivel con el mismo nombre no
-       se distinguirían por nada. */
-    const hermana = state.pendientes.categorias.some(c => c.id !== actual?.id
+       se distinguirían por nada.
+
+       Se miran también las que están en borrador: dos pedidas en la misma alta
+       chocan igual que dos guardadas, y descubrirlo recién al confirmar la
+       tarea sería avisar tarde. */
+    const hermana = categoriasDelAlta().some(c => c.id !== actual?.id
       && (c.padre ?? null) === padre && mismoNombre(c.name, name));
     if (hermana) {
       el.categoriaError.textContent = padre
@@ -5621,19 +6036,44 @@
       el.categoriaName.focus();
       return;
     }
+    /* Se anota antes de cerrar: cerrar pasa por `cerrarDialogo`, que es el que
+       atiende la cancelación, y ahí el viaje ya tiene que estar resuelto. */
+    const volviendo = viajeACategoria;
+    viajeACategoria = null;
+
+    /* Viniendo del alta de una tarea, la categoría NO se crea todavía: queda en
+       borrador y nace con la tarea, o no nace. Guardar acá dejaba una categoría
+       vacía cada vez que el alta se cancelaba. */
+    if (volviendo) {
+      const enBorrador = { id: newId(), name, padre, archivada: false };
+      categoriasEnBorrador.push(enBorrador);
+      el.categoriaDialog.close();
+
+      viajeACategoria = volviendo;
+      return volverDelViaje(enBorrador.id);
+    }
+
+    let creada = null;
     if (actual) Object.assign(actual, { name, padre });
     else {
       /* Las nuevas van ANTES de «Varios»: es el cajón de sastre y su lugar es el
          final. Como el orden que se ve es el del arreglo —eso es lo que mueven
          las flechas—, ponerla acá es lo mismo que ponerla en su lugar. */
-      const nueva = { id: newId(), name, padre, archivada: false };
+      creada = { id: newId(), name, padre, archivada: false };
       const piso = state.pendientes.categorias.findIndex(c => c.id === VARIOS);
-      state.pendientes.categorias.splice(piso < 0 ? state.pendientes.categorias.length : piso, 0, nueva);
+      state.pendientes.categorias.splice(piso < 0 ? state.pendientes.categorias.length : piso, 0, creada);
     }
 
     save();
     el.categoriaDialog.close();
     render();
+  });
+
+  /* `Esc` cierra por su cuenta, sin pasar por `cerrarDialogo`: para esa puerta
+     hace falta el evento. `volverDelViaje` limpia el viaje antes de nada, así
+     que llegar por las dos no lo hace dos veces. */
+  el.categoriaDialog.addEventListener('close', () => {
+    if (viajeACategoria) volverDelViaje(null);
   });
 
   /* Borrar una categoría NO borra lo que tiene adentro: los pendientes quedan

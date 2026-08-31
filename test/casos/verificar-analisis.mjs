@@ -610,7 +610,9 @@ const marcar = (desde, hasta, fn) => {
 
   /* Las tres a la vista, y la puesta marcada. */
   boton().click();
-  const opciones = [...doc.querySelectorAll('.orden-opcion')];
+  /* Acotado a SU diálogo: «.orden-opcion» es el molde de las opciones grandes
+     de cualquier diálogo, y Pendientes tiene las suyas. */
+  const opciones = [...doc.querySelectorAll('#orden-dialog .orden-opcion')];
   console.log(`\n=== desplegable del orden ===\n  `
     + opciones.map(o => o.textContent.trim()).join(' · '));
   ok('el botón abre un desplegable',

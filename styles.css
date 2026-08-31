@@ -864,7 +864,36 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   flex-direction: column;
   gap: .4rem;
 }
+
+/* Cada pregunta en su propia tarjeta. Son dos elecciones distintas —qué junta
+   con qué, y cómo se acomoda lo que quedó junto— y una lista corrida de siete
+   botones las hacía parecer una sola de la que se elige uno. */
+.opciones-grupo {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  padding: .8rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.opciones-grupo h3 {
+  margin: 0;
+  font-size: .78rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+}
 .orden-opcion { text-align: left; }
+
+/* Apagada: sigue a la vista, en tono menor. Una opción que desaparece hace
+   dudar de si estaba y uno se la perdió; apagada se lee como «acá no», y el
+   título dice por qué. */
+.orden-opcion:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
 
 /* La puesta, con el relleno de la marca: es la que está, no la que se ofrece. */
 .orden-opcion[aria-pressed="true"] {
@@ -1497,7 +1526,10 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
    parecer la principal. */
 .pend-vistas {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  /* Una columna por botón, y del mismo ancho: son alternativas de la misma
+     pregunta y ninguna es más importante que la otra. Con el ancho del texto,
+     «Calendario» duplicaba a «Lista» y el par se leía torcido. */
+  grid-template-columns: 1fr 1fr;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   overflow: hidden;
