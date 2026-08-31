@@ -204,10 +204,67 @@ adelante del navegador:
 | Análisis | `/analisis` |
 | Pendientes | `/pendientes` |
 | Ajustes | `/ajustes` |
-| Cómo usar | `/comousar` |
+| Cómo usar Hábitos | `/comousar` |
+| Cómo usar Análisis | `/comousar-analisis` |
+| Cómo usar Pendientes | `/comousar-pendientes` |
 
 Sigue siendo **una sola página**: `app.js` reescribe la URL con la History API y muestra la
 sección correspondiente. Cualquier ruta desconocida cae en Diario.
+
+**La guía es una por sección, y cada paso es un dibujo y una frase.** El ☰ de Hábitos, el de
+Análisis y el de Pendientes ofrecen cada uno *Cómo usar* **su** pantalla, y ninguna habla de las
+otras. Antes era un solo texto que las recorría todas: para entender Pendientes había que atravesar
+Hábitos y Análisis, y cada cosa nueva lo hacía más largo sin hacerlo más útil.
+
+Adentro, cada paso es **el dibujo de lo que hay que tocar y una frase de lo que hace** — el **+**, el
+✎, los cuatro cuadrados de color, el ☰ —. Antes eran párrafos que explicaban por qué cada cosa es
+como es: cierto todo, pero *Cómo usar* no se abre para leer, se abre con una duda concreta y con la
+app delante. La de Hábitos pasó de **3.941 caracteres a 477**.
+
+> Los dibujos son los controles **de verdad**: el `+` de la guía es el mismo `path` que dibuja el
+> botón de la esquina, y los cuadrados llevan las mismas clases que la leyenda del pie. Un ícono
+> parecido pero propio sería una cosa más que aprender antes de encontrar el botón, y se
+> desincronizaría sin que nadie se entere — hay un caso que compara los dos.
+>
+> **El recuadro de estado se recorre solo**: vacío → cumplido → a medias → no cumplido → no
+> requerido, diez segundos la vuelta, un segundo quieto y un segundo fundiendo en el siguiente. Es
+> la única manera de *mostrar* lo que la frase tendría que explicar; con el recuadro quieto hay que
+> decir «cada toque pasa al siguiente» y aun así imaginarse el resto. Los colores son los mismos
+> `--*-bg` que la lista, y hay un caso que lo comprueba: la guía no puede quedar enseñando un verde
+> que ya no existe.
+>
+> Ese ciclo lleva un `animation-duration: 10s !important` que **le gana al freno de «reducir
+> movimiento»** — la regla del final de `styles.css` que le pone `.01ms` a toda animación. Esa regla
+> está para que nada se sacuda, pero a un ciclo infinito lo deja girando cien mil veces por segundo,
+> que no es quieto: es un color embarrado, y el paso queda mostrando un solo estado de los cinco.
+> Acá no se mueve nada —un recuadro cambia de color en su lugar— y ese cambio no es adorno sino el
+> contenido del paso. También hay un caso, porque sin él la próxima vez que alguien toque la regla
+> general el recuadro se vuelve a clavar en un color y nadie se entera.
+>
+> Otro caso pone un techo al largo: 1.200 caracteres por guía, 200 por frase y ningún subtítulo. No
+> está para pulir la redacción, sino para que la guía no vuelva a convertirse en un manual sin que
+> nadie lo note.
+>
+> El porqué de cada decisión no se perdió: está acá, en el README, que es donde se lo busca.
+
+> Las tres caen en la misma pantalla —`ui.page === 'help'`— y se distinguen por `ui.guia`, que sale
+> de la ruta. Por eso hay tres direcciones y no una con un parámetro en memoria: recargar o
+> compartir el enlace abre la que se estaba mirando. `/comousar` a secas sigue valiendo y abre la de
+> Hábitos, que es donde estaba.
+>
+> Las tres viven en el mismo documento y se muestra una. Traerlas por separado obligaría a pedir
+> algo por red justo en la pantalla que explica que la app anda sin conexión.
+>
+> El cajón es **uno solo** —el mismo nodo en las tres pantallas—, así que la entrada dice cuál abre:
+> *Cómo usar Hábitos*, *Cómo usar Análisis*, *Cómo usar Pendientes*. Con el rótulo a secas, la misma
+> entrada en tres lugares parecería llevar siempre al mismo lado. El `href` se arma en cada dibujado
+> por lo mismo: es un enlace de verdad, y abrirlo en otra pestaña tiene que llevar a lo que promete.
+>
+> **Ajustes no tiene guía**: no es una pantalla que se explique, es una lista de cosas que se tocan
+> una vez. Lo que se decía ahí —cerrar sesión, eliminar la cuenta, instalar la app, bajar una copia—
+> salió de la guía con el reparto: no era de ninguna de las tres secciones. Lo que sí era de Hábitos
+> y estaba enterrado en esos pasos se quedó donde corresponde: el día que se cierra solo, y el
+> recordatorio, que es una entrada de ese mismo ☰.
 
 Eso obliga al servidor a devolver `index.html` ante cualquier ruta, porque los archivos
 `/diario` y `/analisis` no existen en disco. Ya viene resuelto para los tres hostings del paso 4:
@@ -294,6 +351,7 @@ Los snapshots dicen *qué cambió*; los casos de `test/casos/` dicen *si sigue f
 | `sincronizacion` | Cómo se sube: agrupado, de a uno, con reintento y sin las preferencias |
 | `vista` | Los dos desplegables, y las posturas de la fila que abre «Opciones» |
 | `dia-cerrado` | El cierre automático de los días transcurridos y la vuelta de medianoche |
+| `guias` | Las tres guías: que cada ☰ ofrezca la suya, que se abra la que dice y que cada una hable solo de su pantalla |
 
 Corren en **procesos separados** a propósito: cada uno instala su propio jsdom con reloj,
 almacenamiento y globals sustituidos, y compartir proceso haría que un caso viera el entorno del
@@ -1290,7 +1348,27 @@ poder mirar algo. La cuenta es lo que hace que plegado no sea lo mismo que vací
   perdido.
 
   Ahí el calendario también se edita: **tocar un día** abre el alta con esa fecha puesta, y
-  **arrastrar un pendiente a otro día** se la cambia. El arrastre va con eventos de puntero y no con
+  **arrastrar un pendiente a otro día** se la cambia. Y **deslizando de costado se cambia de mes**:
+  a la izquierda el siguiente, a la derecha el anterior. El calendario ocupa la pantalla y el nombre
+  del mes queda arriba del todo, así que pasar de mes era subir el pulgar, apuntar a una flecha y
+  volver a bajar.
+
+  > Los dos gestos son un dedo moviéndose y no se pisan porque **arrancan en lugares distintos**: el
+  > arrastre solo empieza sobre un chip y el deslizamiento solo fuera de uno. Pide **60 px de
+  > recorrido y ser vez y media más ancho que alto** — sin lo primero cualquier temblor cambia de
+  > mes, sin lo segundo lo hace desplazar la pantalla con el dedo apenas torcido—. Va **solo con el
+  > dedo o el lápiz**: con mouse están las flechas, y arrastrar para seleccionar texto no tiene por
+  > qué cambiar de mes.
+  >
+  > Es el mismo gesto que el del Diario y la misma función, `deslizarDeCostado`: las dos pantallas
+  > tienen un «antes» y un «después», y en las dos lo que se cambia se nombra arriba del todo. Lo
+  > único propio de cada una es qué pasa —un mes acá, un día allá— y qué gesto tiene que quedar
+  > afuera.
+  >
+  > El contenedor lleva `touch-action: pan-y`: sin eso el navegador se queda con el gesto horizontal
+  > y el deslizamiento no llega nunca; con `none` la pantalla dejaría de desplazarse ahí adentro. Y
+  > el clic que cierra el gesto se descarta, como el que cierra un arrastre — si no, deslizar abriría
+  > además el alta, y encima con el día de la rejilla **nueva**, que no es el que se tocó. El arrastre va con eventos de puntero y no con
   el arrastre nativo de HTML5, que en el teléfono no existe — y arranca recién después de moverse
   unos pixeles, así que un toque sigue siendo un toque y abre el diálogo. Los chips llevan
   `touch-action: none` para que arrastrar con el dedo no desplace además la pantalla; el resto del

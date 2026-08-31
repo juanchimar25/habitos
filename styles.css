@@ -1318,6 +1318,142 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   margin-bottom: .35rem;
 }
 
+/* ---------------- Cómo usar ---------------- */
+
+/* Cada paso es un DIBUJO de lo que se toca y UNA frase de lo que hace.
+
+   La columna del dibujo va de ancho fijo: leídos en fila, todos los textos
+   arrancan en la misma vertical y el ojo baja por un solo borde. Los dibujos
+   son los controles de verdad —el mismo trazo del «+», los mismos rellenos de
+   los estados—: un ícono inventado para la guía sería una cosa más que
+   aprender antes de encontrar el botón. */
+.guia-pasos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+
+.guia-paso {
+  display: flex;
+  align-items: center;
+  gap: .9rem;
+  padding: .7rem .9rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.guia-paso p { margin: 0; font-size: .92rem; line-height: 1.45; }
+
+.guia-muestra {
+  flex: none;
+  width: 3.1rem;
+  display: grid;
+  place-items: center;
+}
+
+/* Sin dibujo: la frase arranca en la misma vertical que las que sí lo tienen.
+   Alineada al borde, la lista se veía quebrada renglón por medio. */
+.guia-paso-suelto { padding-left: calc(.9rem + 3.1rem + .9rem); }
+
+/* El «+» tal cual está en la esquina de la pantalla. */
+.guia-fab {
+  width: 30px;
+  height: 30px;
+  padding: 4px;
+  border-radius: 50%;
+  background: var(--brand-text);
+  fill: none;
+  stroke: var(--brand-fg);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* El recuadro de estado sin cargar, el lápiz y las teclas del menú: el mismo
+   borde y el mismo radio que tienen en la pantalla, a escala de guía. */
+.guia-celda,
+.guia-lapiz,
+.guia-tecla,
+.guia-pct {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  height: 30px;
+  padding: 0 .35rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  color: var(--text-muted);
+  font-size: .85rem;
+}
+.guia-pct { font-weight: 700; color: var(--text); font-size: .78rem; }
+
+/* El botón de estado de una tarea pendiente: dice su nombre y no lo cifra en
+   un color, igual que en la lista. */
+.guia-estado-pend {
+  display: grid;
+  place-items: center;
+  padding: .25rem .45rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--text-muted);
+  font-size: .62rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* El par de vistas, con una puesta: es lo que hay arriba de Pendientes. */
+.guia-vistas {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  font-size: .58rem;
+  font-weight: 600;
+}
+.guia-vistas span { padding: .25rem .4rem; background: var(--bg-elev); color: var(--text-muted); }
+.guia-vistas .is-activa { background: var(--brand-text); color: var(--brand-fg); }
+
+
+/* El recuadro de la guía recorre solo los cinco estados, en el mismo orden en
+   que los recorre un toque: vacío, cumplido, a medias, no cumplido, no
+   requerido, y de vuelta al vacío.
+
+   Es la única manera de MOSTRAR lo que la frase tendría que explicar. Un
+   recuadro quieto obliga a decir «cada toque pasa al siguiente», y aun así hay
+   que imaginarse el resto; moviéndose, la frase se queda con lo único que el
+   dibujo no puede decir: dónde está el recuadro y para qué sirve.
+
+   Los rellenos son los de la lista —los mismos `--*-bg`— y el gris de «no
+   requerido» es el de los bordes, igual que en la fila del día. Cada estado se
+   sostiene un rato y funde en el siguiente: la app SALTA de color, pero acá el
+   salto se leería como un parpadeo y no como un cambio. */
+@keyframes guia-ciclo {
+  0%,  10% { background: var(--bg-elev);    border-color: var(--border-strong); }
+  20%, 30% { background: var(--done-bg);    border-color: transparent; }
+  40%, 50% { background: var(--partial-bg); border-color: transparent; }
+  60%, 70% { background: var(--missed-bg);  border-color: transparent; }
+  80%, 90% { background: var(--border);     border-color: transparent; }
+  100%     { background: var(--bg-elev);    border-color: var(--border-strong); }
+}
+
+/* Diez segundos la vuelta: cinco estados de dos segundos, uno quieto y uno
+   fundiendo en el siguiente. Los pares de porcentajes son eso — 0%–10% sostiene
+   y 10%–20% funde—, así que cambiar la duración cambia las dos cosas a la vez y
+   siguen midiendo lo mismo. */
+.guia-celda { animation: guia-ciclo 10s linear infinite; }
+
+/* El `!important` no es un atajo: es para ganarle a la regla del final del
+   archivo, que con «reducir movimiento» le pone `.01ms` a TODA animación. Esa
+   regla está para que nada se sacuda, y a un ciclo infinito lo deja girando cien
+   mil veces por segundo — que no es quieto, es un color embarrado.
+
+   Acá no se mueve nada: es un recuadro que cambia de color en su lugar, y ese
+   cambio no es adorno sino el contenido del paso —«tocá el recuadro para decir
+   cómo te fue»—. Apagarlo deja al paso mostrando un solo estado de cinco. */
+.guia-celda { animation-duration: 10s !important; }
+
 /* ---------------- Pendientes ---------------- */
 
 .todos { display: flex; flex-direction: column; gap: .7rem; }
@@ -1636,6 +1772,12 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* El calendario se desliza de costado para cambiar de mes —ver el oyente de
+   `pointermove`—, y a lo largo se sigue desplazando como toda la pantalla. Sin
+   `pan-y`, el navegador se queda con el gesto horizontal y el deslizamiento no
+   llega nunca; con `none`, la página dejaría de desplazarse acá adentro. */
+.pend-calendario { touch-action: pan-y; }
+
 /* `touch-action: none` para que arrastrar un pendiente con el dedo no sea
    además un desplazamiento de la pantalla. Va solo en los chips: el resto del
    calendario se sigue desplazando como siempre. */
@@ -1792,6 +1934,12 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   display: flex;
   flex-direction: column;
   gap: .7rem;
+
+  /* Se desliza de costado para pasar de día —ver `deslizarDeCostado`— y a lo
+     largo la lista sigue desplazándose. Sin `pan-y` el navegador se queda con
+     el gesto horizontal y nunca llega al oyente; con `none`, la lista dejaría
+     de desplazarse. */
+  touch-action: pan-y;
 
   /* Una columna, no una planilla: estirada sobre 1500px cada fila queda con el
      nombre en una punta y su estado en la otra, y el ojo tiene que cruzar la

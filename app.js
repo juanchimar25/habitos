@@ -262,6 +262,12 @@
   const ui = {
     /** Sección visible: la planilla, los indicadores o la ayuda. */
     page: /** @type {'home'|'todos'|'indicators'|'settings'|'help'} */ ('home'),
+    /**
+     * Cuál de las tres guías muestra «Cómo usar»: la de la sección desde la que
+     * se abrió. No hay una guía de la app entera —cada sección explica lo suyo—,
+     * así que esto siempre vale algo.
+     */
+    guia: /** @type {'home'|'indicators'|'todos'} */ ('home'),
     year: today.getFullYear(),
     month: today.getMonth(),
     /**
@@ -391,22 +397,46 @@
     analisis: 'indicators',
     ajustes: 'settings',
     comousar: 'help',
+    'comousar-analisis': 'help',
+    'comousar-pendientes': 'help',
   };
   const RUTA_DE_PAGE = {
     home: 'diario',
     todos: 'pendientes',
     indicators: 'analisis',
     settings: 'ajustes',
-    help: 'comousar',
   };
+
+  /**
+   * La guía es UNA POR SECCIÓN: cada una explica lo suyo y nada más.
+   *
+   * Cuál se está leyendo va en la ruta y no solo en memoria, así recargar o
+   * compartir el enlace abre la misma que se estaba mirando. Las tres caen en
+   * la misma `page`, que es la pantalla que las dibuja.
+   */
+  const GUIA_DE_RUTA = {
+    comousar: 'home',
+    'comousar-analisis': 'indicators',
+    'comousar-pendientes': 'todos',
+  };
+  const RUTA_DE_GUIA = {
+    home: 'comousar',
+    indicators: 'comousar-analisis',
+    todos: 'comousar-pendientes',
+  };
+  const NOMBRE_DE_GUIA = { home: 'Hábitos', indicators: 'Análisis', todos: 'Pendientes' };
 
   const TITULO_DE_PAGE = {
     home: 'Hábitos',
     todos: 'Pendientes · Hábitos',
     indicators: 'Análisis · Hábitos',
     settings: 'Ajustes · Hábitos',
-    help: 'Cómo usar · Hábitos',
   };
+
+  /** El de la pestaña. En la guía nombra CUÁL, que son tres. */
+  const tituloDe = page => (page === 'help'
+    ? `Cómo usar ${NOMBRE_DE_GUIA[ui.guia]} · Hábitos`
+    : TITULO_DE_PAGE[page]);
 
   /**
    * Carpeta donde vive la app, deducida de la URL de este mismo script. Así
@@ -416,11 +446,12 @@
   const BASE = new URL('.', document.currentScript.src).pathname;
 
   function urlDe(page) {
-    return BASE + RUTA_DE_PAGE[page];
+    // La guía no tiene una ruta sola: tiene una por sección.
+    return BASE + (page === 'help' ? RUTA_DE_GUIA[ui.guia] : RUTA_DE_PAGE[page]);
   }
 
-  /** Sección que pide la URL actual. Si no reconoce la ruta, cae en la planilla. */
-  function pageDeUrl() {
+  /** El tramo de la URL que nombra la pantalla, sin la carpeta ni el `.html`. */
+  function slugDeUrl() {
     // `404.html` (GitHub Pages) reenvía a la raíz con la ruta en este parámetro.
     const desviada = new URLSearchParams(location.search).get('ruta');
 
@@ -428,8 +459,17 @@
       ? location.pathname.slice(BASE.length)
       : location.pathname.replace(/^\//, ''));
 
-    const slug = camino.split('/')[0].replace(/\.html$/, '').toLowerCase();
-    return PAGE_DE_RUTA[slug] || 'home';
+    return camino.split('/')[0].replace(/\.html$/, '').toLowerCase();
+  }
+
+  /** Sección que pide la URL actual. Si no reconoce la ruta, cae en la planilla. */
+  function pageDeUrl() {
+    return PAGE_DE_RUTA[slugDeUrl()] || 'home';
+  }
+
+  /** Y cuál de las tres guías, si la ruta es una de ellas. */
+  function guiaDeUrl() {
+    return GUIA_DE_RUTA[slugDeUrl()] || 'home';
   }
 
   /**
@@ -440,7 +480,7 @@
    */
   function irA(page, { reemplazar = false } = {}) {
     ui.page = page;
-    document.title = TITULO_DE_PAGE[page];
+    document.title = tituloDe(page);
 
     const url = urlDe(page);
     if (reemplazar) history.replaceState({ page }, '', url);
@@ -454,8 +494,10 @@
     // Sin sesión no hay nada que dibujar: manda la pantalla de login.
     if (!currentUserId) return;
 
+    /* La guía primero: el título y la URL de `help` dependen de cuál sea. */
+    ui.guia = guiaDeUrl();
     ui.page = pageDeUrl();
-    document.title = TITULO_DE_PAGE[ui.page];
+    document.title = tituloDe(ui.page);
     render();
   });
 
@@ -1994,6 +2036,8 @@
     grupoRecordatorio: $('#grupo-recordatorio'),
     grupoDatos: $('#grupo-datos'),
     grupoGuia: $('#grupo-guia'),
+    guiaLink: $('#guia-link'),
+    guiaTexto: $('#guia-texto'),
     deleteAccount: $('#btn-delete-account'),
     fab: $('#btn-fab'),
     analysis: $('#analysis'),
@@ -2135,8 +2179,22 @@
     el.grupoPendientes.hidden = ui.page !== 'todos';
     // Fuera de Análisis no hay gráfico que ordenar.
     if (!onIndicators) el.orden.hidden = true;
-    for (const grupo of [el.grupoRecordatorio, el.grupoDatos, el.grupoGuia]) {
+    for (const grupo of [el.grupoRecordatorio, el.grupoDatos]) {
       grupo.hidden = !onHome;
+    }
+
+    /* La guía va en las tres secciones que tienen una: cada ☰ ofrece la de su
+       pantalla y no un índice de toda la app. El rótulo la nombra porque el
+       cajón es UNO SOLO y el mismo nodo sirve a las tres: sin el nombre no se
+       sabría cuál se está por abrir. */
+    const conGuia = Boolean(NOMBRE_DE_GUIA[ui.page]);
+    el.grupoGuia.hidden = !conGuia;
+    if (conGuia) {
+      el.guiaTexto.textContent = `Cómo usar ${NOMBRE_DE_GUIA[ui.page]}`;
+      /* Es un enlace de verdad —abrirlo en otra pestaña tiene que llevar a la
+         guía que dice—, así que el destino se arma en cada dibujado y no una
+         sola vez al arrancar. */
+      el.guiaLink.href = BASE + RUTA_DE_GUIA[ui.page];
     }
 
     /* Las acciones del mes viven en el cajón, que se abre desde cualquier
@@ -2165,6 +2223,7 @@
     renderFab();
     el.settings.hidden = ui.page !== 'settings';
     el.help.hidden = !onHelp;
+    if (onHelp) renderGuia();
 
     /* La sección activa se marca en los dos lugares desde donde se navega: la
        barra del pie y lo que quede en el cajón. Por eso el recorrido va sobre
@@ -2350,6 +2409,20 @@
    * `aria-label` —lo que anuncia un lector de pantalla— y el `title` agrega el
    * atajo, que existe únicamente en Diario.
    */
+  /**
+   * De las tres tarjetas de «Cómo usar», la de la sección que la abrió.
+   *
+   * Las tres viven en el mismo documento y se muestra una: son tres textos
+   * cortos, y traerlas por separado obligaría a pedir algo por red justo en la
+   * pantalla que explica que la app anda sin conexión.
+   */
+  function renderGuia() {
+    for (const tarjeta of el.help.querySelectorAll('[data-guia]')) {
+      tarjeta.hidden = tarjeta.dataset.guia !== ui.guia;
+    }
+    el.help.setAttribute('aria-label', `Cómo usar ${NOMBRE_DE_GUIA[ui.guia]}`);
+  }
+
   function renderFab() {
     const enPendientes = ui.page === 'todos';
     el.fab.hidden = !(ui.page === 'home' || enPendientes);
@@ -3147,7 +3220,72 @@
   // Interacción con la grilla
   // ---------------------------------------------------------
 
+  /**
+   * Deslizar de costado para pasar a lo anterior o a lo siguiente.
+   *
+   * Las dos pantallas que tienen un «antes» y un «después» lo llevan: la lista
+   * del día pasa de día y el calendario de Pendientes, de mes. En las dos, lo
+   * que se cambia se nombra arriba del todo, así que llegar a las flechas era
+   * subir el pulgar, apuntar y volver a bajar; deslizando se hace lo mismo
+   * donde la mano ya está.
+   *
+   * Pide recorrido de sobra y bastante más ancho que alto: sin lo primero
+   * cualquier temblor cambia de página, sin lo segundo lo hace desplazar la
+   * pantalla con el dedo apenas torcido. Y va solo con el dedo o el lápiz — con
+   * mouse están las flechas, y arrastrar para seleccionar texto no tiene por
+   * qué cambiar nada.
+   *
+   * @param {Element} nodo Dónde se escucha el gesto.
+   * @param {(paso: number) => void} alPasar Recibe 1 o -1.
+   * @param {{ salvo?: string }} [opciones] `salvo` es un selector: un gesto que
+   *   arranque ahí adentro no es este, es el otro gesto de esa pantalla — en el
+   *   calendario, arrastrar un pendiente de un día a otro.
+   * @returns {{ hubo: boolean }} Si el último gesto pasó de página. Lo mira el
+   *   clic que llega después: sin eso, deslizar además marcaría una celda o
+   *   abriría un alta, y encima sobre lo que quedó debajo del dedo al redibujar.
+   */
+  function deslizarDeCostado(nodo, alPasar, { salvo = '' } = {}) {
+    const MINIMO = 60;
+    const estado = { id: /** @type {number|null} */ (null), x: 0, y: 0, hubo: false };
+
+    nodo.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse') return;
+      if (salvo && e.target.closest(salvo)) return;
+      Object.assign(estado, { id: e.pointerId, x: e.clientX, y: e.clientY, hubo: false });
+    });
+
+    nodo.addEventListener('pointermove', e => {
+      if (estado.id !== e.pointerId) return;
+
+      const dx = e.clientX - estado.x;
+      const dy = e.clientY - estado.y;
+      if (Math.abs(dx) < MINIMO || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+
+      // Uno por gesto: se suelta el puntero para no encadenar sin levantar.
+      estado.id = null;
+      estado.hubo = true;
+      alPasar(dx < 0 ? 1 : -1);
+    });
+
+    const cortar = () => { estado.id = null; };
+    nodo.addEventListener('pointerup', cortar);
+    nodo.addEventListener('pointercancel', cortar);
+
+    return estado;
+  }
+
+  /* La lista del día: deslizar pasa UN día, lo mismo que las teclas ← →. Las
+     flechas del carrete pasan siete, que es otra cosa —pasar de página—. */
+  const deslizDia = deslizarDeCostado(el.board, paso => shiftRangeOrMonth(paso));
+
   el.diaLista.addEventListener('click', e => {
+    // El clic que cierra un deslizamiento no es un toque sobre lo que quedó
+    // debajo: la fila que se marcaría ni siquiera es la que se tocó.
+    if (deslizDia.hubo) {
+      deslizDia.hubo = false;
+      return;
+    }
+
     const action = e.target.closest('[data-action]');
     if (action) {
       const taskId = action.closest('.dia-fila').dataset.taskId;
@@ -5151,9 +5289,12 @@
 
   el.pendCalendario.addEventListener('click', e => {
     /* El clic que cierra un arrastre no es un toque: sin esto, soltar un
-       pendiente sobre un día vacío abría además el alta. */
-    if (arrastre.hubo) {
+       pendiente sobre un día vacío abría además el alta. Lo mismo con el que
+       cierra un deslizamiento, que además cae sobre la rejilla del mes nuevo:
+       el día que abriría el alta no es ni siquiera el que se tocó. */
+    if (arrastre.hubo || desliz.hubo) {
       arrastre.hubo = false;
+      desliz.hubo = false;
       return;
     }
     // Soltar sobre un pendiente tampoco crea nada.
@@ -5255,6 +5396,13 @@
     if (arrastre.id) arrastre.hubo = arrastre.activo;
     soltarArrastre();
   });
+
+  /* El calendario pasa de MES, y su otro gesto —arrastrar un pendiente de un
+     día a otro— es lo único que no puede confundirse con este: por eso queda
+     afuera. Los dos son un dedo moviéndose, y lo que los separa es dónde
+     arrancan. */
+  const desliz = deslizarDeCostado(el.pendCalendario, paso => goToMonth(paso),
+    { salvo: '[data-pendiente]' });
 
   function moverPendiente(id, fecha) {
     const p = pendientePorId(id);
@@ -6189,6 +6337,11 @@
     // Son enlaces de verdad: ctrl/cmd/rueda abren la sección en otra pestaña.
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
 
+    /* La guía es una por sección, y la que se abre es la de la sección desde la
+       que se tocó. Hay que anotarlo ANTES de cambiar de página: después
+       `ui.page` ya es 'help' y no queda de dónde vino. */
+    if (item.dataset.page === 'help' && NOMBRE_DE_GUIA[ui.page]) ui.guia = ui.page;
+
     e.preventDefault();
     setDrawer(false);
     irA(item.dataset.page);
@@ -6718,8 +6871,13 @@
         item.href = urlDe(item.dataset.page);
       }
 
-      // Respeta la sección que pide la URL, así un enlace compartido abre donde
-      // corresponde. `reemplazar` normaliza de paso el desvío de `404.html`.
+      /* Respeta la sección que pide la URL, así un enlace compartido abre donde
+         corresponde. `reemplazar` normaliza de paso el desvío de `404.html`.
+
+         La guía primero: son tres, una por sección, y de cuál se trata lo dice
+         la ruta. Sin esto, entrar por `/comousar-pendientes` abría la de
+         Hábitos, que es el valor con el que arranca. */
+      ui.guia = guiaDeUrl();
       irA(pageDeUrl(), { reemplazar: true });
 
       /* Sin `await`: la planilla ya está dibujada y esto solo decide si se

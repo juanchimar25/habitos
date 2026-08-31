@@ -9,7 +9,7 @@
    al almacenamiento —y por lo tanto a la base— como el resto de los datos.
 
    Arnés: hoy = jueves 30 de julio de 2026. */
-import { montar } from '../harness.mjs';
+import { montar, leer } from '../harness.mjs';
 
 let fallos = 0;
 const ok = (n, cond, det = '') => {
@@ -1469,6 +1469,93 @@ const editarCategoria = (doc, nombre) => {
   doc.querySelector('#btn-pend-lista').click();
   ok('volver a «Lista» conserva la que se había abierto', abiertas().length === 1,
     `${abiertas().length} de ${flechas().length} abiertas`);
+}
+
+// --- deslizar el calendario cambia de mes -----------------------------------
+{
+  /* El calendario ocupa la pantalla y el nombre del mes queda arriba del todo:
+     en el teléfono, pasar de mes era subir el pulgar, apuntar a una flecha y
+     volver a bajar.
+
+     Lo delicado es que el calendario ya tenía un gesto —arrastrar un pendiente
+     de un día a otro—, y los dos son un dedo moviéndose. No se pisan porque
+     arrancan en lugares distintos: aquel solo empieza SOBRE un chip y este solo
+     FUERA de uno. */
+  const { doc } = await montar({
+    ...VACIO,
+    pendientes: {
+      categorias: [],
+      items: [{ id: 'p1', name: 'Ir al dentista', categoria: 'cat-varios', estado: 'sin-iniciar', fecha: '2026-07-20' }],
+      papelera: [],
+    },
+  });
+  irAPendientes(doc);
+  doc.querySelector('#btn-pend-calendario').click();
+
+  const mes = () => doc.querySelector('#month-label').textContent;
+  const celda = () => doc.querySelector('.pend-cal-dia');
+  const chip = () => doc.querySelector('.pend-cal-item');
+
+  const puntero = (tipo, nodo, x, y, tipoPuntero = 'touch') => {
+    const e = new doc.defaultView.Event(tipo, { bubbles: true, cancelable: true });
+    Object.assign(e, { clientX: x, clientY: y, pointerId: 1, button: 0, pointerType: tipoPuntero });
+    nodo.dispatchEvent(e);
+  };
+
+  /** Un deslizamiento de `dx` píxeles, con `dy` de desvío. */
+  const deslizar = (dx, dy = 0, { desde = celda, tipoPuntero = 'touch' } = {}) => {
+    const nodo = desde();
+    puntero('pointerdown', nodo, 200, 300, tipoPuntero);
+    puntero('pointermove', nodo, 200 + dx, 300 + dy, tipoPuntero);
+    puntero('pointerup', nodo, 200 + dx, 300 + dy, tipoPuntero);
+  };
+
+  ok('abre en el mes de hoy', /julio 2026/i.test(mes()), mes());
+
+  deslizar(-120);
+  ok('deslizar hacia la izquierda trae el mes siguiente', /agosto 2026/i.test(mes()), mes());
+
+  deslizar(120);
+  ok('  y hacia la derecha, el anterior', /julio 2026/i.test(mes()), mes());
+
+  /* Un dedo que apenas se mueve es un toque, y uno que baja es la pantalla
+     desplazándose: ninguno de los dos cambia de mes. */
+  deslizar(-30);
+  ok('un movimiento corto no cambia nada', /julio 2026/i.test(mes()), mes());
+
+  deslizar(-80, 200);
+  ok('  ni uno que va más para abajo que para el costado', /julio 2026/i.test(mes()), mes());
+
+  /* Empezando sobre un pendiente es el OTRO gesto: se lo lleva de día, no de
+     mes. Si los dos gestos convivieran mal, este sería el caso que lo mostraría:
+     el mes cambiaría debajo del pendiente que se está arrastrando. */
+  const dondeEsta = () => [...doc.querySelectorAll('.pend-cal-dia')]
+    .find(c => c.querySelector('.pend-cal-item'))?.dataset.fecha;
+  doc.elementFromPoint = () => doc.querySelector('.pend-cal-dia[data-fecha="2026-07-05"]');
+  deslizar(-120, 0, { desde: chip });
+  ok('arrastrar un pendiente no cambia de mes', /julio 2026/i.test(mes()), mes());
+  ok('  lo cambia de día, que es lo suyo', dondeEsta() === '2026-07-05', dondeEsta());
+
+  /* Con mouse no: para eso están las flechas, y arrastrar para seleccionar
+     texto no tiene por qué cambiar de mes. */
+  deslizar(-120, 0, { tipoPuntero: 'mouse' });
+  ok('con el mouse no se desliza', /julio 2026/i.test(mes()), mes());
+
+  /* Y el clic que cierra el gesto no es un toque. Sin esto, deslizar abriría
+     además el alta —y encima con el día de la rejilla NUEVA, que no es el que
+     se tocó—. */
+  deslizar(-120);
+  celda().click();
+  ok('el clic que cierra el deslizamiento no abre el alta',
+    doc.querySelector('#pendiente-dialog').hasAttribute('open') === false);
+
+  /* El contenedor tiene que dejar pasar el gesto horizontal y quedarse con el
+     vertical: sin `pan-y`, el navegador se come el deslizamiento antes de que
+     llegue al oyente. */
+  const css = leer('styles.css');
+  ok('el calendario deja pasar el gesto de costado',
+    /\n\.pend-calendario \{[^}]*touch-action:\s*pan-y/.test(css),
+    css.match(/\n\.pend-calendario \{[^}]*\}/)?.[0] ?? '(sin regla)');
 }
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');

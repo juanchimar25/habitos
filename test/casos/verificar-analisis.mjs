@@ -183,16 +183,40 @@ const marcar = (desde, hasta, fn) => {
   ok('el menú tiene el apartado de gráficos',
     doc.querySelector('#grupo-graficos').hidden === false);
 
-  /* Y nada más: el recordatorio, los datos y la guía son de la app entera, pero
-     se llega a ellos desde Hábitos. Repetirlos acá obliga a buscar la única
-     entrada que viene al caso entre seis que no. */
+  /* Eso y la guía de esta pantalla. El recordatorio y los datos son de la app
+     entera y se llega a ellos desde Hábitos: repetirlos acá obliga a buscar la
+     entrada que viene al caso entre varias que no. */
   const visibles = [...doc.querySelectorAll('#drawer .drawer-group')]
     .filter(g => !g.hidden).map(g => g.id || '(sin id)');
-  ok('  y ningún otro apartado', visibles.join(',') === 'grupo-graficos', visibles.join(','));
+  ok('  y la guía, y nada más',
+    visibles.join(',') === 'grupo-graficos,grupo-guia', visibles.join(','));
   for (const id of ['btn-reminder', 'btn-export', 'btn-import']) {
     ok(`  «${id}» no se ve`, doc.querySelector('#' + id).closest('.drawer-group').hidden);
   }
-  ok('  ni «Cómo usar»', doc.querySelector('#grupo-guia').hidden === true);
+
+  /* La guía es una POR SECCIÓN, y el mismo nodo sirve a las tres porque el
+     cajón es uno solo: el rótulo tiene que decir cuál se abre, o la entrada
+     parecería llevar siempre al mismo lado. */
+  ok('  «Cómo usar» está, y dice cuál',
+    doc.querySelector('#guia-texto').textContent === 'Cómo usar Análisis',
+    doc.querySelector('#guia-texto').textContent);
+  ok('    apuntando a su propia ruta',
+    doc.querySelector('#guia-link').getAttribute('href').endsWith('comousar-analisis'),
+    doc.querySelector('#guia-link').getAttribute('href'));
+
+  // Y abre la de Análisis, no la de Hábitos.
+  doc.querySelector('#guia-link').click();
+  const visible = [...doc.querySelectorAll('#help [data-guia]')].filter(t => !t.hidden);
+  ok('    y abre la de Análisis', visible.length === 1 && visible[0].dataset.guia === 'indicators',
+    visible.map(t => t.dataset.guia).join(',') || '(ninguna)');
+  ok('      con su título', visible[0]?.querySelector('h2')?.textContent === 'Cómo usar Análisis',
+    visible[0]?.querySelector('h2')?.textContent);
+  ok('      y sin una palabra de las otras dos',
+    !/Cómo usar (Hábitos|Pendientes)/.test(visible[0]?.textContent ?? ''),
+    visible[0]?.textContent?.slice(0, 60));
+
+  // Volver a Análisis para lo que sigue.
+  doc.querySelector('[data-page="indicators"]').click();
 
   for (const [cual, esperado] of [['barras', /^Barras$/],
     ['porcentajes', /^Porcentajes$/], ['puntos', /^Puntos$/]]) {

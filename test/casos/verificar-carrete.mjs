@@ -511,5 +511,77 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
   ok('  y se pintan como una ficha', /background:\s*var\(--bg-elev\)/.test(flechas));
 }
 
+// --- deslizar la lista cambia de día ---------------------------------------
+{
+  /* El mismo gesto que en el calendario de Pendientes, con la misma función:
+     acá pasa UN día, que es lo que hacen las teclas ← →. Las flechas del
+     carrete pasan siete, que es otra cosa — pasar de página—.
+
+     Deslizar sobre la lista del día es lo único que puede confundirse con
+     marcar una celda, y por eso lo importante de acá abajo es que el clic que
+     cierra el gesto no marque nada. */
+  const { doc } = await montar(ESTADO_LLENO);
+  const tablero = doc.querySelector('#board');
+
+  const puntero = (tipo, nodo, x, y, tipoPuntero = 'touch') => {
+    const e = new doc.defaultView.Event(tipo, { bubbles: true, cancelable: true });
+    Object.assign(e, { clientX: x, clientY: y, pointerId: 1, button: 0, pointerType: tipoPuntero });
+    nodo.dispatchEvent(e);
+  };
+  const deslizar = (dx, dy = 0, tipoPuntero = 'touch') => {
+    puntero('pointerdown', tablero, 200, 300, tipoPuntero);
+    puntero('pointermove', tablero, 200 + dx, 300 + dy, tipoPuntero);
+    puntero('pointerup', tablero, 200 + dx, 300 + dy, tipoPuntero);
+  };
+
+  ok('arranca en hoy', centro(doc) === '2026-07-30', centro(doc));
+
+  deslizar(-120);
+  ok('deslizar a la izquierda trae el día siguiente', centro(doc) === '2026-07-31', centro(doc));
+
+  deslizar(120);
+  deslizar(120);
+  ok('  y a la derecha, los anteriores', centro(doc) === '2026-07-29', centro(doc));
+
+  /* Uno por gesto: el puntero se suelta al pasar, así que seguir moviendo el
+     mismo dedo no encadena días. */
+  puntero('pointerdown', tablero, 200, 300);
+  puntero('pointermove', tablero, 60, 300);
+  puntero('pointermove', tablero, -100, 300);
+  puntero('pointerup', tablero, -100, 300);
+  ok('un solo día por gesto', centro(doc) === '2026-07-30', centro(doc));
+
+  // Un toque quieto y un desplazamiento vertical no son este gesto.
+  deslizar(-30);
+  ok('un movimiento corto no cambia de día', centro(doc) === '2026-07-30', centro(doc));
+  deslizar(-80, 200);
+  ok('  ni uno que va más para abajo que para el costado', centro(doc) === '2026-07-30', centro(doc));
+
+  // Con mouse tampoco: para eso están las teclas y el carrete.
+  deslizar(-120, 0, 'mouse');
+  ok('con el mouse no se desliza', centro(doc) === '2026-07-30', centro(doc));
+
+  /* Y lo importante: el clic que cierra el gesto no marca. La fila que quedó
+     debajo del dedo después de redibujar ni siquiera es la que se tocó. */
+  const primera = () => filas(doc)[0].querySelector('.cell').className;
+  const antes = primera();
+  deslizar(-120);
+  filas(doc)[0].querySelector('.cell').click();
+  ok('el clic que cierra el deslizamiento no marca nada', primera() === antes,
+    `${antes} → ${primera()}`);
+
+  // Pero el siguiente sí: la marca se descarta una vez, no queda trabada.
+  filas(doc)[0].querySelector('.cell').click();
+  ok('  y el toque que viene después sí marca', primera() !== antes,
+    `${antes} → ${primera()}`);
+
+  /* El tablero tiene que dejar pasar el gesto de costado y quedarse con el de
+     arriba abajo, que es el que desplaza la lista. */
+  const css = leer('styles.css');
+  ok('el tablero deja pasar el gesto de costado',
+    /\n\.board \{[\s\S]*?touch-action:\s*pan-y/.test(css),
+    css.match(/\n\.board \{[\s\S]*?\n\}/)?.[0]?.replace(/\s+/g, ' ').slice(0, 90));
+}
+
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');
 process.exit(fallos ? 1 : 0);
