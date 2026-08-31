@@ -1328,7 +1328,17 @@
       if (hayLocal) {
         cambiosSinSubir = true;
         await drenarSync();
+        return;
       }
+
+      /* Ni en la base ni en este navegador: la cuenta es nueva de verdad, y es
+         el único momento en que sembrar categorías no le pisa nada a nadie.
+         Hacerlo en `estadoVacio` o al sanear las devolvería cada vez que
+         alguien las borra. */
+      sembrarCategorias();
+      guardarLocal();
+      cambiosSinSubir = true;
+      await drenarSync();
       return;
     }
 
@@ -1583,6 +1593,38 @@
    * les hayan puesto. Van al final: en una lista que ya tiene categorías
    * propias, el cajón de sastre no encabeza.
    */
+  /**
+   * Las categorías con las que arranca una cuenta nueva.
+   *
+   * Una pantalla de Pendientes vacía no dice qué es una categoría ni para qué
+   * sirve tener subcategorías: hay que imaginarlo antes de poder usarlo. Con
+   * unas cuantas puestas, el árbol se explica solo y lo primero que se hace es
+   * cargar una tarea, no diseñar una taxonomía.
+   *
+   * Se pueden eliminar y renombrar como cualquier otra —no son «Varios», que es
+   * el piso que sostiene que ninguna tarea quede sin categoría—. Y se siembran
+   * UNA sola vez, al crear la cuenta: sembrarlas en cada carga las devolvería
+   * cada vez que alguien las borra.
+   */
+  const CATEGORIAS_DE_ARRANQUE = [
+    { name: 'Auto', hijas: ['Chapista', 'Mecánico'] },
+    { name: 'Casa', hijas: ['Arreglar', 'Comprar'] },
+    { name: 'Salud', hijas: ['Varios'] },
+  ];
+
+  /** Las pone al principio: «Varios» es el cajón de sastre y su lugar es el final. */
+  function sembrarCategorias() {
+    const nuevas = [];
+    for (const { name, hijas } of CATEGORIAS_DE_ARRANQUE) {
+      const madre = { id: newId(), name, padre: null, archivada: false };
+      nuevas.push(madre);
+      for (const hija of hijas) {
+        nuevas.push({ id: newId(), name: hija, padre: madre.id, archivada: false });
+      }
+    }
+    state.pendientes.categorias.unshift(...nuevas);
+  }
+
   function conVarios(categorias) {
     const completas = [...categorias];
     if (!completas.some(c => c.id === VARIOS)) {
@@ -2065,7 +2107,6 @@
     pendBarra: $('#pend-barra'),
     pendLista: $('#pend-lista'),
     pendCalendario: $('#pend-calendario'),
-    pendVacio: $('#pend-vacio'),
     pendMenu: $('#btn-pend-menu'),
     pendOrden: $('#btn-pend-orden'),
     pendOrdenDialog: $('#pend-orden-dialog'),
@@ -5201,14 +5242,6 @@
        que cambia es cómo se agrupa lo que va adentro. */
     el.pendLista.hidden = enCalendario;
     el.pendCalendario.hidden = !enCalendario;
-
-    /* El cartel de bienvenida solo en las listas: en el calendario el mes vacío
-       ya se ve solo, y el cartel taparía la rejilla. */
-    /* «Varios» viene de fábrica, así que no cuenta como algo anotado: con el
-       cartel mirando `categorias.length` no aparecía nunca. */
-    const { categorias, items } = state.pendientes;
-    const propias = categorias.some(c => !esProtegida(c.id));
-    el.pendVacio.hidden = enCalendario || propias || items.length > 0;
 
     renderOrdenPendientes();
 

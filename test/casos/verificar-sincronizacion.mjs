@@ -550,5 +550,60 @@ const ultimo = a => (a.parches.length
     JSON.stringify(parche.status));
 }
 
+// --- una cuenta nueva arranca con categorías puestas ------------------------
+{
+  /* Ni en la base ni en este navegador: la cuenta es nueva de verdad. Una
+     pantalla de Pendientes vacía no dice qué es una categoría ni para qué
+     sirven las subcategorías —hay que imaginarlo antes de poder usarlo—, y con
+     unas puestas el árbol se explica solo.
+
+     Es el ÚNICO momento en que sembrarlas no le pisa nada a nadie: hacerlo al
+     sanear, o en el estado vacío que se usa como pizarra, las devolvería cada
+     vez que alguien las borra. */
+  const a = await montar({ local: null, remoto: null });
+  const cats = () => JSON.parse(a.guardadoEn(CLAVE)).pendientes.categorias;
+
+  const arbol = cats().map(c => (c.padre
+    ? `  ${cats().find(m => m.id === c.padre)?.name} › ${c.name}`
+    : c.name));
+  console.log(`\n=== una cuenta nueva ===\n${arbol.join('\n')}`);
+
+  const raices = cats().filter(c => !c.padre).map(c => c.name);
+  ok('trae Auto, Casa y Salud', raices.join(',') === 'Auto,Casa,Salud,Varios',
+    raices.join(','));
+  /* «Varios» va última: es el cajón de sastre y su lugar es el final, así que
+     las sembradas entran ANTES. */
+  ok('  con «Varios» al final, que es su lugar', raices.at(-1) === 'Varios',
+    raices.join(','));
+
+  const hijasDe = nombre => {
+    const madre = cats().find(c => c.name === nombre && !c.padre);
+    return cats().filter(c => c.padre === madre?.id).map(c => c.name);
+  };
+  ok('  y sus subcategorías', hijasDe('Auto').join(',') === 'Chapista,Mecánico'
+    && hijasDe('Casa').join(',') === 'Arreglar,Comprar'
+    && hijasDe('Salud').join(',') === 'Varios',
+    `${hijasDe('Auto')} · ${hijasDe('Casa')} · ${hijasDe('Salud')}`);
+
+  /* Se pueden borrar como cualquier otra: no son «Varios», que es el piso que
+     sostiene que ninguna tarea quede sin categoría. */
+  const protegidas = cats().filter(c => c.id.startsWith('cat-varios')).map(c => c.name);
+  ok('  las sembradas no son protegidas', protegidas.length === 2, protegidas.join(','));
+
+  // Y quedan subidas: la base tiene lo mismo que el navegador.
+  ok('la cuenta nueva se sube', a.subidas.length === 1, String(a.subidas.length));
+  ok('  con las categorías adentro',
+    a.subidas[0].payload.pendientes.categorias.some(c => c.name === 'Auto'));
+}
+
+{
+  /* Pero con datos previos, no se siembra nada: quien ya tiene una copia en
+     este navegador puede haberlas borrado a propósito. */
+  const a = await montar({ local: estadoCon({}) });
+  const cats = JSON.parse(a.guardadoEn(CLAVE)).pendientes?.categorias ?? [];
+  ok('con datos previos no se siembra nada',
+    !cats.some(c => c.name === 'Auto'), cats.map(c => c.name).join(',') || '(ninguna)');
+}
+
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');
 process.exit(fallos ? 1 : 0);

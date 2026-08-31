@@ -144,9 +144,15 @@ const editarCategoria = (doc, nombre) => {
 
   ok('la sección se muestra', doc.querySelector('#todos').hidden === false);
   ok('  y arranca en la lista', doc.querySelector('#btn-pend-lista').getAttribute('aria-pressed') === 'true');
-  /* El cartel de bienvenida mira que no haya NADA anotado: «Varios» viene de
-     fábrica y no cuenta como algo que alguien haya cargado. */
-  ok('  con el cartel de bienvenida', doc.querySelector('#pend-vacio').hidden === false);
+  /* Sin cartel de bienvenida: las tres tarjetas de estado están siempre, así
+     que la pantalla vacía ya se explica sola —«Sin iniciar 0», «En proceso 0»,
+     «Finalizada 0»— y el «+» está donde está siempre. Un párrafo debajo repetía
+     lo que la pantalla ya decía. */
+  ok('  sin cartel de bienvenida', doc.querySelector('#pend-vacio') === null);
+  ok('    porque las tres tarjetas ya lo dicen',
+    [...doc.querySelectorAll('#pend-lista .pend-grupo-cuenta')].map(c => c.textContent)
+      .join(',') === '0,0,0',
+    [...doc.querySelectorAll('#pend-lista .pend-grupo-cuenta')].map(c => c.textContent).join(','));
   /* El «+» es el mismo botón de Hábitos. Acá no dice qué crea porque pregunta:
      crea las dos cosas, y cuál ya no lo contesta la pantalla. */
   const rotuloFab = () => doc.querySelector('#btn-fab').getAttribute('aria-label');
@@ -227,8 +233,6 @@ const editarCategoria = (doc, nombre) => {
 
   console.log(`\n=== la lista ===\n  ${doc.querySelector('#pend-lista').textContent.replace(/\s+/g, ' ').trim()}`);
 
-  ok('el cartel se va con la primera cosa anotada',
-    doc.querySelector('#pend-vacio').hidden === true);
   ok('las dos categorías están', categorias(doc).join(',') === 'Casa,Cocina', categorias(doc).join(','));
   ok('  y la subcategoría va sangrada adentro de su padre',
     [...doc.querySelectorAll('.pend-nivel-0 .pend-nivel-1 .pend-cat-nombre')]

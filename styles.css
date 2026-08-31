@@ -1565,17 +1565,6 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   white-space: nowrap;
 }
 
-/* El par de vistas, con una puesta: es lo que hay arriba de Pendientes. */
-.guia-vistas {
-  display: flex;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  overflow: hidden;
-  font-size: .58rem;
-  font-weight: 600;
-}
-.guia-vistas span { padding: .25rem .4rem; background: var(--bg-elev); color: var(--text-muted); }
-.guia-vistas .is-activa { background: var(--brand-text); color: var(--brand-fg); }
 
 
 /* El recuadro de la guía recorre solo los cinco estados, en el mismo orden en
@@ -1976,15 +1965,6 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .pend-cal-item.is-llevado { opacity: .45; cursor: grabbing; }
 .pend-cal-item.est-en-proceso { background: var(--partial-bg); border-color: var(--partial-fg); }
 .pend-cal-item.est-finalizada { background: var(--done-bg); border-color: var(--done-fg); }
-
-.pend-vacio {
-  margin: 1.5rem auto 0;
-  max-width: 26rem;
-  text-align: center;
-  font-size: .9rem;
-  line-height: 1.5;
-  color: var(--text-muted);
-}
 
 .field-select {
   font: inherit;
