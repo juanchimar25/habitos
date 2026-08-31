@@ -664,11 +664,14 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
     ok(`la tira que entra por ${lado} arranca corrida`,
       marco.includes(`translateX(${signo}35%)`), marco.replace(/\s+/g, ' '));
     ok('  y termina en su lugar', /translateX\(0\)/.test(marco));
-    /* Corta y con una curva que frena al final: es un acuse de recibo, no un
-       viaje. Más de un cuarto de segundo y la tira se siente pesada. */
+    /* La ventana en la que un movimiento se lee como movimiento. Abajo de dos
+       décimas es un parpadeo —el ojo no lo sigue, así que avisa de un cambio en
+       vez de mostrarlo— y arriba de medio segundo la tira se siente pesada y se
+       interpone. */
     const regla = bloque(new RegExp(`\\n\\.carrete-pista\\.entra-${lado} \\{[^}]*\\}`));
     const dura = Number(regla.match(/([\d.]+)s /)?.[1]);
-    ok(`  en menos de un cuarto de segundo`, dura > 0 && dura < .25, `${dura}s`);
+    ok(`  en un tiempo que se alcanza a ver y no estorba`,
+      dura >= .2 && dura <= .5, `${dura}s`);
   }
 
   /* La tira se mueve adentro de su caja: sin esto, el 35% de corrimiento
@@ -678,6 +681,48 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
     /\n\.carrete \{[^}]*overflow:\s*hidden/.test(css)
       || /\n\.carrete \{ overflow: hidden; \}/.test(css),
     bloque(/\n\.carrete \{[^}]*\}/).replace(/\s+/g, ' '));
+}
+
+// --- «Hoy» se asoma en vez de aparecer de golpe -----------------------------
+{
+  /* Un botón que se materializa al lado del mes se lee como un parpadeo de la
+     pantalla y no como algo que llegó. Se enciende asomándose, y solo AL
+     aparecer: mientras ya está a la vista, cada dibujado lo volvería a animar
+     por nada. */
+  const { doc } = await montar(ESTADO_LLENO);
+  const hoy = () => doc.querySelector('#btn-hoy');
+  const tecla = key => doc.body.dispatchEvent(
+    new doc.defaultView.KeyboardEvent('keydown', { key, bubbles: true }));
+
+  ok('parado en hoy no está, así que no se asoma',
+    hoy().hidden === true && !hoy().classList.contains('asoma'));
+
+  tecla('ArrowRight');
+  ok('al aparecer, se asoma', hoy().hidden === false && hoy().classList.contains('asoma'),
+    hoy().className);
+
+  tecla('ArrowRight');
+  ok('  y estando ya a la vista, no se vuelve a animar',
+    hoy().hidden === false && !hoy().classList.contains('asoma'), hoy().className);
+
+  doc.querySelector('#btn-hoy').click();
+  tecla('ArrowLeft');
+  ok('  pero al volver a aparecer, sí', hoy().classList.contains('asoma'), hoy().className);
+
+  /* Y el movimiento, leído de la hoja: viene del mismo gesto que la tira, así
+     que comparten la curva y el tiempo — se acompañan en vez de competir. */
+  const css = leer('styles.css');
+  const marco = css.match(/@keyframes hoy-asoma \{[\s\S]*?\n\}/)?.[0] ?? '';
+  ok('arranca apagado y un poco más abajo',
+    /opacity:\s*0/.test(marco) && /translateY\(4px\)/.test(marco),
+    marco.replace(/\s+/g, ' '));
+
+  const suyo = css.match(/\n\.month-nav \.month-hoy\.asoma \{[^}]*\}/)?.[0] ?? '';
+  const tira = css.match(/\n\.carrete-pista\.entra-der \{[^}]*\}/)?.[0] ?? '';
+  const receta = txt => txt.match(/animation:\s*[\w-]+\s+(.*?);/)?.[1];
+  ok('  con el mismo tiempo y la misma curva que la tira',
+    Boolean(receta(suyo)) && receta(suyo) === receta(tira),
+    `${receta(suyo)} vs ${receta(tira)}`);
 }
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');

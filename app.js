@@ -2233,7 +2233,13 @@
     /* «Hoy» y el remate de la postura comparten el lugar de la fila. Con una
        postura puesta manda el remate: volver a hoy en medio de una elección
        movería la lista debajo de lo que se está tildando. */
+    /* «Hoy» se enciende asomándose y no de golpe: un botón que se materializa
+       al lado del mes se lee como un parpadeo de la pantalla y no como algo que
+       llegó. Solo al APARECER — mientras ya está a la vista, cada dibujado lo
+       volvería a animar por nada. */
+    const habiaHoy = !el.hoy.hidden;
     el.hoy.hidden = !onHome || Boolean(ui.rowMode) || sameDay(diaActual(), today);
+    el.hoy.classList.toggle('asoma', !el.hoy.hidden && !habiaHoy);
     el.hoy.title = `Volver a hoy, ${fmtFull.format(today)}`;
     el.hoy.setAttribute('aria-label', el.hoy.title);
     renderNudge();

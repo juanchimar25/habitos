@@ -911,6 +911,19 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   font-weight: 600;
 }
 
+/* «Hoy» aparece y desaparece según dónde esté parado el carrete, y aparecía de
+   golpe: un botón que se materializa al lado del mes se lee como un parpadeo de
+   la pantalla, no como algo que llegó.
+
+   Se enciende con la misma curva y el mismo aire que la tira de días —viene del
+   mismo movimiento, así que se acompañan— y desde un poco más abajo, que es de
+   donde vendría si se estuviera asomando. */
+@keyframes hoy-asoma {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.month-nav .month-hoy.asoma { animation: hoy-asoma .3s cubic-bezier(.2, .7, .3, 1); }
+
 /* El nombre del mes es el botón que abre el calendario de meses. Lleva la clase
    `btn`, así que trae el recuadro, el hover y el foco del resto: es un control
    como el selector de vista y conviene que se lea como tal. Lo propio de acá es
@@ -2013,9 +2026,11 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
    movido. Con el deslizamiento, el gesto y lo que pasa en la pantalla son la
    misma cosa.
 
-   Corta —180ms— y con una curva que frena al final: es un acuse de recibo, no
-   un viaje. Y entra desde un 35% y no desde el borde: el ojo tiene que alcanzar
-   a leer que son los mismos días corridos.
+   Con una curva que frena al final, y entrando desde un 35% y no desde el
+   borde: el ojo tiene que alcanzar a leer que son los mismos días corridos.
+
+   Empezó en 180ms y se sentía un parpadeo — el movimiento terminaba antes de
+   que el ojo lo siguiera, así que avisaba de un cambio en vez de mostrarlo.
 
    Quien pidió reducir el movimiento no lo ve: la regla del final del archivo le
    deja `.01ms`, y acá eso es exactamente lo que corresponde —la tira aparece
@@ -2029,8 +2044,8 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   from { transform: translateX(-35%); opacity: 0; }
   to   { transform: translateX(0);    opacity: 1; }
 }
-.carrete-pista.entra-der { animation: carrete-entra-der .18s cubic-bezier(.2, .7, .3, 1); }
-.carrete-pista.entra-izq { animation: carrete-entra-izq .18s cubic-bezier(.2, .7, .3, 1); }
+.carrete-pista.entra-der { animation: carrete-entra-der .3s cubic-bezier(.2, .7, .3, 1); }
+.carrete-pista.entra-izq { animation: carrete-entra-izq .3s cubic-bezier(.2, .7, .3, 1); }
 
 /* La tira se mueve adentro de su caja y no arrastra a la pantalla con ella. */
 .carrete { overflow: hidden; }

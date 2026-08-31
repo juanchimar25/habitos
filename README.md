@@ -1419,10 +1419,21 @@ agrupar no hay tarjetas**, así que es la única de las tres que muestra algo ap
   >
   > **La tira que entra se desliza desde el lado hacia el que fue el dedo.** Pasar de semana cambia
   > los siete números de una vez, y sin eso no se veía de dónde salieron: parecía que la tira se
-  > había reescrito y no que se había movido. Son 180ms y un corrimiento del 35% —el ojo tiene que
+  > había reescrito y no que se había movido. Son 300ms y un corrimiento del 35% —el ojo tiene que
   > alcanzar a leer que son los mismos días corridos—, y el carrete recorta lo que se sale, que si no
   > el corrimiento empuja el ancho de la pantalla. Moverse de a **un** día no anima nada: ahí la tira
   > corre un lugar y se ve sola.
+  >
+  > Empezó en 180ms y se sentía un parpadeo: el movimiento terminaba antes de que el ojo lo
+  > siguiera, así que avisaba de un cambio en vez de mostrarlo. La ventana en la que un movimiento
+  > se lee como movimiento va de dos décimas a medio segundo, y el caso la fija así en vez de clavar
+  > un número — abajo parpadea, arriba la tira se siente pesada y se interpone.
+  >
+  > **«Hoy» se asoma con la misma receta.** Aparece y desaparece según dónde esté parado el carrete,
+  > y se materializaba al lado del mes: eso se lee como un parpadeo de la pantalla y no como algo
+  > que llegó. Ahora se enciende desde un poco más abajo, con el mismo tiempo y la misma curva que
+  > la tira —viene del mismo movimiento, así que se acompañan en vez de competir— y **solo al
+  > aparecer**: mientras ya está a la vista, cada dibujado lo volvería a animar por nada.
   >
   > Quien pidió reducir el movimiento no lo ve: la regla del final de `styles.css` le deja `.01ms` y
   > acá eso es exactamente lo que corresponde —la tira aparece puesta, sin viaje—. Al revés que el
