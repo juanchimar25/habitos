@@ -290,6 +290,8 @@
      * y ahí no hay nada que anunciar — se ve solo.
      */
     carreteEntraDesde: /** @type {'izquierda'|'derecha'|null} */ (null),
+    /** Lo mismo para la rejilla del calendario de Pendientes, que pasa de mes. */
+    calEntraDesde: /** @type {'izquierda'|'derecha'|null} */ (null),
     /** El día del calendario que está abierto, si hay alguno. */
     diaDelCalendario: /** @type {string|null} */ (null),
     /**
@@ -1991,6 +1993,8 @@
     confirmList: $('#confirm-list'),
     confirmNote: $('#confirm-note'),
     confirmOk: $('#confirm-ok'),
+    confirmOkTexto: $('#confirm-ok-texto'),
+    confirmOkCuenta: $('#confirm-ok-cuenta'),
     toast: $('#toast'),
     theme: $('#btn-theme'),
     taskTools: $('#task-tools'),
@@ -2149,6 +2153,7 @@
     jumpTitle: $('#jump-title'),
     jumpLabel: $('#jump-label'),
     jumpGrid: $('#jump-grid'),
+    jumpDows: $('#jump-dows'),
   };
 
   // ---------------------------------------------------------
@@ -3518,11 +3523,23 @@
   //  moviéndose de a siete días, esa entrada era un camino más largo para lo
   //  mismo, y sin ella el modo se quedó sin puerta.
 
-  /** Año que muestra el diálogo, independiente del que está a la vista. */
+  /**
+   * Qué escala muestra el diálogo: los días de un mes o los meses de un año.
+   *
+   * Abre en los días, que es la respuesta a «llevame a tal fecha». Los meses
+   * son el paso previo cuando el destino está lejos, y se llega a ellos tocando
+   * el rótulo del medio — como en cualquier calendario.
+   */
+  let jumpEscala = /** @type {'dias'|'meses'} */ ('dias');
+
+  /** Y qué mes o año, independiente del que está a la vista. */
   let jumpYear = today.getFullYear();
+  let jumpMonth = today.getMonth();
 
   function openJump() {
+    jumpEscala = 'dias';
     jumpYear = ui.year;
+    jumpMonth = ui.month;
     renderJump();
     el.jumpDialog.showModal();
     // Al título, no a la grilla: si no, el anillo de foco rodea la grilla entera.
@@ -3530,16 +3547,60 @@
   }
 
   function renderJump() {
-    el.jumpLabel.textContent = String(jumpYear);
+    const enDias = jumpEscala === 'dias';
+
+    el.jumpLabel.textContent = enDias
+      ? capitalizeFirstLetter(labelDeMes(jumpYear, jumpMonth))
+      : String(jumpYear);
+    el.jumpLabel.title = enDias ? 'Ver los meses del año' : 'Volver a los días';
+    el.jumpLabel.setAttribute('aria-label', el.jumpLabel.title);
+
+    $('#jump-prev').setAttribute('aria-label', enDias ? 'Mes anterior' : 'Año anterior');
+    $('#jump-next').setAttribute('aria-label', enDias ? 'Mes siguiente' : 'Año siguiente');
+
+    el.jumpGrid.classList.toggle('es-dias', enDias);
+    el.jumpDows.hidden = !enDias;
     el.jumpGrid.innerHTML = '';
 
+    if (enDias) renderJumpDias();
+    else renderJumpMeses();
+  }
+
+  function renderJumpDias() {
+    if (!el.jumpDows.children.length) {
+      for (const dia of ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom']) {
+        el.jumpDows.appendChild(elem('span', 'jump-dow', dia));
+      }
+    }
+
+    const dias = monthDays(jumpYear, jumpMonth);
+    /* La rejilla arranca en el lunes de la semana del día 1; si no, los días no
+       caerían debajo del nombre que les corresponde. */
+    const relleno = (dias[0].getDay() + 6) % 7;
+    for (let i = 0; i < relleno; i++) {
+      el.jumpGrid.appendChild(elem('span', 'jump-hueco'));
+    }
+
+    for (const dia of dias) {
+      const btn = boton('jump-cell', {
+        text: String(dia.getDate()),
+        title: capitalizeFirstLetter(fmtFull.format(dia)),
+      });
+      btn.dataset.fecha = dateKey(dia);
+      /* `is-current` es el día que se está mirando; `is-today`, el día real. */
+      btn.classList.toggle('is-current', sameDay(dia, diaActual()));
+      btn.classList.toggle('is-today', sameDay(dia, today));
+      el.jumpGrid.appendChild(btn);
+    }
+  }
+
+  function renderJumpMeses() {
     for (let m = 0; m < 12; m++) {
       const btn = boton('jump-cell', {
         text: capitalizeFirstLetter(fmtMonthName.format(new Date(jumpYear, m, 1))),
-        title: labelDeMes(jumpYear, m),
+        title: `Ver los días de ${labelDeMes(jumpYear, m)}`,
       });
       btn.dataset.month = String(m);
-      /* `is-current` es el mes que se está mirando; `is-today`, el mes real. */
       btn.classList.toggle('is-current', jumpYear === ui.year && m === ui.month);
       btn.classList.toggle('is-today',
         jumpYear === today.getFullYear() && m === today.getMonth());
@@ -3547,28 +3608,41 @@
     }
   }
 
+  /** Las flechas mueven la escala que esté puesta: un mes o un año. */
   function shiftJump(delta) {
-    jumpYear += delta;
+    if (jumpEscala === 'meses') {
+      jumpYear += delta;
+    } else {
+      const d = new Date(jumpYear, jumpMonth + delta, 1);
+      jumpYear = d.getFullYear();
+      jumpMonth = d.getMonth();
+    }
     renderJump();
-  }
-
-  /**
-   * Salta a un mes. Cae en el día 1, salvo que sea el mes de hoy: ahí el
-   * destino evidente es hoy, que es donde se carga.
-   */
-  function jumpToMonth(year, month) {
-    const esDeHoy = year === today.getFullYear() && month === today.getMonth();
-    irAlDia(esDeHoy ? today : new Date(year, month, 1));
   }
 
   el.monthLabel.addEventListener('click', openJump);
   $('#jump-prev').addEventListener('click', () => shiftJump(-1));
   $('#jump-next').addEventListener('click', () => shiftJump(1));
 
+  el.jumpLabel.addEventListener('click', () => {
+    jumpEscala = jumpEscala === 'dias' ? 'meses' : 'dias';
+    renderJump();
+  });
+
   el.jumpGrid.addEventListener('click', e => {
     const btn = e.target.closest('.jump-cell');
     if (!btn) return;
-    jumpToMonth(jumpYear, Number(btn.dataset.month));
+
+    /* Elegir un mes NO navega: baja a sus días. El diálogo contesta «a qué
+       fecha», y un mes todavía no es una — antes caía en el día 1, que era una
+       respuesta inventada. */
+    if (btn.dataset.month !== undefined) {
+      jumpMonth = Number(btn.dataset.month);
+      jumpEscala = 'dias';
+      return renderJump();
+    }
+
+    irAlDia(parseDateKey(btn.dataset.fecha));
     el.jumpDialog.close();
   });
 
@@ -4587,7 +4661,65 @@
    *   por omisión) o con el color de la marca ('marca'), para lo que confirma
    *   sin destruir nada. Los tres vuelven a su valor al cerrarse el diálogo.
    */
+  /**
+   * Cuántos segundos espera el botón de una confirmación que lo pida.
+   *
+   * Diez es bastante más que un parpadeo y bastante menos que un trámite: lo
+   * suficiente para que nadie llegue de un doble clic con impulso, y no tanto
+   * como para que quien decidió de verdad se quede mirando la pantalla.
+   */
+  const ESPERA_CONFIRMAR = 10;
+
+  /** El reloj de la espera, si hay uno andando. */
+  let relojConfirmar = null;
+
+  function frenarCuentaAtras() {
+    if (relojConfirmar === null) return;
+    clearInterval(relojConfirmar);
+    relojConfirmar = null;
+  }
+
+  /**
+   * El botón se abre recién después de unos segundos, contándolos a la vista.
+   *
+   * Es para lo que no tiene vuelta: un botón disponible en el mismo lugar donde
+   * el anterior acaba de estar se puede tocar sin haber leído nada, arrastrado
+   * por el impulso del clic que abrió esta pantalla. Los segundos no son un
+   * castigo — son el tiempo de leer la única frase que hay.
+   *
+   * Se cuenta hacia abajo y a la vista: un botón apagado y mudo se lee como
+   * roto, y el número dice que la espera termina.
+   */
+  function abrirDespuesDe(segundos, rotulo) {
+    frenarCuentaAtras();
+
+    // El hueco del número queda reservado hasta que el diálogo se cierre.
+    el.confirmOk.classList.add('con-cuenta');
+
+    let restan = segundos;
+    const pintar = () => {
+      const esperando = restan > 0;
+      el.confirmOk.disabled = esperando;
+      /* Se INTERCAMBIAN las clases: mientras espera no es el botón rojo apagado
+         —que se ve vacío— sino otro botón, de contorno. El «todavía no» y el
+         «ahora sí» se distinguen sin leer el número. */
+      el.confirmOk.classList.toggle('btn-espera', esperando);
+      el.confirmOk.classList.toggle('btn-danger', !esperando);
+      /* El rótulo no se toca: solo cambia el hueco del número, que mide
+         siempre lo mismo. El botón no cambia de ancho en toda la cuenta. */
+      el.confirmOkCuenta.textContent = esperando ? ` (${restan})` : '';
+    };
+    pintar();
+
+    relojConfirmar = setInterval(() => {
+      restan -= 1;
+      pintar();
+      if (restan <= 0) frenarCuentaAtras();
+    }, 1000);
+  }
+
   function confirmAction(text, onOk, opts = {}) {
+    frenarCuentaAtras();
     el.confirmText.textContent = text;
 
     /* Dos formas de listar lo afectado: nombres sueltos, o nombre y dato a los
@@ -4607,10 +4739,18 @@
       el.confirmList.appendChild(li);
     }
 
+    /* El rojo es para lo que no se puede deshacer, y se guarda para la última
+       puerta: puesto en cada confirmación dejaría de avisar de nada. */
+    el.confirmText.classList.toggle('es-irreversible', Boolean(opts.irreversible));
+
     el.confirmNote.textContent = opts.note || '';
     el.confirmNote.hidden = !opts.note;
 
-    el.confirmOk.textContent = opts.ok || OK_POR_DEFECTO;
+    const rotulo = opts.ok || OK_POR_DEFECTO;
+    el.confirmOkTexto.textContent = rotulo;
+    el.confirmOkCuenta.textContent = '';
+    el.confirmOk.disabled = false;
+    el.confirmOk.classList.remove('btn-espera', 'con-cuenta');
     /* El rojo es una advertencia, no una decoración: se guarda para lo que
        borra o reemplaza. Confirmar una corrección sobre un día viejo no
        destruye nada, y pintarla de rojo diría lo contrario. */
@@ -4618,11 +4758,18 @@
     el.confirmOk.classList.toggle('btn-danger', !marca);
     el.confirmOk.classList.toggle('btn-brand', marca);
 
+    /* La espera se arma acá: antes de mostrar el diálogo —si no, el botón
+       aparece un instante con el rótulo entero y encendido, un parpadeo que
+       invita justo al toque que la espera quiere evitar— y después del color,
+       porque se lo cambia. */
+    if (opts.esperar) abrirDespuesDe(ESPERA_CONFIRMAR, rotulo);
+
     ui.onConfirm = onOk;
     el.confirmDialog.showModal();
   }
 
   el.confirmOk.addEventListener('click', () => {
+    frenarCuentaAtras();
     el.confirmDialog.close();
     const fn = ui.onConfirm;
     ui.onConfirm = null;
@@ -4643,6 +4790,8 @@
    * regreso sin ningún caso que lo cuide. Así queda cubierto lo que se toca.
    */
   function cerrarDialogo(dlg) {
+    // Salirse de una confirmación deja su espera sin nada que abrir.
+    if (dlg === el.confirmDialog) frenarCuentaAtras();
     dlg.close();
     /* Salirse del formulario de categorías estando en un viaje devuelve al alta
        de la tarea, con lo escrito y la categoría que tenía antes. Sin esto, la
@@ -5261,6 +5410,12 @@
     }
 
     const rejilla = elem('div', 'pend-cal-rejilla');
+    /* Se dibuja de cero en cada mes, así que la clase entra con el nodo: no hace
+       falta el saca-y-pone que sí necesita la tira de días, que reusa el suyo. */
+    if (ui.calEntraDesde) {
+      rejilla.classList.add(ui.calEntraDesde === 'derecha' ? 'entra-der' : 'entra-izq');
+      ui.calEntraDesde = null;
+    }
     const dias = monthDays();
 
     /* La rejilla arranca en el lunes de la semana del día 1; si no, los días no
@@ -5710,8 +5865,11 @@
      día a otro— es lo único que no puede confundirse con este: por eso queda
      afuera. Los dos son un dedo moviéndose, y lo que los separa es dónde
      arrancan. */
-  const desliz = deslizarDeCostado(el.pendCalendario, paso => goToMonth(paso),
-    { salvo: '[data-pendiente]' });
+  const desliz = deslizarDeCostado(el.pendCalendario, paso => {
+    // La rejilla nueva entra por donde fue el dedo, como la tira de Hábitos.
+    ui.calEntraDesde = paso > 0 ? 'derecha' : 'izquierda';
+    goToMonth(paso);
+  }, { salvo: '[data-pendiente]' });
 
   function moverPendiente(id, fecha) {
     const p = pendientePorId(id);
@@ -6239,19 +6397,36 @@
     location.reload();
   }
 
+  /* Dos puertas y no una. La primera cuenta QUÉ se pierde, con la lista y el
+     recordatorio de exportar; la segunda pregunta si de verdad, en rojo y sin
+     nada más que leer.
+
+     No es una confirmación repetida por las dudas: son dos preguntas distintas
+     —«¿sabés qué se borra?» y «¿estás seguro?»— y la segunda existe porque acá
+     no hay papelera, ni deshacer, ni una copia en la base que alguien pueda
+     restaurar. Todo lo demás que borra la app se puede recuperar; esto no. */
   el.deleteAccount.addEventListener('click', () => {
     confirmAction(
-      'Se elimina tu cuenta y todo lo que cargaste. No se puede deshacer.',
-      eliminarCuenta,
+      'Se elimina tu cuenta y todo lo que cargaste.',
+      confirmarQueDeVerdad,
       {
         items: [currentUserEmail || 'Tu cuenta'],
-        ok: 'Eliminar cuenta',
+        ok: 'Continuar',
         note: 'Se borran las tareas de todos los meses, las tareas pendientes, las '
           + 'plantillas propias y el recordatorio. Si querés conservar una copia, '
           + 'salí de acá y usá ☰ → Exportar antes.',
       },
     );
   });
+
+  function confirmarQueDeVerdad() {
+    confirmAction(
+      '¿Seguro? Esta acción es irreversible: se pierde toda tu información y no '
+        + 'hay manera de recuperarla.',
+      eliminarCuenta,
+      { ok: 'Eliminar definitivamente', irreversible: true, esperar: true },
+    );
+  }
 
   // ---------------------------------------------------------
   // Pendientes: Archivo y Papelera
@@ -7206,14 +7381,21 @@
     }
   });
 
-  // Red de seguridad: el rótulo lo fija confirmAction en cada apertura, pero
-  // dejarlo en el valor por defecto evita que un diálogo cerrado se quede
-  // mostrando "Reemplazar" si alguien lo abriera por otro camino.
-  el.confirmDialog.addEventListener('close', () => {
-    el.confirmOk.textContent = OK_POR_DEFECTO;
-    el.confirmOk.classList.add('btn-danger');
-    el.confirmOk.classList.remove('btn-brand');
-  });
+  /* Acá vivía una «red de seguridad» que al cerrar reponía el rótulo por
+     defecto. Era peor que el problema que atajaba.
+
+     `close()` no dispara su evento en el acto: lo ENCOLA. Cuando una
+     confirmación abre otra —la baja de cuenta pasa por dos—, el orden real es
+     cerrar, armar la segunda, y recién entonces correr la tarea encolada. Esa
+     tarea llegaba tarde y le pisaba el botón a la segunda: aparecía «Eliminar»
+     con la cuenta atrás andando por dentro, hasta que un segundo después el
+     reloj lo repintaba. De ahí el baile de rótulos.
+
+     No hace falta ninguna red: `confirmAction` fija el rótulo y las clases en
+     CADA apertura, que es la única forma de abrirlo. Lo que había que evitar
+     —un diálogo mostrando el rótulo de otro— no puede pasar por ahí.
+
+     Y jsdom no dispara `close`, así que ningún caso podía verlo. */
 
   // ---------------------------------------------------------
   // Tema

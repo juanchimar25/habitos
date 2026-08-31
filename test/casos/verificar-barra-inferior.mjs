@@ -128,7 +128,16 @@ const TABS = [
 
 // --- 5. Ajustes: la sesión y el plan --------------------------------------
 {
-  const { doc } = await montar(ESTADO_LLENO, { ruta: 'ajustes' });
+  const { window, doc } = await montar(ESTADO_LLENO, { ruta: 'ajustes' });
+
+  /* El reloj de la cuenta atrás, manejado desde acá: esperar diez segundos de
+     verdad sería diez segundos de suite por una comprobación. Se reemplaza el
+     `setInterval` de la ventana ANTES de que nadie lo use, y `tic()` corre lo
+     que la app le pasó. Es el camino real, sin el reloj. */
+  const relojes = [];
+  window.setInterval = fn => relojes.push(fn);
+  window.clearInterval = () => relojes.length = 0;
+  const tic = () => relojes.forEach(fn => fn());
 
   /* El arnés no carga `auth.js` —importa un módulo por CDN—, así que los datos
      de la sesión llegan vacíos. Lo que se comprueba acá es que el lugar donde
@@ -152,19 +161,174 @@ const TABS = [
     doc.querySelector('#btn-delete-account').className.includes('session-delete')
       && !doc.querySelector('#btn-sign-out').className.includes('session-delete'));
 
-  /* Eliminar la cuenta pide confirmación y dice todo lo que se lleva: es la
-     única acción de la app que no se puede deshacer ni desde la papelera. */
+  /* Eliminar la cuenta pasa por DOS puertas. No es una confirmación repetida
+     por las dudas: son dos preguntas distintas —«¿sabés qué se borra?» y
+     «¿estás seguro?»— y la segunda existe porque acá no hay papelera, ni
+     deshacer, ni una copia en la base que alguien pueda restaurar. Todo lo
+     demás que borra la app se puede recuperar; esto no. */
   doc.querySelector('#btn-delete-account').click();
   const dialogo = doc.querySelector('#confirm-dialog');
+  const texto = () => doc.querySelector('#confirm-text');
+
   ok('  y pide confirmación antes de nada', dialogo.hasAttribute('open'));
-  ok('    diciendo que no tiene vuelta',
-    /No se puede deshacer/.test(doc.querySelector('#confirm-text').textContent),
-    doc.querySelector('#confirm-text').textContent);
+  ok('    diciendo qué se elimina',
+    /Se elimina tu cuenta y todo lo que cargaste/.test(texto().textContent),
+    texto().textContent);
   ok('    qué se lleva puesto',
     /pendientes/.test(doc.querySelector('#confirm-note').textContent),
     doc.querySelector('#confirm-note').textContent);
   ok('    y ofreciendo la copia antes de borrar',
     /Exportar/.test(doc.querySelector('#confirm-note').textContent));
+  /* La primera no borra: continúa. Un botón que dice «Eliminar cuenta» y no la
+     elimina prometería lo que no hace. */
+  ok('    con un botón que no promete borrar todavía',
+    doc.querySelector('#confirm-ok').textContent === 'Continuar',
+    doc.querySelector('#confirm-ok').textContent);
+  ok('    y sin el rojo del aviso, que es de la última puerta',
+    !texto().classList.contains('es-irreversible'), texto().className);
+
+  // La segunda: la pregunta sola, en rojo.
+  doc.querySelector('#confirm-ok').click();
+  ok('  confirmar abre una segunda pantalla', dialogo.hasAttribute('open'));
+  ok('    preguntando si de verdad', /¿Seguro\?/.test(texto().textContent),
+    texto().textContent);
+  ok('    diciendo que es irreversible y que se pierde todo',
+    /irreversible/.test(texto().textContent)
+      && /no hay manera de recuperarla/.test(texto().textContent),
+    texto().textContent);
+  ok('    en rojo', texto().classList.contains('es-irreversible'), texto().className);
+  ok('    y ahí sí el botón lo dice',
+    doc.querySelector('#confirm-ok').textContent.startsWith('Eliminar definitivamente'),
+    doc.querySelector('#confirm-ok').textContent);
+
+  /* Sin nada más que leer: la lista y la nota ya se leyeron en la primera, y
+     repetirlas acá enterraría la única pregunta que queda. */
+  ok('    sin nada más en la pantalla',
+    doc.querySelector('#confirm-list').hidden && doc.querySelector('#confirm-note').hidden);
+
+  /* Y el botón espera diez segundos antes de abrirse. Disponible en el mismo
+     lugar donde el anterior acaba de estar, se puede tocar sin haber leído
+     nada, arrastrado por el impulso del clic que abrió esta pantalla.
+
+     La cuenta se ve: un botón apagado y mudo se lee como roto, y el número dice
+     que la espera termina. */
+  const boton = () => doc.querySelector('#confirm-ok');
+  ok('    arrancando apagado', boton().disabled === true);
+  ok('    con los segundos a la vista, desde el primer dibujado',
+    boton().textContent === 'Eliminar definitivamente (10)', boton().textContent);
+  /* Contorno mientras espera y relleno cuando se abre: el «todavía no» y el
+     «ahora sí» se distinguen sin leer el número.
+
+     Y no alcanza con apagarlo: `.btn:disabled` lo deja al 45%, y un rojo al 45%
+     con texto blanco al 45% se ve como un botón VACÍO. */
+  ok('    y con el aspecto de lo que todavía no se puede tocar',
+    boton().classList.contains('btn-espera') && !boton().classList.contains('btn-danger'),
+    boton().className);
+
+  // El reloj es el de la ventana: se lo maneja desde acá para no esperarlo.
+  tic();
+  ok('    que bajan', boton().textContent === 'Eliminar definitivamente (9)',
+    boton().textContent);
+  ok('      todavía apagado', boton().disabled === true);
+
+  for (let i = 0; i < 9; i++) tic();
+  ok('    y al llegar a cero se abre', boton().disabled === false);
+  ok('      con el rótulo limpio', boton().textContent === 'Eliminar definitivamente',
+    boton().textContent);
+  ok('      y el relleno rojo, que es el de la acción que ya se puede hacer',
+    !boton().classList.contains('btn-espera') && boton().classList.contains('btn-danger'),
+    boton().className);
+
+  /* Y los dos aspectos, leídos de la hoja. El que espera fue un rectángulo
+     vacío durante dos versiones: era `.btn-danger` con parches encima, y había
+     que ganarle a dos reglas —el relleno del rojo y el 45% de `.btn:disabled`—.
+     Un rojo al 45% con texto blanco al 45% no es un botón apagado, es un botón
+     invisible. Ahora es otro botón, sin nada que sobreescribir. */
+  const css = leer('styles.css');
+  const bloque = re => css.match(re)?.[0] ?? '';
+
+  const espera = bloque(/\n\.btn\.btn-espera,\n\.btn\.btn-espera:disabled \{[^}]*\}/);
+  ok('el que espera se pinta con su propia regla', Boolean(espera), '(sin regla)');
+  ok('  de contorno rojo y sin relleno',
+    /background:\s*transparent/.test(espera) && /color:\s*var\(--danger\)/.test(espera),
+    espera.replace(/\s+/g, ' '));
+  /* Lo que lo volvía invisible. La regla se nombra a sí misma con `:disabled`
+     para ganarle a `.btn:disabled` por especificidad y no por orden. */
+  ok('  reponiendo la opacidad que le saca «.btn:disabled»',
+    /opacity:\s*1/.test(espera) && espera.includes('.btn.btn-espera:disabled'),
+    espera.replace(/\s+/g, ' '));
+
+  const rojo = bloque(/\n\.btn-danger \{[^}]*\}/);
+  ok('y el que ya se puede tocar va rojo sólido con letras blancas',
+    /background:\s*var\(--danger\)/.test(rojo) && /color:\s*#fff/.test(rojo),
+    rojo.replace(/\s+/g, ' '));
+
+  /* El botón no cambia de ancho en toda la cuenta. No es cosmética: con el
+     diálogo en la capa superior, un botón que se achica con cada dígito deja al
+     navegador pintando donde ya no está, y se veía VACÍO hasta que algo forzaba
+     un recálculo — abrir el inspector, por ejemplo—.
+
+     El rótulo y el número son dos huecos: el segundo mide siempre lo mismo, así
+     que el que cambia no mueve al otro. */
+  ok('el rótulo y la cuenta son dos huecos',
+    Boolean(doc.querySelector('#confirm-ok-texto'))
+      && Boolean(doc.querySelector('#confirm-ok-cuenta')));
+
+  const hueco = bloque(/\n#confirm-ok\.con-cuenta \.confirm-cuenta \{[^}]*\}/);
+  ok('  y el del número mide siempre lo mismo', /min-width/.test(hueco),
+    hueco.replace(/\s+/g, ' ') || '(sin regla)');
+  ok('    también cuando ya está vacío, al final de la cuenta',
+    doc.querySelector('#confirm-ok').classList.contains('con-cuenta'),
+    doc.querySelector('#confirm-ok').className);
+  /* Y por dentro, cifras de ancho parejo: sin eso el 1 es más angosto que el 8
+     y el rótulo tiembla aunque la caja no se mueva. */
+  ok('  con cifras de ancho parejo',
+    /font-variant-numeric:\s*tabular-nums/.test(bloque(/\n\.confirm-cuenta \{[^}]*\}/)),
+    bloque(/\n\.confirm-cuenta \{[^}]*\}/).replace(/\s+/g, ' '));
+
+  /* Y el hueco no se le queda a la próxima confirmación, que no cuenta nada. */
+  doc.querySelector('#confirm-dialog [data-close-dialog]').click();
+  doc.querySelector('#btn-delete-account').click();
+  ok('    y no se le queda a la que no cuenta nada',
+    !doc.querySelector('#confirm-ok').classList.contains('con-cuenta'),
+    doc.querySelector('#confirm-ok').className);
+  doc.querySelector('#confirm-dialog [data-close-dialog]').click();
+
+  /* Y lo que un navegador hace y jsdom no: `close()` NO dispara su evento en el
+     acto, lo ENCOLA. Encadenando dos confirmaciones, el orden real es cerrar,
+     armar la segunda, y recién entonces correr la tarea encolada — que llega
+     tarde, sobre el botón de la segunda.
+
+     Había un oyente de `close` que reponía el rótulo por defecto, y eso es
+     exactamente lo que le pisaba: aparecía «Eliminar» con la cuenta atrás
+     andando por dentro. Acá se dispara el evento a mano, que es la única forma
+     de que un caso vea ese orden. */
+  doc.querySelector('#confirm-dialog [data-close-dialog]').click();
+  doc.querySelector('#btn-delete-account').click();
+  doc.querySelector('#confirm-ok').click();
+  doc.querySelector('#confirm-dialog')
+    .dispatchEvent(new doc.defaultView.Event('close'));
+
+  ok('el «close» que llega tarde no le pisa el botón a la segunda puerta',
+    boton().textContent === 'Eliminar definitivamente (10)', boton().textContent);
+  ok('  ni le devuelve el color del que ya se puede tocar',
+    boton().classList.contains('btn-espera') && !boton().classList.contains('btn-danger'),
+    boton().className);
+  doc.querySelector('#confirm-dialog [data-close-dialog]').click();
+
+  /* Y la espera no se le pega a la próxima confirmación: cualquier otra abre
+     con su botón listo. */
+  doc.querySelector('#confirm-dialog [data-close-dialog]').click();
+  doc.querySelector('#btn-delete-account').click();
+  ok('  la primera puerta no hace esperar',
+    boton().disabled === false && !boton().classList.contains('btn-espera'),
+    boton().className);
+
+  /* Y el rojo tampoco se queda pegado: la próxima confirmación de cualquier
+     otra cosa no tiene por qué heredarlo. */
+  ok('  y el rojo no se arrastra a la siguiente',
+    !texto().classList.contains('es-irreversible'), texto().className);
+  doc.querySelector('#confirm-dialog [data-close-dialog]').click();
   ok('el plan tiene su tarjeta', Boolean(doc.querySelector('#plan-name')));
 
   // Y no quedó una segunda copia en el cajón.

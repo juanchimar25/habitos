@@ -395,7 +395,7 @@
              desliza de a siete días y al llegar al borde cruza de mes—, «Hoy» y
              las teclas ← →. -->
         <button type="button" id="month-label" class="btn month-label"
-                aria-haspopup="dialog" title="Elegir mes">—</button>
+                aria-haspopup="dialog" title="Elegir fecha">—</button>
 
         <!-- A la derecha del mes: elige el orden de «Puntos» y «Porcentajes».
              Muestra el dibujo del orden PUESTO —como el botón del tema— y abre
@@ -1450,25 +1450,37 @@
     </div>
   </dialog>
 
-  <!-- Seleccionar mes: los saltos largos. Los cortos los hace el carrete, que
+  <!-- Seleccionar fecha: los saltos largos. Los cortos los hace el carrete, que
        llega a cualquier día deslizándose y con las teclas ← →.
 
-       Tuvo un segundo modo, de DÍAS, que se abría desde «☰ → Ir a una fecha…».
-       Con el carrete moviéndose de a siete días y el mes a un toque, esa entrada
-       era un camino más largo para lo mismo. -->
+       Dos escalas en el mismo calendario: los días de un mes y los meses de un
+       año, y el rótulo del medio pasa de una a la otra. Tuvo el modo de DÍAS en
+       un diálogo aparte, detrás de «☰ → Ir a una fecha…»; se fue cuando el
+       carrete pasó a moverse de a siete días, y vuelve acá adentro en vez de
+       detrás de otra puerta. -->
   <dialog id="jump-dialog" class="dialog">
     <div class="dialog-form">
       <!-- Cierra y nada más: por eso es una ✕ en la esquina y no un botón en la
            fila de acciones, donde competía con el que sí decide algo. -->
       <button type="button" class="dialog-close" data-close-dialog
               aria-label="Cerrar" title="Cerrar">✕</button>
-      <h2 id="jump-title" tabindex="-1">Seleccionar mes</h2>
+      <h2 id="jump-title" tabindex="-1">Seleccionar fecha</h2>
 
+      <!-- El rótulo del medio es un botón: dice qué se está mirando y, tocado,
+           cambia de escala —de los días de un mes a los meses de un año—. Es la
+           misma idea que en cualquier calendario, y evita un segundo control
+           para lo mismo. Las flechas mueven la escala que esté puesta: un mes
+           entre los días, un año entre los meses. -->
       <div class="jump-head">
         <button type="button" id="jump-prev" class="btn icon-btn" aria-label="Anterior">◀</button>
-        <span class="jump-label" id="jump-label">—</span>
+        <button type="button" class="jump-label" id="jump-label"
+                aria-haspopup="true">—</button>
         <button type="button" id="jump-next" class="btn icon-btn" aria-label="Siguiente">▶</button>
       </div>
+
+      <!-- Solo con los días a la vista: entre los meses no hay días de la
+           semana que encabezar. -->
+      <div class="jump-dows" id="jump-dows" hidden></div>
 
       <div class="jump-grid" id="jump-grid"></div>
     </div>
@@ -1483,7 +1495,12 @@
       <p id="confirm-note" class="confirm-note" hidden></p>
       <div class="dialog-actions">
         <button type="button" class="btn" data-close-dialog>Cancelar</button>
-        <button type="button" class="btn btn-danger" id="confirm-ok">Eliminar</button>
+        <!-- El rótulo y la cuenta atrás van en dos huecos: el segundo mide
+             siempre lo mismo, así el botón no cambia de ancho mientras los
+             dígitos se caen. -->
+        <button type="button" class="btn btn-danger" id="confirm-ok"><span
+          id="confirm-ok-texto">Eliminar</span><span class="confirm-cuenta"
+          id="confirm-ok-cuenta"></span></button>
       </div>
     </div>
   </dialog>

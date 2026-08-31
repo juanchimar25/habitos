@@ -717,6 +717,50 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn-danger:hover { filter: brightness(1.08); background: var(--danger); border-color: var(--danger); }
 
+/* El que todavía no se puede tocar, mientras cuenta los segundos.
+
+   Es un botón APARTE y no `.btn-danger` con parches encima: mientras espera se
+   le saca esa clase y se le pone esta. Puesto como modificador sobre el rojo,
+   había que ganarle a dos reglas —el relleno de `.btn-danger` y el 45% de
+   `.btn:disabled`—, y bastaba con que alguna se moviera de lugar para que el
+   botón volviera a ser un rectángulo vacío: rojo al 45% con texto blanco al 45%
+   no es un botón apagado, es un botón invisible.
+
+   Contorno mientras espera y relleno cuando se abre: es el mismo par que
+   distingue «Cerrar sesión» de «Eliminar cuenta» en Ajustes, y acá separa el
+   «todavía no» del «ahora sí» sin que haya que leer el número.
+
+   La opacidad se repone con `:disabled` en el propio selector —más específico
+   que `.btn:disabled`, gane quien gane el orden del archivo—, y el cursor dice
+   `default` y no `not-allowed`: no está prohibido, está por abrirse. */
+/* El hueco de la cuenta atrás. Mide siempre lo mismo mientras el botón la
+   tenga —también cuando ya está vacío—, así el botón no cambia de ancho al
+   caer de «(10)» a «(9)» ni al terminar.
+
+   No es cosmética. Con el diálogo en la capa superior, un botón que se achica
+   con cada dígito deja al navegador pintando donde ya no está: se veía VACÍO
+   hasta que algo forzaba un recálculo, como abrir el inspector.
+
+   `tabular-nums` remata lo mismo por dentro: sin eso el 1 es más angosto que
+   el 8 y el rótulo tiembla aunque la caja no se mueva. */
+.confirm-cuenta {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+#confirm-ok.con-cuenta .confirm-cuenta {
+  min-width: 3.6ch;
+  text-align: right;
+}
+
+.btn.btn-espera,
+.btn.btn-espera:disabled {
+  background: transparent;
+  color: var(--danger);
+  border-color: var(--danger);
+  opacity: 1;
+  cursor: default;
+}
+
 /* Relleno con el color de la marca, para la acción principal de cada pantalla:
    entrar, abrir «Opciones» y agregar una plantilla al mes. Las dos últimas son
    la entrada a lo mismo —sumar tareas—, así que se ven igual.
@@ -1050,17 +1094,50 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 .jump-head { display: flex; align-items: center; gap: .5rem; }
 
+/* El rótulo del medio es un botón: cambia de escala. Se pinta como texto
+   —es lo que dice qué se está mirando— y lo único que delata que se toca es el
+   fondo al pasar por encima. */
 .jump-label {
   flex: 1;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   text-align: center;
   font-weight: 650;
   font-size: .95rem;
+  padding: .3rem .5rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
   /* el locale devuelve el mes en minúscula */
   text-transform: capitalize;
 }
+@media (hover: hover) {
+  .jump-label:hover { background: var(--bg-sunken); }
+}
 
-/* doce meses entran de a tres, con nombre completo */
+/* Doce meses entran de a tres, con nombre completo; treinta y un días van de a
+   siete, que es como se lee un mes. */
 .jump-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.jump-grid.es-dias { grid-template-columns: repeat(7, 1fr); }
+
+/* Los días de la semana encabezan las columnas, con el mismo reparto que la
+   rejilla: si midieran distinto, el rótulo dejaría de caer sobre su columna. */
+.jump-dows {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.jump-dow {
+  text-align: center;
+  font-size: .7rem;
+  font-weight: 650;
+  color: var(--text-muted);
+}
+
+/* Los huecos previos al día 1 no son botones: solo ocupan su lugar. */
+.jump-hueco { visibility: hidden; }
 
 .jump-cell {
   appearance: none;
@@ -1091,8 +1168,9 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 }
 
 .jump-grid .jump-cell { padding: .65rem .2rem; text-transform: capitalize; }
-
-/* los huecos previos al día 1 no son botones, solo ocupan su lugar */
+/* Los días son números: caben en menos, y con el relleno de los meses la
+   rejilla de siete columnas se iba de alto. */
+.jump-grid.es-dias .jump-cell { padding: .5rem .1rem; font-size: .85rem; }
 
 .btn-ghost-danger { color: var(--missed-fg); }
 .btn-ghost-danger:hover:not(:disabled) { background: var(--missed-bg); color: var(--missed-fg); }
@@ -1661,6 +1739,32 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   padding: .05rem .45rem;
 }
 
+/* La tarjeta de un día del calendario.
+
+   Su lista arranca con lugar para varias tareas aunque el día esté vacío. Con
+   el alto del contenido, la tarjeta era una franja de dos renglones —el título
+   y «Sin tareas aún»— y cambiaba de tamaño con cada tarea que se agregaba: se
+   abría distinta cada vez, y en un día cargado el botón de agregar terminaba en
+   otro lugar de la pantalla que en uno vacío.
+
+   Es un mínimo, así que un día muy cargado sigue creciendo hasta el tope, y de
+   ahí la lista se desplaza por dentro — la tarjeta no puede pasarse de la
+   pantalla. */
+#pend-dia-lista {
+  min-height: 18rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+/* Vacío, el aviso va centrado en ese lugar en vez de pegado arriba: pegado
+   arriba, el hueco de abajo se lee como algo que no llegó a cargar. */
+#pend-dia-lista .pend-cat-vacia {
+  display: grid;
+  place-items: center;
+  min-height: inherit;
+  margin: 0;
+}
+
 .pend-cat-vacia, .pend-cal-nota {
   margin: 0;
   font-size: .78rem;
@@ -2019,36 +2123,44 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 }
 
 
-/* La tira que entra se desliza desde el lado hacia el que fue el dedo.
+/* Lo que entra después de un deslizamiento, entrando desde el lado hacia el que
+   fue el dedo.
 
-   Pasar de semana cambia los siete números de una vez, y sin esto no se veía de
-   dónde salieron: parecía que la tira se había reescrito y no que se había
-   movido. Con el deslizamiento, el gesto y lo que pasa en la pantalla son la
-   misma cosa.
+   Lo usan las dos pantallas que se deslizan: la tira de días de Hábitos y la
+   rejilla del calendario de Pendientes. Es UNA sola definición porque las dos
+   ya comparten la función que detecta el gesto, y un movimiento distinto en
+   cada una haría sentir la app hecha por dos manos.
+
+   Pasar de página cambia todo el contenido de una vez, y sin esto no se veía de
+   dónde salió: parecía que se había reescrito y no que se había movido. Con el
+   deslizamiento, el gesto y lo que pasa en la pantalla son la misma cosa.
 
    Con una curva que frena al final, y entrando desde un 35% y no desde el
-   borde: el ojo tiene que alcanzar a leer que son los mismos días corridos.
+   borde: el ojo tiene que alcanzar a leer que es lo mismo corrido.
 
    Empezó en 180ms y se sentía un parpadeo — el movimiento terminaba antes de
    que el ojo lo siguiera, así que avisaba de un cambio en vez de mostrarlo.
 
    Quien pidió reducir el movimiento no lo ve: la regla del final del archivo le
-   deja `.01ms`, y acá eso es exactamente lo que corresponde —la tira aparece
-   puesta, sin viaje—. Al revés que el ciclo de colores de la guía, que es
-   infinito y ahí la misma regla lo dejaría temblando. */
-@keyframes carrete-entra-der {
+   deja `.01ms`, y acá eso es exactamente lo que corresponde —aparece puesto,
+   sin viaje—. Al revés que el ciclo de colores de la guía, que es infinito y
+   ahí la misma regla lo dejaría temblando. */
+@keyframes desliza-entra-der {
   from { transform: translateX(35%); opacity: 0; }
   to   { transform: translateX(0);   opacity: 1; }
 }
-@keyframes carrete-entra-izq {
+@keyframes desliza-entra-izq {
   from { transform: translateX(-35%); opacity: 0; }
   to   { transform: translateX(0);    opacity: 1; }
 }
-.carrete-pista.entra-der { animation: carrete-entra-der .3s cubic-bezier(.2, .7, .3, 1); }
-.carrete-pista.entra-izq { animation: carrete-entra-izq .3s cubic-bezier(.2, .7, .3, 1); }
+.entra-der { animation: desliza-entra-der .3s cubic-bezier(.2, .7, .3, 1); }
+.entra-izq { animation: desliza-entra-izq .3s cubic-bezier(.2, .7, .3, 1); }
 
-/* La tira se mueve adentro de su caja y no arrastra a la pantalla con ella. */
-.carrete { overflow: hidden; }
+/* Lo que entra se mueve adentro de su caja y no arrastra a la pantalla con
+   ella: sin esto, el 35% de corrimiento empuja el ancho y aparece una barra de
+   desplazamiento durante la animación. */
+.carrete,
+.pend-cal-rejilla { overflow: hidden; }
 
 /* Cada día es una ficha: el día de la semana arriba y el número abajo, como en
    el encabezado que tenía la planilla. */
@@ -2905,6 +3017,18 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 .form-error { margin: 0; font-size: .8rem; color: var(--danger); font-weight: 550; }
 .confirm-text { margin: 0; font-size: .9rem; color: var(--text-muted); }
+
+/* El aviso de lo que no se puede deshacer, en rojo y con peso. Va SOLO en la
+   última puerta de lo irreversible —hoy, eliminar la cuenta—: el rojo avisa
+   mientras sea raro, y puesto en cada confirmación no avisaría de nada. */
+.confirm-text.es-irreversible {
+  /* El MISMO rojo que el botón «Eliminar cuenta», que es de lo que se está
+     hablando: dos rojos distintos en la misma acción se leen como dos avisos
+     distintos. */
+  color: var(--danger);
+  font-weight: 650;
+  font-size: .95rem;
+}
 
 /* con muchas tareas la lista scrollea en vez de estirar el diálogo */
 .confirm-list {

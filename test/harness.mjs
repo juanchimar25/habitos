@@ -212,6 +212,10 @@ export function moverMeses(doc, delta) {
 
   doc.querySelector('#month-label').click();
 
+  /* El diálogo abre en los días del mes que se está mirando; el rótulo del
+     medio sube a los doce meses del año, que es desde donde se elige. */
+  doc.querySelector('#jump-label').click();
+
   const anioVisible = () => Number(doc.querySelector('#jump-label').textContent);
   while (anioVisible() < destino.getFullYear()) doc.querySelector('#jump-next').click();
   while (anioVisible() > destino.getFullYear()) doc.querySelector('#jump-prev').click();
@@ -220,6 +224,13 @@ export function moverMeses(doc, delta) {
     .find(c => c.textContent.toLowerCase() === MESES[destino.getMonth()]);
   if (!celda) throw new Error(`No se encontró ${MESES[destino.getMonth()]} en el calendario`);
   celda.click();
+
+  /* Elegir el mes baja a sus días y no navega: el diálogo contesta «a qué
+     fecha», y un mes todavía no es una. El destino es el día 1, salvo que el
+     mes sea el de hoy — ahí el destino evidente es hoy, como era antes. */
+  const dias = [...doc.querySelectorAll('#jump-grid .jump-cell')];
+  const hoy = dias.find(c => c.classList.contains('is-today'));
+  (hoy ?? dias[0]).click();
 }
 
 /**

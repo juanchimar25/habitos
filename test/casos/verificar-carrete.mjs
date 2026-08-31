@@ -655,32 +655,34 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
 }
 
 {
-  /* Y el movimiento, leído de la hoja. */
+  /* Y el movimiento, leído de la hoja. La definición es UNA sola y la comparten
+     las dos pantallas que se deslizan —la tira de días y la rejilla del
+     calendario de Pendientes—: las dos ya comparten la función que detecta el
+     gesto, y un movimiento distinto en cada una haría sentir la app hecha por
+     dos manos. */
   const css = leer('styles.css');
   const bloque = re => css.match(re)?.[0] ?? '';
 
   for (const [lado, signo] of [['der', ''], ['izq', '-']]) {
-    const marco = bloque(new RegExp(`@keyframes carrete-entra-${lado} \\{[\\s\\S]*?\\n\\}`));
-    ok(`la tira que entra por ${lado} arranca corrida`,
+    const marco = bloque(new RegExp(`@keyframes desliza-entra-${lado} \\{[\\s\\S]*?\\n\\}`));
+    ok(`lo que entra por ${lado} arranca corrido`,
       marco.includes(`translateX(${signo}35%)`), marco.replace(/\s+/g, ' '));
     ok('  y termina en su lugar', /translateX\(0\)/.test(marco));
     /* La ventana en la que un movimiento se lee como movimiento. Abajo de dos
        décimas es un parpadeo —el ojo no lo sigue, así que avisa de un cambio en
-       vez de mostrarlo— y arriba de medio segundo la tira se siente pesada y se
-       interpone. */
-    const regla = bloque(new RegExp(`\\n\\.carrete-pista\\.entra-${lado} \\{[^}]*\\}`));
+       vez de mostrarlo— y arriba de medio segundo se siente pesado y estorba. */
+    const regla = bloque(new RegExp(`\\n\\.entra-${lado} \\{[^}]*\\}`));
     const dura = Number(regla.match(/([\d.]+)s /)?.[1]);
-    ok(`  en un tiempo que se alcanza a ver y no estorba`,
+    ok('  en un tiempo que se alcanza a ver y no estorba',
       dura >= .2 && dura <= .5, `${dura}s`);
   }
 
-  /* La tira se mueve adentro de su caja: sin esto, el 35% de corrimiento
-     empujaba el ancho de la pantalla y aparecía una barra de desplazamiento
-     durante la animación. */
-  ok('el carrete recorta lo que se sale',
-    /\n\.carrete \{[^}]*overflow:\s*hidden/.test(css)
-      || /\n\.carrete \{ overflow: hidden; \}/.test(css),
-    bloque(/\n\.carrete \{[^}]*\}/).replace(/\s+/g, ' '));
+  /* Lo que entra se mueve adentro de su caja: sin esto, el 35% de corrimiento
+     empuja el ancho de la pantalla y aparece una barra de desplazamiento
+     durante la animación. Las dos cajas, no una. */
+  const recorte = bloque(/\n\.carrete,\n\.pend-cal-rejilla \{[^}]*\}/);
+  ok('las dos cajas recortan lo que se sale', /overflow:\s*hidden/.test(recorte),
+    recorte.replace(/\s+/g, ' ') || '(sin regla)');
 }
 
 // --- «Hoy» se asoma en vez de aparecer de golpe -----------------------------
@@ -718,7 +720,7 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
     marco.replace(/\s+/g, ' '));
 
   const suyo = css.match(/\n\.month-nav \.month-hoy\.asoma \{[^}]*\}/)?.[0] ?? '';
-  const tira = css.match(/\n\.carrete-pista\.entra-der \{[^}]*\}/)?.[0] ?? '';
+  const tira = css.match(/\n\.entra-der \{[^}]*\}/)?.[0] ?? '';
   const receta = txt => txt.match(/animation:\s*[\w-]+\s+(.*?);/)?.[1];
   ok('  con el mismo tiempo y la misma curva que la tira',
     Boolean(receta(suyo)) && receta(suyo) === receta(tira),

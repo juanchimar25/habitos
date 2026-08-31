@@ -1203,6 +1203,20 @@ const editarCategoria = (doc, nombre) => {
     filas()[0].querySelector('.pend-fecha') === null,
     filas()[0].textContent);
 
+  /* La tarjeta arranca con lugar para varias tareas aunque el día esté vacío.
+     Con el alto del contenido era una franja de dos renglones —el título y «Sin
+     tareas aún»— y cambiaba de tamaño con cada tarea: se abría distinta cada
+     vez, y en un día cargado el botón de agregar terminaba en otro lugar de la
+     pantalla que en uno vacío. */
+  const css = leer('styles.css');
+  const lista = css.match(/\n#pend-dia-lista \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const alto = Number(lista.match(/min-height:\s*([\d.]+)rem/)?.[1]);
+  ok('la tarjeta del día tiene lugar reservado', alto >= 15, `${alto}rem`);
+  ok('  con un techo, para no pasarse de la pantalla', /max-height/.test(lista),
+    lista.replace(/\s+/g, ' '));
+  ok('  y desplazándose por dentro cuando lo pasa', /overflow-y:\s*auto/.test(lista),
+    lista.replace(/\s+/g, ' '));
+
   // Las mismas filas de la lista, así que los mismos toques.
   filas()[0].querySelector('.pend-estado').click();
   ok('  el estado se cicla desde acá',
@@ -1639,6 +1653,51 @@ const editarCategoria = (doc, nombre) => {
   ok('el calendario deja pasar el gesto de costado',
     /\n\.pend-calendario \{[^}]*touch-action:\s*pan-y/.test(css),
     css.match(/\n\.pend-calendario \{[^}]*\}/)?.[0] ?? '(sin regla)');
+}
+
+// --- el mes nuevo entra deslizándose ---------------------------------------
+{
+  /* El mismo movimiento que la tira de días de Hábitos, con la misma
+     definición: las dos pantallas ya comparten la función que detecta el gesto,
+     y un movimiento distinto en cada una haría sentir la app hecha por dos
+     manos. Entra por el lado hacia el que fue el dedo.
+
+     jsdom no anima, así que lo que se mira acá es lo que la app DECIDE: qué
+     clase queda puesta y con qué dirección. */
+  const { doc } = await montar(VACIO);
+  irAPendientes(doc);
+  doc.querySelector('#btn-pend-calendario').click();
+
+  const rejilla = () => doc.querySelector('.pend-cal-rejilla');
+  const entrada = () => [...rejilla().classList].filter(c => c.startsWith('entra-')).join(',');
+  const puntero = (tipo, x, y) => {
+    const e = new doc.defaultView.Event(tipo, { bubbles: true, cancelable: true });
+    Object.assign(e, { clientX: x, clientY: y, pointerId: 1, button: 0, pointerType: 'touch' });
+    doc.querySelector('.pend-cal-dia').dispatchEvent(e);
+  };
+  const deslizar = dx => {
+    puntero('pointerdown', 200, 300);
+    puntero('pointermove', 200 + dx, 300);
+    puntero('pointerup', 200 + dx, 300);
+  };
+
+  ok('quieto, no entra por ningún lado', entrada() === '', entrada());
+
+  deslizar(-120);
+  ok('llevando el dedo a la izquierda, el mes que sigue entra por la derecha',
+    entrada() === 'entra-der', entrada() || '(ninguna)');
+  ok('  y es el mes siguiente', /agosto 2026/i.test(doc.querySelector('#month-label').textContent),
+    doc.querySelector('#month-label').textContent);
+
+  deslizar(120);
+  ok('  y al revés, por la izquierda', entrada() === 'entra-izq', entrada() || '(ninguna)');
+
+  /* La rejilla se dibuja de cero en cada mes, así que la clase entra con el
+     nodo. Cualquier otro dibujado la trae sin clase, sin tener que sacársela. */
+  doc.querySelector('#btn-pend-lista').click();
+  doc.querySelector('#btn-pend-calendario').click();
+  ok('un dibujado cualquiera no anima nada', entrada() === '', entrada());
+
 }
 
 // --- crear una categoría desde el alta de la tarea --------------------------

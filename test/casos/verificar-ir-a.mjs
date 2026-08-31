@@ -65,23 +65,41 @@ const centro = doc => doc.querySelector('.carrete-dia.is-centro')?.dataset.date 
   ok('y ya no hay rótulo de rango', doc.querySelector('#range-label') === null);
 }
 
-// --- 2. el calendario de meses ---------------------------------------------
+// --- 2. abre en los días del mes que se está mirando ------------------------
 {
+  /* El diálogo contesta «a qué FECHA», así que abre donde está la respuesta:
+     los días. Antes contestaba «a qué mes» y elegir uno caía en el día 1, que
+     era una respuesta inventada — y para llegar a otro día había que salir y
+     moverse con el carrete. */
   const { doc } = await montar(ESTADO_LLENO);
   doc.querySelector('#month-label').click();
 
-  ok('abre con el título de meses',
-    doc.querySelector('#jump-title').textContent === 'Seleccionar mes',
+  ok('abre con el título de la fecha',
+    doc.querySelector('#jump-title').textContent === 'Seleccionar fecha',
     doc.querySelector('#jump-title').textContent);
-  ok('rotulado con el año', doc.querySelector('#jump-label').textContent === '2026',
+  ok('  y el botón que lo abre dice lo mismo',
+    doc.querySelector('#month-label').title === 'Elegir fecha',
+    doc.querySelector('#month-label').title);
+  ok('rotulado con el mes que se está mirando',
+    doc.querySelector('#jump-label').textContent === 'Julio 2026',
     doc.querySelector('#jump-label').textContent);
-  ok('solo 12 celdas', celdas(doc).length === 12, `${celdas(doc).length}`);
-  ok('son nombres de mes', celdas(doc)[0].textContent === 'Enero'
-    && celdas(doc)[11].textContent === 'Diciembre',
-    `${celdas(doc)[0].textContent} … ${celdas(doc)[11].textContent}`);
-  ok('ninguna celda tiene fecha de día', celdas(doc).every(c => !c.dataset.date));
-  ok('marca julio como el mes de hoy',
-    celdas(doc).find(c => c.classList.contains('is-today'))?.textContent === 'Julio',
+
+  ok('con los 31 días de julio', celdas(doc).length === 31, String(celdas(doc).length));
+  ok('  numerados', celdas(doc)[0].textContent === '1'
+    && celdas(doc)[30].textContent === '31',
+    `${celdas(doc)[0].textContent} … ${celdas(doc)[30].textContent}`);
+  /* Julio de 2026 arranca un miércoles: dos huecos antes del 1, para que cada
+     día caiga debajo del nombre que le corresponde. */
+  ok('  alineados al lunes',
+    doc.querySelectorAll('#jump-grid .jump-hueco').length === 2,
+    String(doc.querySelectorAll('#jump-grid .jump-hueco').length));
+  ok('  con los días de la semana encabezando',
+    [...doc.querySelectorAll('#jump-dows .jump-dow')].map(d => d.textContent).join(' ')
+      === 'lun mar mié jue vie sáb dom',
+    [...doc.querySelectorAll('#jump-dows .jump-dow')].map(d => d.textContent).join(' '));
+
+  ok('marca el 30 como hoy',
+    celdas(doc).find(c => c.classList.contains('is-today'))?.textContent === '30',
     celdas(doc).find(c => c.classList.contains('is-today'))?.textContent);
 
   /* Sin «Cancelar» ni «Hoy» la fila de acciones no tendría nada que mostrar: se
@@ -93,31 +111,59 @@ const centro = doc => doc.querySelector('.carrete-dia.is-centro')?.dataset.date 
     Boolean(doc.querySelector('#jump-dialog .dialog-close')));
 }
 
-// --- 3. navegar de año y elegir un mes -------------------------------------
+// --- 3. elegir un día lleva a ese día --------------------------------------
 {
   const { doc } = await montar(ESTADO_LLENO);
   doc.querySelector('#month-label').click();
-  doc.querySelector('#jump-prev').click();
-  ok('la flecha retrocede un año', doc.querySelector('#jump-label').textContent === '2025');
-  ok('sigue con 12 meses', celdas(doc).length === 12);
 
-  celdas(doc).find(c => c.textContent === 'Marzo').click();
+  doc.querySelector('#jump-prev').click();
+  ok('la flecha retrocede un mes',
+    doc.querySelector('#jump-label').textContent === 'Junio 2026',
+    doc.querySelector('#jump-label').textContent);
+  ok('  con los 30 días de junio', celdas(doc).length === 30, String(celdas(doc).length));
+
+  celdas(doc).find(c => c.textContent === '12').click();
   ok('cierra el diálogo', !doc.querySelector('#jump-dialog').hasAttribute('open'));
-  ok('saltó a marzo de 2025', /marzo 2025/i.test(mes(doc)), mes(doc));
-  /* Cae en el día 1: el mes elegido no tiene un día «evidente». */
-  ok('y quedó parado en el día 1', centro(doc) === '2025-03-01', centro(doc));
+  ok('y va a ese día exacto', centro(doc) === '2026-06-12', centro(doc));
+  ok('  con el mes siguiéndolo', /junio 2026/i.test(mes(doc)), mes(doc));
 }
 
-// --- 4. el mes de hoy cae en hoy -------------------------------------------
+// --- 4. el rótulo cambia de escala -----------------------------------------
 {
-  /* Salvo uno: el mes actual, donde el destino evidente es hoy, que es donde se
-     carga. */
+  /* De los días de un mes a los meses de un año, tocando el rótulo del medio.
+     Es la misma idea que en cualquier calendario, y evita un segundo control
+     para lo mismo. */
   const { doc } = await montar(ESTADO_LLENO);
-  verDia(doc, '2026-07-08');
-
   doc.querySelector('#month-label').click();
-  celdas(doc).find(c => c.textContent === 'Julio').click();
-  ok('elegir el mes de hoy vuelve a hoy', centro(doc) === '2026-07-30', centro(doc));
+  doc.querySelector('#jump-label').click();
+
+  ok('el rótulo sube a los meses del año',
+    doc.querySelector('#jump-label').textContent === '2026',
+    doc.querySelector('#jump-label').textContent);
+  ok('  con los doce', celdas(doc).length === 12, String(celdas(doc).length));
+  ok('  con nombre completo', celdas(doc)[0].textContent === 'Enero'
+    && celdas(doc)[11].textContent === 'Diciembre',
+    `${celdas(doc)[0].textContent} … ${celdas(doc)[11].textContent}`);
+  ok('  y sin días de la semana que encabezar',
+    doc.querySelector('#jump-dows').hidden === true);
+
+  // Y ahí las flechas mueven el año, que es la escala puesta.
+  doc.querySelector('#jump-prev').click();
+  ok('la flecha retrocede un año', doc.querySelector('#jump-label').textContent === '2025',
+    doc.querySelector('#jump-label').textContent);
+
+  /* Elegir un mes NO navega: baja a sus días. El diálogo contesta «a qué
+     fecha», y un mes todavía no es una. */
+  celdas(doc).find(c => c.textContent === 'Marzo').click();
+  ok('elegir un mes baja a sus días, sin navegar',
+    doc.querySelector('#jump-dialog').hasAttribute('open')
+      && doc.querySelector('#jump-label').textContent === 'Marzo 2025',
+    doc.querySelector('#jump-label').textContent);
+  ok('  con los 31 de marzo', celdas(doc).length === 31, String(celdas(doc).length));
+  ok('  y el mes de la pantalla todavía sin moverse', /julio 2026/i.test(mes(doc)), mes(doc));
+
+  celdas(doc).find(c => c.textContent === '9').click();
+  ok('y recién el día lleva ahí', centro(doc) === '2025-03-09', centro(doc));
 }
 
 // --- 5. cerrar sin elegir no mueve nada ------------------------------------

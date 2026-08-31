@@ -464,8 +464,65 @@ Del lado del navegador se borra también la copia local —incluida la copia **s
 que adopta el próximo que inicie sesión en ese mismo navegador— y se recarga la página: con el
 usuario borrado, el cliente tiene en mano un token de alguien que ya no existe.
 
-Antes de borrar nada se pide confirmación, con el email a la vista y un recordatorio de que
-**☰ → Exportar** guarda una copia.
+Antes de borrar nada se pasa por **dos puertas**:
+
+1. La primera cuenta **qué se pierde** —el email a la vista, la lista de lo que se va y el
+   recordatorio de que **☰ → Exportar** guarda una copia—. Su botón dice *Continuar*: no borra
+   nada, y uno que dijera «Eliminar cuenta» prometería lo que no hace.
+2. La segunda pregunta **si de verdad**, en rojo y sin nada más que leer: ni la lista ni la nota, que
+   ya se leyeron y acá solo enterrarían la única pregunta que queda.
+
+> No es una confirmación repetida por las dudas: son **dos preguntas distintas** —«¿sabés qué se
+> borra?» y «¿estás seguro?»—, y la segunda existe porque acá no hay papelera, ni deshacer, ni una
+> copia en la base que alguien pueda restaurar. Todo lo demás que borra la app se puede recuperar;
+> esto no.
+>
+> El **rojo del texto** aparece solo en esa última puerta, y es el MISMO rojo que el botón
+> «Eliminar cuenta» —dos rojos distintos en la misma acción se leen como dos avisos distintos—. Es
+> el mismo criterio que el del botón rojo: avisa mientras sea raro, y puesto en cada confirmación no
+> avisaría de nada.
+>
+> Y su botón **espera diez segundos**, contándolos a la vista. Disponible en el mismo lugar donde el
+> anterior acaba de estar, se puede tocar sin haber leído nada, arrastrado por el impulso del clic
+> que abrió esta pantalla. Los segundos no son un castigo: son el tiempo de leer la única frase que
+> hay. Diez es bastante más que un parpadeo y bastante menos que un trámite.
+>
+> Mientras cuenta, el botón va de **contorno rojo**; cuando se abre, de **relleno rojo con letras
+> blancas**. Es el mismo par que distingue «Cerrar sesión» de «Eliminar cuenta» en Ajustes, y acá
+> separa el «todavía no» del «ahora sí» sin que haya que leer el número.
+>
+> **El botón no cambia de ancho en toda la cuenta.** El rótulo y el número son dos huecos, y el del
+> número mide siempre lo mismo — también cuando queda vacío al final—, con cifras de ancho parejo
+> para que el rótulo no tiemble por dentro.
+>
+> No es cosmética: con el diálogo en la capa superior, un botón que se achica con cada dígito deja al
+> navegador pintando donde ya no está. Se veía **vacío** hasta que algo forzaba un recálculo — abrir
+> el inspector, por ejemplo, que fue como apareció el síntoma—.
+>
+> Son **dos botones y no uno con parches**: mientras espera se le saca `.btn-danger` y se le pone
+> `.btn-espera`. Como modificador encima del rojo había que ganarle a dos reglas —el relleno de
+> `.btn-danger` y el 45% de `.btn:disabled`—, y bastaba con que alguna se moviera de lugar para que
+> volviera a ser un **rectángulo vacío**: un rojo al 45% con texto blanco al 45% no es un botón
+> apagado, es un botón invisible. Estuvo así dos versiones.
+>
+> La espera se arma **antes** de mostrar el diálogo: si no, el botón aparece un instante con el
+> rótulo entero y encendido, y recién después se apaga — un parpadeo que invita justo al toque que
+> la espera quiere evitar.
+>
+> **`close()` no dispara su evento en el acto: lo encola.** Encadenando dos confirmaciones, el orden
+> real es cerrar, armar la segunda, y recién entonces correr la tarea encolada — que llega tarde,
+> sobre el botón de la segunda. Había un oyente de `close` que reponía el rótulo por defecto «como
+> red de seguridad», y era exactamente lo que le pisaba el botón: aparecía **«Eliminar»** con la
+> cuenta atrás andando por dentro, hasta que un segundo después el reloj lo repintaba.
+>
+> La red no hacía falta: `confirmAction` fija el rótulo y las clases en **cada** apertura, que es la
+> única forma de abrir el diálogo. Y **jsdom no dispara `close`**, así que ningún caso podía verlo:
+> el que lo cuida ahora despacha el evento a mano, que es la única manera de reproducir ese orden.
+>
+> La cuenta **se ve**: un botón apagado y mudo se lee como roto, y el número dice que la espera
+> termina. Se frena al salirse por cualquiera de las puertas, y el caso la maneja reemplazando el
+> `setInterval` de la ventana — esperar diez segundos de verdad serían diez segundos de suite por
+> una comprobación.
 
 Si ya tenías un diario cargado de antes de que existiera el login, la primera cuenta que entre
 lo adopta en lugar de empezar vacía.
@@ -1076,28 +1133,36 @@ Las semanas se alinean al lunes y todas las vistas se recortan a los límites de
 
 ### Ir a una fecha
 
-Hay dos calendarios para saltar sin recorrer mes por mes:
+El **nombre del mes es el botón**: abre *Seleccionar fecha*, un calendario con dos escalas.
 
-| Se abre desde | Abre | Qué muestra |
+| Qué se ve | Qué hacen las flechas | Qué pasa al elegir |
 |---|---|---|
-| El **nombre del mes**, que es un botón | *Seleccionar mes* | Los doce meses de un año, sin días. Las flechas cambian de año |
-| **Ir a…**, en el desplegable de vista | *Seleccionar día* | El calendario del mes, alineado al lunes. Las flechas cambian de mes |
+| Los **días** del mes, alineados al lunes | Cambian de **mes** | Lleva a ese día y cierra |
+| Los **meses** del año, con nombre completo | Cambian de **año** | Baja a los días de ese mes |
 
-> **Ninguno de los dos es ya un icono.** La barra no tiene un solo calendario suelto: el de meses es el propio nombre del mes y el de días bajó al desplegable. Los dos son saltos largos —de julio a marzo, del 30 al 8— y ninguno es algo que se haga a cada rato, así que no necesitaban un control permanente ocupando la fila.
->
-> **«Ir a hoy» e «Ir a un día…» eran el mismo gesto**, así que son una sola entrada: *Ir a…*. Hoy no es un destino aparte sino uno más del calendario —y ya venía marcado ahí con el color de la marca—, solo que el más frecuente.
->
-> Por eso el diálogo tiene ahora un botón **Hoy**, junto a *Cancelar*: sin él, volver al mes actual con el puntero obligaba a paginar hasta encontrarlo, y la tecla `T` no sirve en un teléfono. Funciona en los dos modos del diálogo, el de días y el de meses.
->
-> **La línea del mes es un solo control.** Antes eran tres —un icono de calendario, `‹` y `›`— para una misma cosa. Lleva el mismo recuadro que el selector de vista: los dos abren algo, y conviene que se lean como lo que son. Lo propio suyo es el cuerpo y el peso, que lo mantienen como título de la barra. Sin indicador de desplegable: el recuadro ya dice que es un control, y el `aria-haspopup="dialog"` avisa que abre un diálogo.
->
-> El paso a paso no se pierde: las flechas cruzan al mes contiguo al llegar al borde, y están las teclas `←` `→`.
+El **rótulo del medio** cambia de escala: de los días de un mes a los meses de un año, y al revés.
+Es la misma idea que en cualquier calendario, y evita un segundo control para lo mismo.
 
-Elegir un día lleva a la **ventana que lo contiene** según la vista activa: en semanal cae en su semana, en diaria en ese día. En los dos calendarios, el día o mes **de hoy** va relleno con el color de la marca y el que ya estás mirando queda contorneado. Navegar dentro del diálogo no mueve la planilla: recién cambia al elegir, y *Cancelar* la deja como estaba.
-
-**El desplegable es el mismo en las tres vistas.** En la mensual *Ir a…* sigue estando: ahí el mes entero es una sola ventana, así que elegir un día lleva a **su** mes, que es un salto tan válido como los otros. Las flechas también quedan — es donde pasan a mover de mes en mes.
-
-> Un menú que muda de opciones según dónde estés obliga a recordar cuáles hay en cada una, y hace que una desaparezca justo cuando se la fue a buscar.
+> **Abre en los días, que es donde está la respuesta.** Antes se llamaba *Seleccionar mes* y era eso:
+> doce meses y nada más. Elegir uno caía en el día 1 —una respuesta inventada, salvo en el mes de
+> hoy— y para llegar a otro día había que salir del diálogo y moverse con el carrete. Un calendario
+> que se llama «ir a una fecha» y no deja elegir una fecha es un calendario a medias.
+>
+> **Elegir un mes no navega: baja a sus días.** Un mes todavía no es una fecha, y navegar ahí sería
+> volver a contestar por el usuario. Cuesta un toque más que antes para un salto de mes, a cambio de
+> que el salto a un día exacto pase de imposible a directo.
+>
+> El día **de hoy** va relleno con el color de la marca y el que ya estás mirando queda contorneado;
+> lo mismo con los meses. Navegar dentro del diálogo **no mueve la pantalla**: recién cambia al
+> elegir un día, y cerrar con la ✕ la deja como estaba.
+>
+> **Tuvo un hermano.** Había un segundo calendario, de días, que se abría desde «☰ → Ir a una
+> fecha…», y los dos compartían diálogo, encabezado y grilla. Se fue cuando el carrete pasó a
+> moverse de a siete días — y con esto el modo vuelve, pero adentro del mismo calendario en vez de
+> detrás de otra puerta.
+>
+> El paso a paso no se pierde: el carrete se desliza de a siete días y cruza de mes al llegar al
+> borde, y están las teclas `←` `→`.
 
 ### Plegar los controles
 
@@ -1393,6 +1458,12 @@ agrupar no hay tarjetas**, así que es la única de las tres que muestra algo ap
   > obligaba a leerlo en la celda —donde entran dos o tres etiquetas y el resto se corta— o a irse a
   > la lista y buscar la fecha. Un toque más para crear, a cambio de que mirar un día sea posible.
   >
+  > **La tarjeta arranca con lugar para varias tareas**, esté el día cargado o no. Con el alto del
+  > contenido era una franja de dos renglones —el título y «Sin tareas aún»— y cambiaba de tamaño con
+  > cada tarea que se agregaba: se abría distinta cada vez, y en un día cargado el botón de agregar
+  > terminaba en otro lugar de la pantalla que en uno vacío. Es un mínimo, así que un día muy cargado
+  > crece hasta la mitad de la pantalla y de ahí la lista se desplaza por dentro.
+  >
   > Adentro van **las mismas filas de la lista**, así que los mismos toques: el estado cicla y el
   > lápiz edita. Sin la etiqueta de la fecha, eso sí — la dice el título, y repetirla en cada fila
   > sería decir lo mismo tantas veces como tareas haya. Un día sin nada **lo dice**: «Sin tareas
@@ -1417,7 +1488,12 @@ agrupar no hay tarjetas**, así que es la única de las tres que muestra algo ap
   > | El **carrete** del Diario | **Siete días**: la tira entera | — |
   > | El resto del Diario —la lista— | Un **día**, como las teclas ← → | El carrete, que lo contiene |
   >
-  > **La tira que entra se desliza desde el lado hacia el que fue el dedo.** Pasar de semana cambia
+  > **Lo que entra se desliza desde el lado hacia el que fue el dedo**, y es UNA sola definición
+  > para las dos pantallas: la tira de días de Hábitos y la rejilla del calendario de Pendientes. Las
+  > dos ya comparten la función que detecta el gesto, y un movimiento distinto en cada una haría
+  > sentir la app hecha por dos manos.
+  >
+  > Pasar de semana cambia
   > los siete números de una vez, y sin eso no se veía de dónde salieron: parecía que la tira se
   > había reescrito y no que se había movido. Son 300ms y un corrimiento del 35% —el ojo tiene que
   > alcanzar a leer que son los mismos días corridos—, y el carrete recorta lo que se sale, que si no
