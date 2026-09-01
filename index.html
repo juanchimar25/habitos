@@ -95,99 +95,110 @@
 
   <!-- Puerta de sesión: se muestra hasta que haya usuario -->
   <div class="auth-gate" id="auth-gate" hidden>
-   <div class="auth-split">
 
-    <!-- El formulario va PRIMERO en el orden del documento aunque en pantalla
-         ancha ocupe la mitad izquierda: es la acción principal, y así en móvil
-         —donde las mitades se apilan— queda arriba sin invertir nada. Quien ya
-         tiene cuenta entra sin scrollear; quien llega por primera vez sigue
-         leyendo abajo. -->
-    <div class="auth-card">
-      <svg class="brand-mark auth-mark" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+    <!-- La franja de arriba: la única acción de esta pantalla, y nada más.
+         Entrar deja de ocupar media pantalla en la visita de quien todavía no
+         sabe qué es esto, y pasa a estar donde se lo busca cuando ya se sabe. -->
+    <header class="landing-banner">
+      <button type="button" class="btn btn-brand" id="btn-ingresar"
+              aria-haspopup="dialog">Ingresar</button>
+    </header>
+
+    <main class="landing">
+      <!-- La marca en grande: es lo primero, y con el banner arriba no hace
+           falta que compita con nada. -->
+      <section class="landing-hero">
+        <svg class="landing-logo" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <polygon points="50,2 98,50 2,50" fill="var(--brand-top)"/>
+        <polygon points="2,50 98,50 50,98" fill="var(--brand-bottom)"/>
+        <path d="M27 46 L45 64 L74 30" fill="none" stroke="#fff" stroke-width="13"
+              stroke-linecap="butt" stroke-linejoin="miter"/>
+      </svg>
+        <h1 class="landing-nombre">Hábitos</h1>
+      </section>
+
+      <!-- Una tarjeta por característica. Eran una lista con tildes: en una
+           columna angosta se leían como los renglones de un contrato, y lo que
+           hay son cuatro cosas independientes que se miran de un vistazo. -->
+      <ul class="landing-cards">
+        <li class="landing-card">
+          <span class="landing-card-icono" aria-hidden="true">✓</span>
+          <h2>Ves lo que pasó, no lo que recordás.</h2>
+          <p>La memoria redondea para arriba. Registrarlo todo tan solo toma un minuto al final del día.</p>
+        </li>
+
+        <li class="landing-card">
+          <span class="landing-card-icono" aria-hidden="true">✓</span>
+          <h2>Metas que se adaptan a tu vida.</h2>
+          <p>Diaria, semanal, días fijos o «ocho veces al mes»: la frecuencia se ajusta al hábito, y no al revés.</p>
+        </li>
+
+        <li class="landing-card">
+          <span class="landing-card-icono" aria-hidden="true">✓</span>
+          <h2>Visualizás tu avance.</h2>
+          <p>Alterná entre distintos gráficos para ver en tiempo real cómo vas alcanzando lo que te proponés.</p>
+        </li>
+
+        <li class="landing-card">
+          <span class="landing-card-icono" aria-hidden="true">✓</span>
+          <h2>Descubrís tus mejores días.</h2>
+          <p>El promedio por día de la semana muestra cuándo rendís más, para poner ahí lo que más cuesta.</p>
+        </li>
+
+        <li class="landing-card">
+          <span class="landing-card-icono" aria-hidden="true">✓</span>
+          <h2>Tu lista de pendientes, a mano.</h2>
+          <p>Ordená tus pendientes y asegurate de que no se te escape nada.</p>
+        </li>
+      </ul>
+    </main>
+
+    <!-- El formulario, detrás del botón. Cuatro modos sobre el mismo marcado:
+         iniciar sesión, crear cuenta, pedir el correo de recuperación y definir
+         la contraseña nueva. Los campos que no hacen falta se ocultan; los
+         rótulos los pone auth.js.
+
+         Va en un diálogo y no en un panel de la página: es una tarea corta que
+         empieza y termina, y mientras dura no hay nada más que hacer acá. -->
+    <dialog class="auth-dialog" id="auth-dialog">
+      <div class="auth-card">
+        <button type="button" class="dialog-close" data-close-dialog
+                aria-label="Cerrar" title="Cerrar">✕</button>
+
+        <svg class="brand-mark auth-mark" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
         <polygon points="50,2 98,50 2,50" fill="var(--brand-top)"/>
         <polygon points="2,50 98,50 50,98" fill="var(--brand-bottom)"/>
         <path d="M27 46 L45 64 L74 30" fill="none" stroke="#fff" stroke-width="13"
               stroke-linecap="butt" stroke-linejoin="miter"/>
       </svg>
 
-      <!-- No es `h1`: ese lugar lo ocupa el titular de la presentación. Acá la
-           marca es una firma sobre el formulario, no el encabezado de la página. -->
-      <p class="auth-brand">Hábitos</p>
-      <h2 class="auth-title" id="auth-title">Iniciar sesión</h2>
+        <!-- No es `h1`: ese lugar lo ocupa el nombre de la marca en la página.
+             Acá es una firma sobre el formulario. -->
+        <p class="auth-brand">Hábitos</p>
+        <h2 class="auth-title" id="auth-title">Iniciar sesión</h2>
 
-      <p class="auth-notice" id="auth-notice" hidden></p>
+        <p class="auth-notice" id="auth-notice" hidden></p>
 
-      <!-- Cuatro modos sobre el mismo formulario: iniciar sesión, crear cuenta,
-           pedir el correo de recuperación y definir la contraseña nueva. Los
-           campos que no hacen falta se ocultan; los rótulos los pone auth.js. -->
-      <form class="auth-form" id="auth-form" novalidate>
-        <label class="field" id="auth-email-field">
-          <span class="field-label">Email</span>
-          <input type="email" id="auth-email" autocomplete="email" required>
-        </label>
+        <form class="auth-form" id="auth-form" novalidate>
+          <label class="field" id="auth-email-field">
+            <span class="field-label">Email</span>
+            <input type="email" id="auth-email" autocomplete="email" required>
+          </label>
 
-        <label class="field" id="auth-password-field">
-          <span class="field-label" id="auth-password-label">Contraseña</span>
-          <input type="password" id="auth-password" autocomplete="current-password" required>
-        </label>
+          <label class="field" id="auth-password-field">
+            <span class="field-label" id="auth-password-label">Contraseña</span>
+            <input type="password" id="auth-password" autocomplete="current-password" required>
+          </label>
 
-        <p class="form-error" id="auth-error" role="alert" hidden></p>
+          <p class="form-error" id="auth-error" role="alert" hidden></p>
 
-        <button type="submit" class="btn btn-brand auth-submit" id="auth-submit">Entrar</button>
-        <button type="button" class="btn btn-ghost auth-toggle" id="auth-toggle">Crear una cuenta</button>
+          <button type="submit" class="btn btn-brand auth-submit" id="auth-submit">Entrar</button>
+          <button type="button" class="btn btn-ghost auth-toggle" id="auth-toggle">Crear una cuenta</button>
 
-        <button type="button" class="auth-forgot" id="auth-forgot">¿Olvidaste tu contraseña?</button>
-      </form>
-    </div>
-
-    <!-- Presentación: ocupa entera la mitad derecha. -->
-    <section class="auth-pitch">
-      <h1 class="pitch-title">Definí tus hábitos.<br>Mirá cómo se sostienen.</h1>
-
-      <p class="pitch-lead">
-        Un día por pantalla, con sus tareas, y un carrete para moverte entre días.
-        Vos marcás; el resto se calcula solo.
-      </p>
-
-      <ul class="pitch-list">
-        <li>
-          <span class="pitch-check" aria-hidden="true">✓</span>
-          <span>
-            <strong>Ves lo que pasó, no lo que recordás.</strong>
-            La memoria redondea para arriba. El mes entero a la vista deja poco
-            margen para engañarse.
-          </span>
-        </li>
-        <li>
-          <span class="pitch-check" aria-hidden="true">✓</span>
-          <span>
-            <strong>Metas que se adaptan a tu vida.</strong>
-            Diaria, semanal, días fijos o «ocho veces al mes»: la frecuencia se
-            ajusta al hábito, y no al revés.
-          </span>
-        </li>
-        <li>
-          <span class="pitch-check" aria-hidden="true">✓</span>
-          <span>
-            <strong>Te avisa antes de que abandones.</strong>
-            El análisis señala las tareas que se están cayendo mientras todavía
-            queda mes por delante.
-          </span>
-        </li>
-        <li>
-          <span class="pitch-check" aria-hidden="true">✓</span>
-          <span>
-            <strong>Descubrís tus mejores días.</strong>
-            El promedio por día de la semana muestra cuándo rendís más, para
-            poner ahí lo que más cuesta.
-          </span>
-        </li>
-      </ul>
-
-      <p class="pitch-foot">Tus datos son tuyos: exportables cuando quieras.</p>
-    </section>
-
-   </div><!-- /.auth-split -->
+          <button type="button" class="auth-forgot" id="auth-forgot">¿Olvidaste tu contraseña?</button>
+        </form>
+      </div>
+    </dialog>
   </div>
 
   <div id="app-root" hidden>

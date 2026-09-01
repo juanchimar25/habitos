@@ -31,6 +31,10 @@
   --weekend-bg:    #e9edf7;
   --danger:        #dc2626;
 
+  /* Adonde baja el fondo de la puerta de entrada: el violeta de la marca,
+     muy diluido. La página termina en la marca en vez de cortarse en seco. */
+  --landing-pie:   #e6ddf2;
+
   /* La fila del día que hoy no cuenta. Tiene token propio porque en oscuro no
      alcanza con hundir el fondo: `--bg-sunken` queda a un pelo de `--bg-elev`
      y las dos filas se ven iguales. */
@@ -131,6 +135,8 @@
 
   --weekend-bg:    #101728;
   --danger:        #ef4444;
+
+  --landing-pie:   #1b1430;
 
   /* Más oscura que el fondo de la página, no apenas más que la tarjeta: la
      apagada se lee como un hueco y la encendida como algo que sobresale. */
@@ -266,120 +272,169 @@ body {
 
 /* ---------------- Pantalla de sesión ---------------- */
 
+/* La puerta de entrada.
+
+   Fue una pantalla partida al medio: formulario a un lado, presentación al
+   otro. Eso le daba media pantalla a la acción de quien YA tiene cuenta,
+   justo en la visita de quien todavía no sabe qué es esto. Ahora la página
+   presenta y entrar es un botón arriba a la derecha.
+
+   El fondo es el de la app con un degradado hacia el violeta abajo: la página
+   termina en la marca en vez de cortarse en seco, y arriba —donde está el
+   texto— sigue siendo el gris de siempre, que es donde se lee mejor. */
 .auth-gate {
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: var(--bg);
   overflow-y: auto;
+  background: linear-gradient(180deg,
+    var(--bg) 0%, var(--bg) 35%, var(--landing-pie) 100%);
+  background-attachment: fixed;
 }
 
-/* La pantalla partida al medio, de borde a borde. `min-height` y no `height`:
-   si la presentación no entra, la puerta scrollea en vez de recortarla. */
-.auth-split {
-  min-height: 100%;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: stretch;
+/* --- la franja de arriba --- */
+
+/* Pegada al borde superior mientras se scrollea: la única acción de la página
+   no puede quedar arriba de todo y fuera de alcance apenas se baja a leer. */
+.landing-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  /* Un solo hijo, así que va contra el borde derecho por su cuenta: el nombre
+     salió de acá porque estaba en grande dos centímetros más abajo. */
+  justify-content: flex-end;
+  gap: 1rem;
+  padding: .7rem clamp(.9rem, 4vw, 2rem);
+  /* De derecha a izquierda: arranca en el blanco de la app, del lado del botón,
+     y termina en el mismo violeta con el que el fondo cierra abajo. Así el botón
+     queda sobre el tono más limpio y la página abre con el color con el que
+     después termina. Ningún texto se apoya en la franja —el nombre salió de
+     acá—, así que el tono puede subir sin comerse contraste. */
+  background: linear-gradient(270deg, var(--bg-elev) 0%, var(--landing-pie) 100%);
+  border-bottom: 1px solid var(--border);
 }
 
-/* --- panel de presentación, mitad derecha --- */
+/* --- el cuerpo --- */
 
-/* Violetas de la marca. El más claro del degradado da 5,43:1 con blanco y el
-   más oscuro 11,56:1, así que el texto pasa AA en todo el recorrido. */
-.auth-pitch {
-  grid-column: 2;
+.landing {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: clamp(2rem, 7vw, 4.5rem) clamp(1rem, 4vw, 2rem) 3rem;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 1.15rem;
-  padding: 3rem clamp(2rem, 5vw, 4rem);
-  background: linear-gradient(155deg, #8158a4 0%, #6b3f8e 55%, #4a2b63 100%);
-  color: #fff;
+  gap: clamp(2rem, 6vw, 3.5rem);
 }
 
-/* En pantallas anchas la mitad puede superar los 900px, y una línea de texto de
-   ese largo se lee mal. El contenido se topa; el degradado sigue hasta el borde. */
-.auth-pitch > * { max-width: 34rem; width: 100%; }
+/* La marca en grande, centrada: es lo primero que hay que ver, y con el banner
+   arriba no compite con nada. */
+/* El logo y el nombre en una fila, como una firma en grande. Apilados, el
+   nombre quedaba flotando debajo del dibujo y los dos se leían como dos cosas;
+   al lado, se leen como una. */
+.landing-hero {
+  display: flex;
+  align-items: center;
+  /* Contra el margen izquierdo, en la misma vertical en la que arrancan las
+     tarjetas de abajo: centrada, la marca no se apoyaba en nada. */
+  justify-content: flex-start;
+  gap: clamp(.8rem, 3vw, 1.4rem);
+}
 
-.pitch-title {
+.landing-logo { width: clamp(84px, 18vw, 116px); height: clamp(84px, 18vw, 116px); }
+
+.landing-nombre {
   margin: 0;
-  font-size: 1.75rem;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -.015em;
+  font-size: clamp(2.2rem, 8vw, 3.2rem);
+  font-weight: 650;
+  letter-spacing: -.02em;
+  line-height: 1.05;
+  color: var(--brand-text);
 }
 
-.pitch-lead {
+
+/* Una tarjeta por característica, en la rejilla que entre. Eran una lista con
+   tildes: en una columna angosta se leían como los renglones de un contrato, y
+   lo que hay son cuatro cosas independientes que se miran de un vistazo. */
+.landing-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15.5rem, 1fr));
+  gap: 1rem;
+}
+
+/* En rejilla y no en columna: el tilde y el título comparten renglón —el gesto
+   acompaña al título, y en un renglón propio quedaba separado de él— y el
+   cuerpo cruza las dos columnas por debajo. */
+.landing-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: .5rem .6rem;
+  padding: 1.25rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.landing-card h2 {
   margin: 0;
   font-size: .95rem;
-  line-height: 1.5;
-  /* Blanco velado para el texto de apoyo: baja la jerarquía sin salirse de AA. */
-  color: rgba(255, 255, 255, .88);
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--text);
 }
 
-.pitch-list {
-  margin: .25rem 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: .9rem;
-}
-
-.pitch-list li {
-  display: flex;
-  align-items: flex-start;
-  gap: .65rem;
+.landing-card p {
+  /* Cruza las dos columnas: sangrarlo a la altura del título dejaría el texto
+     en una columna todavía más angosta. */
+  grid-column: 1 / -1;
+  margin: 0;
   font-size: .875rem;
-  line-height: 1.45;
-  color: rgba(255, 255, 255, .88);
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 
-.pitch-list strong {
-  display: block;
-  font-weight: 600;
-  color: #fff;
-}
-
-/* El tilde repite el gesto del logo. Va en una pastilla translúcida para que
-   se lea sobre cualquier punto del degradado. */
-.pitch-check {
-  flex: none;
-  width: 20px;
-  height: 20px;
-  margin-top: .1rem;
+/* El tilde repite el gesto del logo, en una pastilla con el violeta de la
+   marca. */
+.landing-card-icono {
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   border-radius: 99px;
-  background: rgba(255, 255, 255, .18);
-  color: #fff;
-  font-size: .72rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: .85rem;
   line-height: 1;
 }
 
-/* Mismo velo que el resto del panel, no uno más tenue: sobre la parada más
-   clara del degradado, por debajo del 86% de blanco se cae de AA. La jerarquía
-   la dan el cuerpo más chico y la línea de separación. */
-/* El bloque va centrado en su mitad, así que el pie no se empuja al fondo:
-   se separa con la línea, no con el espacio sobrante. */
-.pitch-foot {
-  margin: .25rem 0 0;
-  padding-top: .85rem;
-  border-top: 1px solid rgba(255, 255, 255, .18);
-  font-size: .8rem;
-  color: rgba(255, 255, 255, .88);
+
+/* --- el formulario, detrás del botón --- */
+
+/* Sin el ancho ni el relleno de los otros diálogos: la tarjeta que lleva
+   adentro ya trae los suyos. */
+.auth-dialog {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  width: min(380px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2.5rem);
 }
+.auth-dialog::backdrop { background: rgba(10, 15, 35, .45); backdrop-filter: blur(2px); }
 
 /* --- tarjeta de sesión, flotando en la mitad izquierda --- */
 
 /* `place-self: center` la centra en su mitad en los dos ejes. El ancho descuenta
    los márgenes laterales para que en una mitad angosta no toque los bordes. */
+/* Adentro del diálogo, así que ya no flota ni ocupa columna: se estira a lo que
+   el diálogo mide. */
 .auth-card {
-  grid-column: 1;
-  place-self: center;
-  width: min(380px, calc(100% - 3rem));
-  margin: 2.5rem 0;
+  position: relative;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3117,15 +3172,6 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 @media (max-width: 900px) {
   .legend-hint { margin-left: 0; flex-basis: 100%; }
-}
-
-@media (max-width: 860px) {
-  /* Las mitades se apilan. No hace falta invertir nada: el formulario ya va
-     primero en el orden del documento, así que queda arriba solo. */
-  .auth-split { grid-template-columns: 1fr; }
-  .auth-card { grid-column: 1; margin: 2rem 0; }
-  .auth-pitch { grid-column: 1; padding: 2.25rem 1.5rem 2.5rem; gap: 1rem; }
-  .pitch-title { font-size: 1.4rem; }
 }
 
 @media (max-width: 640px) {

@@ -1,6 +1,12 @@
-/* Pantalla partida de la puerta de sesión: presentación a un lado, formulario
-   al otro. No la ejercita ningún otro caso —el arnés quita `auth.js` y la
-   puerta queda oculta—, así que su marcado y su contraste se comprueban acá. */
+/* La puerta de entrada: la página que ve quien todavía no entró.
+
+   No la ejercita ningún otro caso —el arnés quita `auth.js` y la puerta queda
+   oculta—, así que su marcado y su contraste se comprueban acá.
+
+   Fue una pantalla partida al medio: formulario a un lado, presentación al
+   otro. Eso le daba media pantalla a la acción de quien YA tiene cuenta, justo
+   en la visita de quien todavía no sabe qué es esto. Ahora la página presenta y
+   entrar es un botón arriba a la derecha. */
 import { montar, leer } from '../harness.mjs';
 import { ESTADO_VACIO } from '../escenarios.mjs';
 
@@ -12,133 +18,177 @@ const ok = (n, cond, det = '') => {
 
 const { doc } = await montar(ESTADO_VACIO);
 const css = leer('styles.css');
+const bloque = re => css.match(re)?.[0] ?? '';
 
-// --- 1. las dos mitades --------------------------------------------------
+// --- 1. la franja de arriba ------------------------------------------------
 {
-  const split = doc.querySelector('#auth-gate .auth-split');
-  ok('la puerta de sesión es una pantalla partida', Boolean(split));
+  const banner = doc.querySelector('#auth-gate .landing-banner');
+  ok('la puerta abre con una franja arriba', Boolean(banner));
 
-  const mitades = [...(split?.children ?? [])].map(n => n.className);
-  console.log('  mitades:', mitades.join(' · '));
-  ok('son dos', mitades.length === 2, String(mitades.length));
+  /* Nada más que el ingreso: el nombre estaba también acá y en grande dos
+     centímetros más abajo, que es decir dos veces lo mismo en dos tamaños. */
+  ok('  que no lleva más que el ingreso',
+    banner?.children.length === 1 && banner.firstElementChild.id === 'btn-ingresar',
+    [...(banner?.children ?? [])].map(n => n.id || n.className).join(', '));
+  ok('    diciendo que abre algo',
+    doc.querySelector('#btn-ingresar')?.getAttribute('aria-haspopup') === 'dialog');
 
-  /* El formulario va primero en el DOM aunque en pantalla ancha ocupe la mitad
-     izquierda: es la acción principal, y así al apilarse queda arriba sin que
-     haya que invertir el orden visual. */
-  ok('el formulario va primero en el DOM', mitades[0] === 'auth-card');
-  ok('y la presentación después', mitades[1] === 'auth-pitch');
+  /* Pegada mientras se scrollea: la única acción de la página no puede quedar
+     arriba de todo y fuera de alcance apenas se baja a leer. */
+  const regla = bloque(/\n\.landing-banner \{[^}]*\}/);
+  ok('  y queda a la vista al bajar', /position:\s*sticky/.test(regla),
+    regla.replace(/\s+/g, ' '));
+  /* Del fondo de la app al violeta del pie, de derecha a izquierda: el botón
+     queda sobre el tono limpio y la franja abre con el color del pie. */
+  ok('  con el degradado hacia la izquierda',
+    regla.includes('linear-gradient(270deg') && regla.includes('var(--landing-pie)'),
+    regla.replace(/\s+/g, ' '));
+
+  /* Con un solo hijo, `space-between` lo dejaba contra el borde izquierdo. */
+  ok('  con el ingreso contra la derecha', /justify-content:\s*flex-end/.test(regla),
+    regla.replace(/\s+/g, ' '));
 }
 
-// --- 1b. la partición ocupa la pantalla y cada mitad su columna -----------
+// --- 2. la marca, en grande ------------------------------------------------
 {
-  const split = css.match(/\.auth-split \{([\s\S]*?)\n\}/)?.[1] ?? '';
-  ok('la partición es mitad y mitad',
-    /grid-template-columns: 1fr 1fr;/.test(split), split.match(/grid-template-columns[^;]*/)?.[0]);
-  ok('y ocupa el alto de la pantalla', /min-height: 100%;/.test(split));
-  ok('la puerta ya no centra una tarjeta suelta',
-    !/place-items: center/.test(css.match(/\.auth-gate \{([\s\S]*?)\n\}/)?.[1] ?? ''));
+  const hero = doc.querySelector('#auth-gate .landing-hero');
+  ok('debajo va la marca en grande', Boolean(hero));
+  ok('  con el logo', Boolean(hero?.querySelector('.landing-logo')));
+  ok('  y su nombre al lado',
+    hero?.querySelector('.landing-nombre')?.textContent.trim() === 'Hábitos',
+    hero?.querySelector('.landing-nombre')?.textContent);
+  /* El único `h1` de la página: es el encabezado de todo lo que sigue. El del
+     formulario es un `h2`, que es una firma sobre un panel y no un título. */
+  ok('  que es el único h1 de la puerta',
+    doc.querySelectorAll('#auth-gate h1').length === 1
+      && doc.querySelector('#auth-gate h1').className === 'landing-nombre',
+    String(doc.querySelectorAll('#auth-gate h1').length));
 
-  const card = css.match(/\n\.auth-card \{([\s\S]*?)\n\}/)?.[1] ?? '';
-  const pitch = css.match(/\.auth-pitch \{([\s\S]*?)\n\}/)?.[1] ?? '';
-  ok('el formulario cae en la columna izquierda', /grid-column: 1;/.test(card));
-  ok('y flota centrado en su mitad', /place-self: center;/.test(card));
-  ok('la presentación cae en la columna derecha', /grid-column: 2;/.test(pitch));
-  ok('y su contenido se centra en vertical', /justify-content: center;/.test(pitch));
+  const logo = bloque(/\n\.landing-logo \{[^}]*\}/);
+  ok('  y el logo es grande de verdad', /clamp\(84px/.test(logo), logo.replace(/\s+/g, ' '));
+
+  /* Uno al lado del otro y no apilados: apilado, el nombre queda flotando
+     debajo del dibujo y los dos se leen como dos cosas; en fila, como una. */
+  const fila = bloque(/\n\.landing-hero \{[^}]*\}/);
+  ok('  y van en una fila, no apilados',
+    /display:\s*flex/.test(fila) && !/flex-direction:\s*column/.test(fila),
+    fila.replace(/\s+/g, ' '));
+  /* Y contra el margen izquierdo, no en el medio: la fila ocupa todo el ancho,
+     así que hay que decirlo. Arranca en la misma vertical que las tarjetas. */
+  ok('  arrimados al margen izquierdo', /justify-content:\s*flex-start/.test(fila),
+    fila.replace(/\s+/g, ' '));
 }
 
-// --- 2. contenido de la presentación --------------------------------------
+// --- 3. las características, en tarjetas -----------------------------------
 {
-  const pitch = doc.querySelector('.auth-pitch');
-  ok('tiene titular', Boolean(pitch.querySelector('.pitch-title')?.textContent.trim()));
-  ok('tiene bajada', Boolean(pitch.querySelector('.pitch-lead')?.textContent.trim()));
+  /* Eran una lista con tildes: en una columna angosta se leían como los
+     renglones de un contrato, y lo que hay son cuatro cosas independientes que
+     se miran de un vistazo. */
+  const cards = [...doc.querySelectorAll('#auth-gate .landing-card')];
+  ok('las características son tarjetas', cards.length >= 3 && cards.length <= 6,
+    `${cards.length} tarjetas`);
+  ok('  cada una con su título', cards.every(c => c.querySelector('h2')?.textContent.trim()));
+  ok('  y su explicación', cards.every(c => c.querySelector('p')?.textContent.trim()));
+  ok('  con el tilde de la marca, decorativo',
+    cards.every(c => c.querySelector('.landing-card-icono')?.getAttribute('aria-hidden') === 'true'));
 
-  const items = [...pitch.querySelectorAll('.pitch-list li')];
-  ok('lista unos cuantos beneficios', items.length >= 3 && items.length <= 6,
-    `${items.length} beneficios`);
-  ok('cada uno abre con un título en negrita',
-    items.every(li => li.querySelector('strong')?.textContent.trim()));
-  ok('y lleva su tilde', items.every(li => li.querySelector('.pitch-check')));
-  ok('los tildes son decorativos para el lector de pantalla',
-    items.every(li => li.querySelector('.pitch-check').getAttribute('aria-hidden') === 'true'));
+  /* Que alguna hable de los pendientes: son la otra mitad de la app, y sin
+     esto la puerta prometía solo hábitos. */
+  ok('  y alguna cuenta lo de los pendientes',
+    cards.some(c => /pendiente/i.test(c.textContent)),
+    cards.map(c => c.querySelector('h2')?.textContent).join(' | '));
 
-  // Un beneficio sin desarrollo es un titular suelto: se comprueba que haya texto.
-  const cortos = items.filter(li => li.textContent.replace(/\s+/g, ' ').trim().length < 60);
-  ok('todos explican algo, no solo titulan', cortos.length === 0,
-    cortos.map(li => li.querySelector('strong')?.textContent).join(' | '));
+  // Un beneficio sin desarrollo es un titular suelto.
+  const cortas = cards.filter(c => c.textContent.replace(/\s+/g, ' ').trim().length < 60);
+  ok('  todas explican algo, no solo titulan', cortas.length === 0,
+    cortas.map(c => c.querySelector('h2')?.textContent).join(' | '));
 
-  ok('hay un solo h1 en la puerta',
-    doc.querySelectorAll('#auth-gate h1').length === 1,
-    `${doc.querySelectorAll('#auth-gate h1').length}`);
+  /* El tilde y el título, en el mismo renglón: el gesto acompaña al título, y
+     en un renglón propio quedaba separado de él y pegado a la tarjeta de
+     arriba. El cuerpo, en cambio, cruza las dos columnas. */
+  const caja = bloque(/\n\.landing-card \{[^}]*\}/);
+  ok('  con el tilde en el renglón del título',
+    /display:\s*grid/.test(caja) && /grid-template-columns:\s*auto 1fr/.test(caja),
+    caja.replace(/\s+/g, ' '));
+  const cuerpo = bloque(/\n\.landing-card p \{[^}]*\}/);
+  ok('    y la explicación cruzando las dos columnas',
+    /grid-column:\s*1 \/ -1/.test(cuerpo), cuerpo.replace(/\s+/g, ' '));
+
+  /* En rejilla y no en columna: entran las que quepan y el resto baja. */
+  const rejilla = bloque(/\n\.landing-cards \{[^}]*\}/);
+  ok('  repartidas en una rejilla que se acomoda',
+    /repeat\(auto-fit, minmax\(/.test(rejilla), rejilla.replace(/\s+/g, ' '));
 }
 
-// --- 3. el formulario sigue entero ----------------------------------------
+// --- 4. el fondo: el de la app, bajando al violeta -------------------------
 {
-  const card = doc.querySelector('.auth-card');
+  const gate = bloque(/\n\.auth-gate \{[^}]*\}/);
+  ok('el fondo arranca en el de la app', /var\(--bg\)/.test(gate), gate.replace(/\s+/g, ' '));
+  ok('  y baja en degradado vertical', /linear-gradient\(180deg/.test(gate));
+  ok('    hasta el pie de la puerta', /var\(--landing-pie\)/.test(gate));
+
+  /* Un tono por tema: el mismo violeta diluido no sirve para los dos fondos. */
+  const veces = (css.match(/--landing-pie:/g) ?? []).length;
+  ok('  con un tono para cada tema', veces === 2, `${veces} definiciones`);
+}
+
+// --- 5. el formulario, detrás del botón ------------------------------------
+{
+  const dialogo = doc.querySelector('#auth-dialog');
+  ok('el formulario vive en un diálogo', Boolean(dialogo));
+  ok('  cerrado hasta que alguien lo pida', dialogo?.hasAttribute('open') === false);
+
+  const card = dialogo?.querySelector('.auth-card');
   for (const sel of ['#auth-email', '#auth-password', '#auth-submit', '#auth-toggle',
-    '#auth-error', '#auth-notice', '.auth-mark', '.auth-brand']) {
-    ok(`  la tarjeta conserva ${sel}`, Boolean(card.querySelector(sel)));
+    '#auth-error', '#auth-notice', '.auth-mark', '.auth-brand', '[data-close-dialog]']) {
+    ok(`  la tarjeta conserva ${sel}`, Boolean(card?.querySelector(sel)));
   }
+
+  // Y el botón lo abre.
+  doc.querySelector('#btn-ingresar').click();
+  ok('el botón del banner lo abre', dialogo.hasAttribute('open'));
+  ok('  con el foco en el email, que es lo primero que se escribe',
+    doc.activeElement?.id === 'auth-email', doc.activeElement?.id);
+  doc.querySelector('#auth-dialog [data-close-dialog]').click();
+  ok('  y la ✕ lo cierra', dialogo.hasAttribute('open') === false);
+
   ok('la puerta arranca oculta', doc.querySelector('#auth-gate').hidden === true);
 }
 
-// --- 4. en móvil el formulario va primero ---------------------------------
+// --- 6. sobre el pie del degradado no cae texto suelto --------------------
 {
-  const bloque = [...css.matchAll(/@media \(max-width: 860px\) \{([\s\S]*?)\n\}/g)]
-    .map(m => m[1]).find(b => b.includes('.auth-split')) ?? '';
-  ok('hay un breakpoint para la pantalla partida', bloque !== '');
-  ok('pasa a una columna', /\.auth-split \{ grid-template-columns: 1fr; \}/.test(bloque));
-  /* Al apilarse, el formulario queda arriba por el orden del DOM. Invertirlo con
-     `order` volvería a separar el orden visual del de lectura, que es lo que
-     esta estructura vino a evitar. */
-  ok('sin invertir el orden con `order`', !/order:\s*-?\d/.test(bloque),
-    bloque.match(/order:\s*-?\d+/)?.[0] ?? '(no lo usa)');
-  ok('las dos mitades quedan en la misma columna',
-    /\.auth-card \{ grid-column: 1;/.test(bloque) && /\.auth-pitch \{ grid-column: 1;/.test(bloque));
+  /* La presentación dejó de ir sobre un violeta pleno: ahora es texto de la app
+     sobre el fondo de la app. Y abajo, donde el degradado se pone más hondo, lo
+     único que hay son tarjetas — que traen su propio fondo OPACO, así que su
+     texto nunca se apoya en el violeta.
+
+     Eso es lo que hay que cuidar: mientras el fondo de la tarjeta sea opaco, el
+     degradado puede ser el que sea. Con una tarjeta translúcida habría que
+     medir cada parada, y bastaría con oscurecer un poco el pie para que el
+     texto de las últimas dejara de leerse. */
+  const card = bloque(/\n\.landing-card \{[^}]*\}/);
+  ok('las tarjetas traen su propio fondo', /background:\s*var\(--bg-elev\)/.test(card),
+    card.replace(/\s+/g, ' '));
+  ok('  opaco, sin nada del degradado por debajo',
+    !/rgba|opacity|transparent/.test(card), card.replace(/\s+/g, ' '));
+
+  /* Y ya no hay ningún texto suelto ahí abajo: la bajada y el pie se fueron. */
+  ok('no queda texto suelto sobre el degradado',
+    doc.querySelector('#auth-gate .landing-lead') === null
+      && doc.querySelector('#auth-gate .landing-foot') === null);
+  const sueltos = [...doc.querySelectorAll('#auth-gate .landing > *')]
+    .filter(n => !n.classList.contains('landing-hero') && !n.classList.contains('landing-cards'))
+    .map(n => n.className);
+  ok('  el cuerpo es la marca y las tarjetas, nada más', sueltos.length === 0,
+    sueltos.join(', ') || '(nada más)');
 }
 
-// --- 5. contraste del texto sobre el violeta ------------------------------
-{
-  const lum = h => {
-    const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255)
-      .map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
-    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-  };
-  const contraste = (a, b) => {
-    const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m);
-    return (x + 0.05) / (y + 0.05);
-  };
-  /* El texto de apoyo va con blanco velado: se compone contra el fondo para
-     medirlo, porque el alfa no cambia el fondo, lo mezcla. */
-  const velado = (alfa, fondo) => '#' + [1, 3, 5]
-    .map(i => Math.round(255 * alfa + parseInt(fondo.slice(i, i + 2), 16) * (1 - alfa))
-      .toString(16).padStart(2, '0')).join('');
-
-  const regla = css.match(/\.auth-pitch \{([\s\S]*?)\n\}/)?.[1] ?? '';
-  const paradas = [...regla.matchAll(/#([0-9a-f]{6})/g)].map(m => `#${m[1]}`);
-  ok('el degradado se lee del CSS', paradas.length >= 2, paradas.join(' '));
-
-  const alfas = [...css.matchAll(/rgba\(255, 255, 255, \.(\d+)\)/g)]
-    .map(m => Number(`0.${m[1]}`))
-    .filter(a => a >= 0.5);            // los menores son fondos, no texto
-  const menorAlfa = Math.min(...alfas);
-
-  console.log('\n  contraste sobre cada parada del degradado:');
-  console.log('    parada     blanco   texto velado (' + (menorAlfa * 100) + '%)');
-  let peor = Infinity;
-  for (const p of paradas) {
-    const blanco = contraste('#ffffff', p);
-    const suave = contraste(velado(menorAlfa, p), p);
-    peor = Math.min(peor, blanco, suave);
-    console.log(`    ${p}   ${blanco.toFixed(2).padStart(5)}:1   ${suave.toFixed(2).padStart(5)}:1`);
-  }
-  ok('todo el texto del panel pasa AA (4,5:1)', peor >= 4.5, `el peor da ${peor.toFixed(2)}:1`);
-}
-
-// --- 6. nada de estilos inline, que la CSP bloquearía ---------------------
+// --- 7. nada de estilos inline, que la CSP bloquearía ----------------------
 {
   const html = leer('index.html');
-  const pitch = html.slice(html.indexOf('auth-pitch'), html.indexOf('/.auth-split'));
-  ok('la presentación no usa atributos style=', !/style="/.test(pitch));
+  const puerta = html.slice(html.indexOf('class="auth-gate"'), html.indexOf('id="app-root"'));
+  ok('la puerta no lleva estilos inline', !/\sstyle="/.test(puerta),
+    puerta.match(/\sstyle="[^"]*"/)?.[0]);
 }
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');

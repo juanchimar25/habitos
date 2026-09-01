@@ -22,6 +22,7 @@ const $ = sel => document.querySelector(sel);
 
 const el = {
   gate: $('#auth-gate'),
+  dialogo: $('#auth-dialog'),
   form: $('#auth-form'),
   email: $('#auth-email'),
   emailField: $('#auth-email-field'),
@@ -127,13 +128,34 @@ if (typeof createClient !== 'function') {
     if (evento === 'PASSWORD_RECOVERY') {
       recuperando = true;
       cambiarModo('nueva');
+      // Viene de un enlace: la contraseña nueva es lo único que hay que hacer.
+      mostrarFormulario();
     }
     aplicarSesion(sesion);
   });
 }
 
+/**
+ * Abre el formulario si no estaba abierto.
+ *
+ * Normalmente lo abre el botón del banner, que es de la pantalla. Pero hay dos
+ * momentos en que auth.js tiene algo que decir y nadie lo pidió: la vuelta
+ * desde un enlace de recuperación —donde hay que definir la contraseña nueva—
+ * y la falta de configuración. Dejarlo cerrado en esos casos sería mostrar una
+ * página de presentación a alguien que venía a otra cosa.
+ */
+function mostrarFormulario() {
+  if (!el.dialogo || el.dialogo.open) return;
+  /* `showModal` es lo que corresponde —vela el fondo y atrapa el foco—, pero no
+     está en todos lados; el atributo alcanza para que se vea, que es lo único
+     que hace falta acá. */
+  if (typeof el.dialogo.showModal === 'function') el.dialogo.showModal();
+  else el.dialogo.open = true;
+}
+
 function faltaConfiguracion() {
   el.gate.hidden = false;
+  mostrarFormulario();
   el.form.hidden = true;
   el.notice.hidden = false;
   el.notice.innerHTML = 'Falta configurar Supabase. Abrí <code>config.js</code> '

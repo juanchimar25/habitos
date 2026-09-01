@@ -3767,6 +3767,15 @@
     renderJump();
   }
 
+  /* La puerta de entrada: el botón del banner abre el formulario.
+     Vive acá y no en `auth.js` porque abrir un diálogo es de la pantalla, no
+     de la sesión — y porque `auth.js` importa un módulo por CDN, así que en las
+     pruebas no se carga y el botón quedaría muerto. */
+  $('#btn-ingresar')?.addEventListener('click', () => {
+    abrirDialogo($('#auth-dialog'), '#auth-title');
+    $('#auth-email')?.focus();
+  });
+
   el.monthLabel.addEventListener('click', openJump);
   $('#jump-prev').addEventListener('click', () => shiftJump(-1));
   $('#jump-next').addEventListener('click', () => shiftJump(1));
