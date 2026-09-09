@@ -1,13 +1,15 @@
-/* Los gráficos del análisis. Casi todo es sobre el MÍNIMO DE DÍAS DE USO, que
-   es lo que decide si el análisis diario dibuja barras o muestra un aviso.
+/* Los gráficos del análisis. Buena parte es sobre los DÍAS DE USO, que son los
+   que alimentan el promedio por día de la semana de «Barras».
 
-   El promedio por día de la semana no significa nada hasta que cada día de la
-   semana aparece al menos una vez, así que hacen falta siete días de uso. Con
-   menos, el gráfico avisa en lugar de coronar al día que le tocó al arranque.
-
-   «Día de uso» es un día del mes visible que ya transcurrió y no es anterior a
-   la primera marca cargada. La fecha de inicio de las tareas no cuenta: se
+   «Día de uso» es un día del período visible que ya transcurrió y no es anterior
+   a la primera marca cargada. La fecha de inicio de las tareas no cuenta: se
    declara y no se observa.
+
+   «Barras» pidió siete días de uso para dibujar —lo que tarda cada día de la
+   semana en aparecer una vez—. El mínimo evitaba coronar al lunes por haber
+   tenido un solo lunes, pero dejaba el gráfico en blanco la primera semana de
+   cada mes, que es cuando más se lo mira. Se sacó: ahora dibuja con lo que haya,
+   y para promediar sobre un tramo largo está el selector de período.
 
    Hubo cuatro tarjetas de indicadores —días más y menos productivos, «Necesitan
    tu atención» y la comparación con el mes pasado— que resumían en una línea lo
@@ -60,6 +62,10 @@ const leer = doc => {
   return {
     aviso: card?.querySelector('.chart-empty')?.textContent ?? '',
     barras: card?.querySelectorAll('path[fill]').length ?? 0,
+    /* Un número por día de la semana CON datos: los días sin nada medido no
+       dibujan barra ni número, así que esto cuenta cuántos días de la semana
+       llegaron a tener algo. */
+    valores: [...(card?.querySelectorAll('.bar-value') ?? [])].map(t => t.textContent),
   };
 };
 
@@ -83,42 +89,30 @@ const marcar = (desde, hasta, fn) => {
   return status;
 };
 
-// --- sin una sola marca no hay días de uso ---------------------------------
+// --- sin una sola marca no hay nada que promediar --------------------------
 {
   const r = await analizar({});
   mostrar('mes sin ninguna marca', r);
 
   ok('el gráfico no dibuja barras', r.barras === 0, String(r.barras));
-  ok('  y explica que no hay días de uso', /no hay días de uso/.test(r.aviso), r.aviso);
+  ok('  y dice que no hay datos', /no hay datos/.test(r.aviso), r.aviso);
 }
 
-// --- menos de siete días de uso --------------------------------------------
+// --- con lo que haya alcanza ----------------------------------------------
 {
-  /* Tres días cargados. Con eso el lunes 28 sería «el más productivo» por haber
-     sido el único lunes, que es exactamente lo que el mínimo evita. */
+  /* Tres días cargados. Pidió siete —lo que tarda cada día de la semana en
+     aparecer una vez—, y con eso el gráfico quedaba en blanco toda la primera
+     semana de cada mes. Ahora dibuja los días que haya: que el martes tenga un
+     solo martes medido lo dice el propio gráfico, que muestra tres barras y no
+     siete. */
   const s = marcar(28, 30, iso => ({ [`d1|${iso}`]: 'done', [`lv|${iso}`]: 'done' }));
   const r = await analizar(s);
   mostrar('tres días de uso (28, 29 y 30)', r);
 
-  ok('sigue sin dibujar', r.barras === 0, String(r.barras));
-  ok('  el aviso cuenta cuántos van', /van 3/i.test(r.aviso), r.aviso);
-  ok('  y cuántos hacen falta', /7 días de uso/.test(r.aviso), r.aviso);
-}
-
-// --- siete días de uso: el mínimo justo ------------------------------------
-{
-  const s = marcar(24, 30, iso => ({ [`d1|${iso}`]: 'done' }));
-  const r = await analizar(s);
-  mostrar('siete días de uso (24 al 30)', r);
-  ok('con siete el gráfico dibuja', r.barras > 0, String(r.barras));
-}
-{
-  // Seis: uno menos que el mínimo, para fijar el borde.
-  const s = marcar(25, 30, iso => ({ [`d1|${iso}`]: 'done' }));
-  const r = await analizar(s);
-  mostrar('seis días de uso (25 al 30)', r);
-  ok('con seis todavía no', r.barras === 0, String(r.barras));
-  ok('  y van 6', /van 6/i.test(r.aviso), r.aviso);
+  ok('con tres días ya dibuja', r.barras > 0, String(r.barras));
+  ok('  una barra por día medido, y no siete', r.valores.length === 3,
+    r.valores.join(' · '));
+  ok('  sin avisos de mínimo', r.aviso === '', r.aviso);
 }
 
 // --- un mes anterior al primer uso no tiene días de uso --------------------
@@ -130,34 +124,39 @@ const marcar = (desde, hasta, fn) => {
   const r = leer(doc);
   mostrar('junio — anterior al primer uso', r);
 
-  ok('junio no tiene días de uso', /no hay días de uso/.test(r.aviso), r.aviso);
+  ok('junio no dibuja nada', r.barras === 0, String(r.barras));
+  ok('  porque no tiene un solo día de uso', r.valores.length === 0,
+    r.valores.join(' · '));
 }
 
 // --- la fecha de inicio no adelanta el comienzo de uso ---------------------
 {
   /* Una tarea dada de alta con inicio retroactivo al 1 de enero, con marcas
      solo en los últimos tres días. El comienzo de uso es la primera MARCA, no
-     el `start`: si contara el start, el umbral quedaría superado al instante
-     con tres días de datos. */
+     el `start`: si contara el start, julio entero sería medible y los siete
+     días de la semana tendrían barra, casi todos hundidos por días en blanco en
+     los que la app todavía no se usaba. */
   const tareas = [tarea('d1', 'Leer', 'daily', { start: '2026-01-01' })];
   const s = marcar(28, 30, iso => ({ [`d1|${iso}`]: 'done' }));
 
   const r = await analizar(s, tareas);
   mostrar('inicio retroactivo al 1 de enero', r);
 
-  ok('el start retroactivo no cuenta como uso', r.barras === 0, String(r.barras));
-  ok('  siguen siendo tres días', /van 3/i.test(r.aviso), r.aviso);
+  ok('el start retroactivo no cuenta como uso', r.valores.length === 3,
+    r.valores.join(' · '));
+  ok('  y lo medido va al 100%', r.valores.every(v => v === '100%'),
+    r.valores.join(' · '));
 }
 
 // --- los días futuros no cuentan -------------------------------------------
 {
-  /* Hoy es el 30. Marcar el 31 no agrega un día de uso: todavía no transcurrió,
-     y contarlo pondría al viernes un promedio que nadie vivió. */
+  /* Hoy es el 30, jueves. Marcar el 31 no agrega un día de uso: todavía no
+     transcurrió, y contarlo pondría al viernes un promedio que nadie vivió. */
   const s = marcar(25, 31, iso => ({ [`d1|${iso}`]: 'done' }));
   const r = await analizar(s, [TAREAS[0]]);
   mostrar('con el 31 marcado por adelantado', r);
 
-  ok('el día futuro no suma', /van 6/i.test(r.aviso), r.aviso);
+  ok('el día futuro no suma', r.valores.length === 6, r.valores.join(' · '));
 }
 
 // --- un gráfico por vez, elegido en el cajón ------------------------------
@@ -559,6 +558,49 @@ const marcar = (desde, hasta, fn) => {
     tarjeta.className);
 }
 
+// --- «Porcentajes»: pedir poco no es no pedir nada ------------------------
+{
+  /* Dos maneras de no tener meta este mes, que la fila cuenta distinto.
+
+     «Lavar ropa» es semanal y empieza el 28: su única semana dentro del mes
+     entra por tres días, y ese tramo no alcanza para exigir la vez que pide. Sin
+     meta, pero pidiendo días del mes: eso es 0%. Mostraba un guion, el mismo que
+     una tarea que no pide nada, estando las dos igual de sin hacer.
+
+     «Correr» empieza en agosto: este mes no pide NADA, y ahí el guion se queda
+     —no hay nada que medir, y un 0% la acusaría de algo que no le tocaba—. */
+  const tareas = [
+    tarea('sem', 'Lavar ropa', 'weekly', { start: '2026-07-28' }),
+    tarea('lv', 'Trabajar', 'weekdays'),
+    tarea('ago', 'Correr', 'daily', { start: '2026-08-01' }),
+  ];
+
+  const { doc } = await montar(estado({}, tareas));
+  verGrafico(doc, 'porcentajes');
+
+  const valorDe = nombre => [...doc.querySelectorAll('#charts .dots-row')]
+    .find(f => f.querySelector('.task-name').textContent === nombre)
+    ?.querySelector('.meter-value').textContent;
+
+  console.log(`\n=== sin meta ===\n  Lavar ropa ${valorDe('Lavar ropa')} · `
+    + `Trabajar ${valorDe('Trabajar')} · Correr ${valorDe('Correr')}`);
+
+  ok('la semanal recién empezada dice 0%', valorDe('Lavar ropa') === '0%',
+    String(valorDe('Lavar ropa')));
+  ok('  igual que la de lunes a viernes sin marcar', valorDe('Trabajar') === '0%',
+    String(valorDe('Trabajar')));
+  ok('  y la que este mes no pide nada sigue con el guion',
+    valorDe('Correr') === '—', String(valorDe('Correr')));
+
+  /* Y el riel queda vacío: 0% no dibuja nada, tenga o no tenga meta. */
+  const rielDe = nombre => [...doc.querySelectorAll('#charts .dots-row')]
+    .find(f => f.querySelector('.task-name').textContent === nombre)
+    .querySelector('.meter-fill');
+  ok('  con el riel de las dos en cero',
+    rielDe('Lavar ropa')?.style.width === '0%' && rielDe('Correr') === null,
+    `${rielDe('Lavar ropa')?.style.width} · ${rielDe('Correr')}`);
+}
+
 // --- «Puntos» se ordena por puntos ----------------------------------------
 {
   /* Cada gráfico se ordena por el número que dibuja. En «Puntos» eso son los
@@ -707,98 +749,151 @@ const marcar = (desde, hasta, fn) => {
   ok('en «Barras» el botón no está', boton().hidden === true);
 }
 
-// --- el cumplimiento mensual ----------------------------------------------
+// --- el selector: en Análisis se elige un mes, no un día ------------------
 {
-  /* Arriba de todo y siempre a la vista: cómo viene el mes en una línea. La
-     cuenta es (cumplidas + parciales) / lo que las tareas piden, sobre los días
-     ya transcurridos.
+  /* El mismo botón que en el Diario abre «a qué fecha vamos», acá contesta otra
+     pregunta: los gráficos son de un mes entero, así que bajar a los días era
+     un paso que no cambiaba nada de lo dibujado. */
+  const { doc } = await montar(estado(marcar(1, 30, iso => ({ [`d1|${iso}`]: 'done' }))));
+  const celdas = () => [...doc.querySelectorAll('#jump-grid .jump-cell')];
 
-     Una sola tarea diaria, cumplida los primeros 15 días de los 30 corridos: 15
-     marcas sobre 30 días pedidos. */
-  const s = marcar(1, 15, iso => ({ [`d1|${iso}`]: 'done' }));
-  const { doc } = await montar(estado(s, [TAREAS[0]]));
   doc.querySelector('[data-page="indicators"]').click();
+  doc.querySelector('#month-label').click();
 
-  const valor = () => doc.querySelector('#mes-resumen-valor').textContent;
-  const caja = () => doc.querySelector('#mes-resumen');
-  console.log(`\n=== cumplimiento mensual ===\n  ${valor()} · ${caja().title}`);
+  console.log(`\n=== el selector en Análisis ===\n  `
+    + `${doc.querySelector('#jump-title').textContent} · `
+    + `${celdas().length} celdas · rótulo «${doc.querySelector('#jump-label').textContent}»`);
 
-  ok('está arriba de los gráficos',
-    doc.querySelector('#analysis').firstElementChild?.id === 'mes-resumen',
-    doc.querySelector('#analysis').firstElementChild?.id);
-  ok('  con la mitad hecha, va la mitad', valor() === '50%', valor());
-  ok('  y el recuadro lleva el color del nivel', /cp-partial/.test(caja().className),
-    caja().className);
-  ok('  y dice la cuenta, como el resumen del día',
-    /15 sobre una meta de 30/.test(caja().title), caja().title);
+  ok('abre en los meses, no en los días', celdas().length === 12, String(celdas().length));
+  ok('  con el año en el rótulo',
+    doc.querySelector('#jump-label').textContent === '2026',
+    doc.querySelector('#jump-label').textContent);
+  /* Y el rótulo deja de ser un cambio de escala: no hay adónde bajar. */
+  ok('  que ya no cambia de escala', doc.querySelector('#jump-label').disabled === true);
+
+  // Elegir el mes navega y cierra: en el Diario, elegirlo bajaba a sus días.
+  celdas().find(c => c.textContent.toLowerCase() === 'mayo').click();
+  ok('elegir un mes va y cierra',
+    doc.querySelector('#jump-dialog').hasAttribute('open') === false);
+  ok('  y el rótulo del mes lo dice',
+    doc.querySelector('#month-label').textContent.toLowerCase() === 'mayo 2026',
+    doc.querySelector('#month-label').textContent);
 }
+
+// --- el período largo, solo en «Barras» -----------------------------------
 {
-  /* Es la misma cuenta que el resto de la app: una parcial vale medio punto, así
-     que un mes hecho todo a medias da 50% acá y 50% en la lista del día. */
-  const s = marcar(1, 30, iso => ({ [`d1|${iso}`]: 'partial' }));
-  const { doc } = await montar(estado(s, [TAREAS[0]]));
+  const { doc } = await montar(estado(marcar(1, 30, iso => ({ [`d1|${iso}`]: 'done' }))));
+  const rangos = () => doc.querySelector('#jump-rangos');
+  const abrir = () => doc.querySelector('#month-label').click();
+  const cerrar = () => doc.querySelector('#jump-dialog [data-close-dialog]').click();
+
   doc.querySelector('[data-page="indicators"]').click();
 
-  ok('una parcial vale medio punto',
-    doc.querySelector('#mes-resumen-valor').textContent === '50%',
-    doc.querySelector('#mes-resumen-valor').textContent);
+  /* «Puntos» dibuja un punto por día y «Porcentajes» mide contra la meta del
+     período: a un año, el primero no entra en una fila y el segundo contesta
+     otra pregunta. El que promedia es «Barras», y promediar mejora cuanto más
+     largo es el tramo. */
+  abrir();
+  ok('en «Puntos» no se ofrecen períodos', rangos().hidden === true);
+  ok('  y el título habla de un mes',
+    doc.querySelector('#jump-title').textContent === 'Seleccionar mes',
+    doc.querySelector('#jump-title').textContent);
+  cerrar();
+
+  verGrafico(doc, 'barras');
+  abrir();
+  ok('en «Barras» sí', rangos().hidden === false);
+  ok('  y el título habla del período',
+    doc.querySelector('#jump-title').textContent === 'Seleccionar período',
+    doc.querySelector('#jump-title').textContent);
+
+  const opciones = [...doc.querySelectorAll('.jump-rango')].map(b => b.textContent);
+  console.log(`\n=== períodos ===\n  ${opciones.join(' · ')}`);
+  ok('  ofrece 3, 6 y 12 meses',
+    opciones.join('|') === '3 meses|6 meses|12 meses', opciones.join('|'));
+
+  // Elegir uno cierra, y el rótulo del mes pasa a nombrar el período.
+  doc.querySelector('[data-rango="6m"]').click();
+  ok('elegir un período cierra el diálogo',
+    doc.querySelector('#jump-dialog').hasAttribute('open') === false);
+  /* Y dice CUÁLES y no cuántos: hoy es el 30 de julio, así que los últimos seis
+     meses son de febrero a julio. El año va una sola vez porque los dos caen en
+     el mismo; cuando el período cruza el año, cada mes lleva el suyo. */
+  ok('  y el rótulo dice de qué mes a qué mes',
+    doc.querySelector('#month-label').textContent === 'Feb - Jul 2026',
+    doc.querySelector('#month-label').textContent);
+
+  abrir();
+  ok('  y queda marcado al volver a abrir',
+    doc.querySelector('[data-rango="6m"]').getAttribute('aria-pressed') === 'true');
+  cerrar();
+
+  /* El período es de «Barras» y de nadie más: en los otros dos el rótulo vuelve
+     a decir el mes, sin que haya que deshacer nada. */
+  verGrafico(doc, 'puntos');
+  ok('en «Puntos» vuelve a mandar el mes',
+    doc.querySelector('#month-label').textContent.toLowerCase() === 'julio 2026',
+    doc.querySelector('#month-label').textContent);
+
+  verGrafico(doc, 'barras');
+  ok('  y al volver a «Barras» el período sigue puesto',
+    doc.querySelector('#month-label').textContent === 'Feb - Jul 2026',
+    doc.querySelector('#month-label').textContent);
+
+  // Y elegir un mes suelto lo saca.
+  abrir();
+  [...doc.querySelectorAll('#jump-grid .jump-cell')]
+    .find(c => c.textContent.toLowerCase() === 'julio').click();
+  ok('elegir un mes deshace el período',
+    doc.querySelector('#month-label').textContent.toLowerCase() === 'julio 2026',
+    doc.querySelector('#month-label').textContent);
 }
+
+// --- el período mira más atrás que el mes ---------------------------------
 {
-  /* «Leer» cumplida los 30 días y «Meditar» sin marcar: 30 puntos sobre una
-     meta de 60. */
-  const s = marcar(1, 30, iso => ({ [`d1|${iso}`]: 'done' }));
-  const { doc } = await montar(estado(s, [TAREAS[0], TAREAS[1]]));
-  doc.querySelector('[data-page="indicators"]').click();
+  /* Hoy es el 30 de julio. Una tarea diaria cumplida los martes de junio y
+     nada más: en julio no hay una sola marca, así que el mes no tiene nada que
+     promediar. Con los últimos 3 meses, junio entra y el martes aparece.
 
-  ok('una tarea al 100% y otra en cero dan la mitad',
-    doc.querySelector('#mes-resumen-valor').textContent === '50%',
-    doc.querySelector('#mes-resumen-valor').textContent);
-}
-{
-  /* El total NO topea cada tarea en su meta: lo hecho de más en una compensa lo
-     que falta en otra. La semanal se marca los 30 días: pide 5 —las tres semanas
-     enteras del mes más las dos partidas, que al marcarlas pasan a pedir— y
-     aporta 30 puntos. La diaria, que pide 30, no se marca nunca. Con tope daría
-     5 sobre 35 —14%—; sin tope, 30 sobre 35.
+     Los meses se cuentan desde HOY y no desde el mes que se está mirando, así
+     que «últimos 3» es mayo, junio y julio se pare uno donde se pare. */
+  const status = {};
+  for (const dia of [2, 9, 16, 23, 30]) {      // los martes de junio
+    status[`d1|2026-06-${String(dia).padStart(2, '0')}`] = 'done';
+  }
 
-     Cada fila sigue mostrando lo suyo: la semanal topea en 100%. */
-  const semanal = tarea('sem', 'Lavar ropa', 'weekly');
-  const s = marcar(1, 30, iso => ({ [`sem|${iso}`]: 'done' }));
-  const { doc } = await montar(estado(s, [semanal, TAREAS[0]]));
-  doc.querySelector('[data-page="indicators"]').click();
+  const { doc } = await montar({
+    ...estado(status, [TAREAS[0]]),
+    months: { '2026-06': [TAREAS[0]], '2026-07': [TAREAS[0]] },
+  });
 
-  const caja = doc.querySelector('#mes-resumen');
-  console.log(`\n=== sin tope por tarea ===\n  `
-    + `${doc.querySelector('#mes-resumen-valor').textContent} · ${caja.title}`);
+  verGrafico(doc, 'barras');
+  const valores = () => [...doc.querySelectorAll('#charts .bar-value')].map(t => t.textContent);
+  console.log(`\n=== julio solo ===\n  ${valores().join(' · ') || '(nada)'}`);
+  ok('julio solo no tiene nada que promediar', valores().length === 0,
+    valores().join(' · '));
 
-  ok('lo hecho de más cuenta en el total',
-    /30 sobre una meta de 35/.test(caja.title), caja.title);
-  ok('  y levanta el porcentaje del mes',
-    doc.querySelector('#mes-resumen-valor').textContent === '86%',
-    doc.querySelector('#mes-resumen-valor').textContent);
-}
-{
-  /* Pero el porcentaje no pasa de 100%: una sola tarea marcada muy por encima
-     de lo que pide no puede dar 750%. */
-  const semanal = tarea('sem', 'Lavar ropa', 'weekly');
-  const s = marcar(1, 30, iso => ({ [`sem|${iso}`]: 'done' }));
-  const { doc } = await montar(estado(s, [semanal]));
-  doc.querySelector('[data-page="indicators"]').click();
+  doc.querySelector('#month-label').click();
+  doc.querySelector('[data-rango="3m"]').click();
+  console.log(`=== últimos 3 meses ===\n  ${valores().join(' · ')}`);
 
-  ok('el porcentaje del mes topea en 100%',
-    doc.querySelector('#mes-resumen-valor').textContent === '100%',
-    doc.querySelector('#mes-resumen-valor').textContent);
-}
-{
-  // Sin nada que pedir no hay porcentaje que mostrar.
-  const { doc } = await montar({ ...estado({}), months: { '2026-07': [] } });
-  doc.querySelector('[data-page="indicators"]').click();
+  ok('con los últimos 3 meses aparece junio', valores().length > 0,
+    valores().join(' · '));
+  /* El martes es el único con algo: cinco martes de junio cumplidos y los
+     cuatro de julio en blanco, 5 de 9. Que no sea 100% es justamente la prueba
+     de que el período cruza los meses: si solo mirara junio, daría 100%. */
+  ok('  y el martes promedia los dos meses', valores()[1] === '56%',
+    valores().join(' · '));
+  ok('  y el resto del período queda en cero',
+    valores().filter(v => v !== '0%').length === 1, valores().join(' · '));
 
-  ok('sin tareas muestra un guion',
-    doc.querySelector('#mes-resumen-valor').textContent === '—',
-    doc.querySelector('#mes-resumen-valor').textContent);
-  ok('  y lo explica', /Ninguna tarea pidió nada/.test(doc.querySelector('#mes-resumen').title),
-    doc.querySelector('#mes-resumen').title);
+  /* Doce meses cruzan el año, y ahí el rótulo tiene que llevar los dos: de
+     agosto de 2025 a julio de 2026. */
+  doc.querySelector('#month-label').click();
+  doc.querySelector('[data-rango="12m"]').click();
+  ok('a doce meses el rótulo lleva los dos años',
+    doc.querySelector('#month-label').textContent === 'Ago 2025 - Jul 2026',
+    doc.querySelector('#month-label').textContent);
 }
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');

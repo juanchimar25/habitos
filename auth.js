@@ -131,6 +131,13 @@ if (typeof createClient !== 'function') {
       // Viene de un enlace: la contraseña nueva es lo único que hay que hacer.
       mostrarFormulario();
     }
+    /* Al cerrar sesión, la URL vuelve al diario. El botón de salir vive en
+       Ajustes, así que sin esto la ruta quedaba en `/ajustes` y el ingreso
+       siguiente abría ahí en vez de en el día de hoy. Solo en la salida: el
+       arranque respeta la ruta a propósito, para que un enlace compartido abra
+       donde corresponde. */
+    if (evento === 'SIGNED_OUT') window.Habitos?.volverAlDiario?.();
+
     aplicarSesion(sesion);
   });
 }
@@ -151,6 +158,21 @@ function mostrarFormulario() {
      que hace falta acá. */
   if (typeof el.dialogo.showModal === 'function') el.dialogo.showModal();
   else el.dialogo.open = true;
+}
+
+/**
+ * Y lo cierra al entrar.
+ *
+ * No es cosmético: un `<dialog>` modal vive en la capa de arriba y deja INERTE
+ * a todo el resto del documento. Esconder la puerta no lo cierra —el diálogo
+ * está adentro de ella—, así que la app aparecía dibujada y no respondía a
+ * nada. Se arreglaba recargando, que es cuando la sesión ya está y el
+ * formulario no llega a abrirse.
+ */
+function cerrarFormulario() {
+  if (!el.dialogo?.open) return;
+  if (typeof el.dialogo.close === 'function') el.dialogo.close();
+  else el.dialogo.open = false;
 }
 
 function faltaConfiguracion() {
@@ -202,6 +224,7 @@ function aplicarSesion(sesion) {
      al usuario adentro y la pantalla para cambiarla no aparecería nunca. */
   const entrar = Boolean(usuario) && !recuperando;
 
+  if (entrar) cerrarFormulario();
   el.gate.hidden = entrar;
   el.app.hidden = !entrar;
   el.session.hidden = !entrar;

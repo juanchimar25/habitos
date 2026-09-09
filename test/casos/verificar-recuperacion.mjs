@@ -1,93 +1,16 @@
 /* Recuperación de contraseña, de punta a punta: pedir el correo, volver desde
    el enlace y guardar la contraseña nueva.
 
-   Se ejecuta `auth.js` de verdad, con un cliente de Supabase instrumentado: lo
-   que se comprueba es NUESTRO cableado —qué se llama, con qué, y qué queda en
+   Se ejecuta `auth.js` de verdad, con el doble de `auth-doble.mjs`: lo que se
+   comprueba es NUESTRO cableado —qué se llama, con qué, y qué queda en
    pantalla—, sin tocar la red. */
-import { JSDOM } from 'jsdom';
-import { leer } from '../harness.mjs';
+import { montarAuth, SESION, enviar, esperar } from '../auth-doble.mjs';
 
 let fallos = 0;
 const ok = (n, cond, det = '') => {
   console.log(`${cond ? '  OK  ' : ' FALLA'} ${n}${det ? ' → ' + det : ''}`);
   if (!cond) fallos++;
 };
-
-const SESION = { user: { id: 'u-1', email: 'ana@ejemplo.com' } };
-
-/** Monta la app y evalúa `auth.js` con un doble del cliente. */
-async function montarAuth({ sesionInicial = null } = {}) {
-  const html = leer('index.html').replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '');
-  const dom = new JSDOM(html, { url: 'https://ejemplo.test/', runScripts: 'dangerously' });
-  const { window } = dom;
-
-  window.matchMedia = q => ({ media: q, matches: false, addEventListener() {}, removeEventListener() {} });
-  Object.defineProperty(window.document, 'currentScript', {
-    configurable: true, value: { src: 'https://ejemplo.test/app.js' },
-  });
-
-  const llamadas = [];
-  let sesion = sesionInicial;
-  let alCambiar = () => {};
-
-  /* `app.js` lee y escribe `app_state` apenas hay sesión. Se responde vacío:
-     sin esto el arranque cae en el camino de error y ensucia la salida con
-     trazas que no tienen que ver con lo que se está probando. */
-  window.__db = {
-    from: () => ({
-      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
-      upsert: async () => ({ error: null }),
-    }),
-    auth: {
-      getSession: async () => ({ data: { session: sesion } }),
-      onAuthStateChange: fn => { alCambiar = fn; },
-      signInWithPassword: async a => { llamadas.push(['signIn', a]); return { data: {}, error: null }; },
-      signUp: async a => { llamadas.push(['signUp', a]); return { data: {}, error: null }; },
-      signOut: async () => { llamadas.push(['signOut']); sesion = null; return {}; },
-      resetPasswordForEmail: async (email, opts) => {
-        llamadas.push(['reset', email, opts]);
-        return { error: null };
-      },
-      updateUser: async a => {
-        llamadas.push(['updateUser', a]);
-        sesion = SESION;
-        return { error: null };
-      },
-    },
-  };
-  window.supabase = { createClient: () => window.__db };
-
-  window.eval(leer('config.js'));
-  window.eval(leer('app.js'));
-
-  /* `auth.js` es un módulo con await de nivel superior y toma `createClient` del
-     global; se envuelve en async para poder evaluarlo. */
-  const fuente = leer('auth.js')
-    .replace(/^const \{ createClient \} = .*$/m, 'const createClient = () => window.__db;')
-    .replace(/new URL\('\.', import\.meta\.url\)\.href/, "'https://ejemplo.test/'");
-  await window.eval(`(async () => { ${fuente} })()`);
-
-  const doc = window.document;
-  return {
-    doc,
-    llamadas,
-    /** Dispara un evento de Supabase, como haría el cliente real. */
-    emitir: (evento, s) => { sesion = s; return alCambiar(evento, s); },
-    modo: () => ({
-      titulo: doc.querySelector('#auth-title').textContent,
-      enviar: doc.querySelector('#auth-submit').textContent,
-      email: !doc.querySelector('#auth-email-field').hidden,
-      password: !doc.querySelector('#auth-password-field').hidden,
-      alterno: doc.querySelector('#auth-toggle').hidden ? null : doc.querySelector('#auth-toggle').textContent,
-      olvidaste: !doc.querySelector('#auth-forgot').hidden,
-      puertaAbierta: doc.querySelector('#auth-gate').hidden,
-    }),
-  };
-}
-
-const enviar = doc => doc.querySelector('#auth-form')
-  .dispatchEvent(new doc.defaultView.Event('submit', { bubbles: true, cancelable: true }));
-const esperar = () => new Promise(r => setTimeout(r, 0));
 
 // --- 1. el enlace existe y solo en el inicio de sesión --------------------
 {

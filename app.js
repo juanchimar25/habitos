@@ -345,6 +345,19 @@
      */
     chart: 'puntos',
     /**
+     * Qué período mira «Barras»: el mes que está a la vista, o los últimos 3, 6
+     * o 12 contando el de hoy.
+     *
+     * Es de «Barras» y de nadie más. Ese gráfico promedia por día de la semana,
+     * y un promedio mejora cuanto más largo es el tramo: un mes da cuatro o
+     * cinco muestras de cada día, y un año, cincuenta. Los otros dos no lo
+     * usan: «Puntos» dibuja un punto por día —365 en una fila no es una fila— y
+     * «Porcentajes» mide contra la meta del período, que a un año es otra
+     * pregunta.
+     * @type {'mes'|'3m'|'6m'|'12m'}
+     */
+    rango: 'mes',
+    /**
      * Cómo se ordenan las tareas en «Puntos» y en «Porcentajes». `lista` es el
      * orden que uno armó —el mismo que en Hábitos—; los otros dos son por
      * cumplimiento. Tampoco se persiste: es una manera de mirar, no una
@@ -2089,8 +2102,6 @@
     menu: $('#btn-menu'),
     tabbar: $('#tabbar'),
     grupoTareas: $('#grupo-tareas'),
-    mesResumen: $('#mes-resumen'),
-    mesResumenValor: $('#mes-resumen-valor'),
     orden: $('#btn-orden'),
     ordenDialog: $('#orden-dialog'),
     grupoGraficos: $('#grupo-graficos'),
@@ -2195,6 +2206,7 @@
     jumpLabel: $('#jump-label'),
     jumpGrid: $('#jump-grid'),
     jumpDows: $('#jump-dows'),
+    jumpRangos: $('#jump-rangos'),
   };
 
   // ---------------------------------------------------------
@@ -2226,7 +2238,11 @@
     } else if (el.controls.parentElement !== el.main) {
       el.main.prepend(el.controls);
     }
-    el.monthLabel.textContent = labelDeMes();
+    /* Con un período puesto, el rótulo lo nombra: es el mismo botón que lo
+       eligió, y decir «Julio 2026» mientras el gráfico promedia seis meses
+       sería mentir sobre lo que está dibujado. */
+    const rango = rangoActivo();
+    el.monthLabel.textContent = rango ? nombreDeRango(rango) : labelDeMes();
 
     /* El ☰ está donde hay algo que elegir: en Hábitos, lo que se le hace a las
        tareas; en Análisis, qué gráfico se mira. En Pendientes y en Ajustes no
@@ -2738,24 +2754,6 @@
     }));
   }
 
-  /**
-   * Días de uso que hacen falta para comparar días de la semana.
-   *
-   * Siete es el mínimo con sentido: es lo que tarda cada día de la semana en
-   * aparecer una vez. Con menos, el ranking no compara promedios sino qué días
-   * cayeron dentro del tramo — un mes recién empezado coronaría al lunes por
-   * haber tenido un lunes.
-   */
-  const MINIMO_DIAS = 7;
-
-  /* Corto a propósito: es lo que el gráfico muestra en lugar de las barras, y
-     el porqué de los siete días vive en la guía. */
-  function avisoMinimoDias(cuantos) {
-    return cuantos
-      ? `Hacen falta ${MINIMO_DIAS} días de uso para comparar; van ${cuantos}.`
-      : 'Todavía no hay días de uso en este mes.';
-  }
-
   // ---------------------------------------------------------
   // Gráficos
   // ---------------------------------------------------------
@@ -2829,7 +2827,7 @@
     }));
 
     g.appendChild(svg('title')).textContent =
-      cual === 'mejor' ? 'El mejor día del mes' : 'El peor día del mes';
+      cual === 'mejor' ? 'El mejor día del período' : 'El peor día del período';
     return g;
   }
 
@@ -2837,17 +2835,6 @@
     /* Tuvo un botón en la esquina para elegir entre cantidad de tareas y
        porcentaje. Con una sola medida no hay nada que elegir. */
     const card = chartCard('Barras');
-
-    /* El mismo mínimo que las tarjetas de productividad, porque es la misma
-       cuenta: si la tarjeta dice que no alcanza, la barra de al lado no puede
-       estar coronando al lunes con un solo lunes medido. */
-    const medibles = diasMedibles(days);
-    if (medibles.length < MINIMO_DIAS) {
-      card.appendChild(sinNingunHabito()
-        ? ejemploDeGrafico('barras')
-        : emptyChart(avisoMinimoDias(medibles.length)));
-      return card;
-    }
 
     const averages = weekdayAverages(days);
     const byJs = new Map(averages.map(a => [a.js, a]));
@@ -2862,7 +2849,9 @@
        sobre la cantidad de días. */
     const values = data.filter(d => d.avg !== null).map(d => d.avg);
     if (!values.length || values.every(v => v === 0)) {
-      card.appendChild(emptyChart('Todavía no hay datos cargados'));
+      card.appendChild(sinNingunHabito()
+        ? ejemploDeGrafico('barras')
+        : emptyChart('Todavía no hay datos cargados'));
       return card;
     }
 
@@ -3017,9 +3006,10 @@
    * La barra de una tarea: el riel, lo alcanzado y el número al costado.
    *
    * El color sale del NIVEL, con la misma lógica que «Barras»: verde desde 75,
-   * ámbar desde 50, rojo abajo. Una tarea sin meta este mes —ninguna de sus
-   * fechas cae en él— no tiene adónde llegar, así que va con el riel vacío y un
-   * guion en lugar del número.
+   * ámbar desde 50, rojo abajo. Una tarea que este mes no pide nada —ninguna de
+   * sus fechas cae en él— no tiene adónde llegar, así que va con el riel vacío y
+   * un guion en lugar del número. Que el mes le pida poco no es lo mismo que no
+   * pedirle nada: eso lo resuelve `nivelDeFila`, y da 0%.
    */
   function barraDeTarea(task, nivel) {
     const caja = elem('div', 'meter');
@@ -3134,55 +3124,27 @@
   // ---- Puntos: el mes día por día, tarea por tarea ---------------------
 
   /**
-   * Cómo viene el mes: lo hecho sobre lo que las tareas piden.
+   * El nivel con el que la fila de una tarea se dibuja y se ordena.
    *
-   * Una cumplida suma un punto y una parcial medio, agregado sobre todas las
-   * tareas del mes.
+   * `complianceOf` deja en null todo lo que no tiene meta, y ahí adentro hay dos
+   * situaciones que la fila cuenta distinto:
    *
-   * Suma los puntos ENTEROS, sin topear cada tarea en su propia meta: lo hecho
-   * de más en una compensa lo que falta en otra. Es una decisión distinta a la
-   * de la fila de cada tarea —donde el porcentaje sí topea en 100%, porque ahí
-   * la pregunta es si ESA tarea se cumplió—; acá la pregunta es cuánto se hizo
-   * en el mes contra cuánto se pedía, y para eso todo lo hecho cuenta. Una
-   * semanal hecha cuatro veces en una semana tapa un día de la diaria, y así
-   * se quiso.
+   *   - la tarea no pide NINGÚN día del rango —empieza el mes que viene, está
+   *     archivada, o es de lunes a viernes y el rango es un sábado—: no hay nada
+   *     que medir, y va con un guion;
+   *   - la tarea sí pide días del rango, pero el tramo visible de sus períodos
+   *     es demasiado corto para exigir una vez —una semanal en los primeros días
+   *     del mes, con la primera semana partida por el borde del mes—: eso es 0%.
+   *     Mostraba un guion al lado de una de lunes a viernes que mostraba 0%,
+   *     estando las dos igual de sin hacer.
    *
-   * El porcentaje sigue sin pasar de 100%: es `complianceOf` el que lo topea,
-   * y un cumplimiento del 130% no querría decir nada.
-   *
-   * `taskTotals` recorta la meta a los días ya vencidos: lo que no transcurrió
-   * no se exige, y al día 4 el mes entero por delante no cuenta como
-   * incumplido. Y cuenta bien a las de período —una semanal pide cuatro veces
-   * en el mes, sin pedir ningún día en particular—, que contadas por «días
-   * requeridos» no aportaban nada y dejaban el mes en 100% siempre.
+   * Con algo marcado y sin meta el guion se queda: decir 0% de una tarea que
+   * tiene marcas sería peor que no decir nada.
    */
-  function cumplimientoMensual(days) {
-    let puntos = 0;
-    let meta = 0;
-
-    for (const task of currentTasks()) {
-      const t = taskTotals(task, days);
-      puntos += t.points;
-      meta += t.max;
-    }
-    return { puntos, meta };
-  }
-
-  /**
-   * El renglón de arriba de Análisis. Se dibuja siempre, también cuando no hay
-   * nada que medir: ahí muestra «—», que es lo que dice un mes sin exigencias.
-   */
-  function renderMesResumen() {
-    const days = monthDays(ui.year, ui.month);
-    const { puntos, meta } = cumplimientoMensual(days);
-    const nivel = complianceOf(puntos, meta);
-
-    el.mesResumen.className = `dia-resumen ${nivel ? 'cp-' + nivel.status : 'cp-empty'}`;
-    el.mesResumenValor.textContent = nivel ? pct(nivel.ratio) : '—';
-    // El mismo texto que el resumen del día, que hace la misma cuenta.
-    el.mesResumen.title = nivel
-      ? `${num(puntos)} sobre una meta de ${num(meta)} en ${labelDeMes()}`
-      : `Ninguna tarea pidió nada en ${labelDeMes()}`;
+  function nivelDeFila({ points, max, dias }) {
+    const nivel = complianceOf(points, max);
+    if (nivel || !dias || points) return nivel;
+    return complianceOf(0, 1);
   }
 
   /**
@@ -3196,7 +3158,7 @@
   function tareasOrdenadas(days, criterio = 'pct') {
     const filas = currentTasks().map(task => {
       const t = taskTotals(task, days);
-      return { task, puntos: t.points, nivel: complianceOf(t.points, t.max) };
+      return { task, puntos: t.points, nivel: nivelDeFila(t) };
     });
 
     if (ui.orden === 'lista') return filas;
@@ -3376,6 +3338,67 @@
    * que los distingue al elegir es cómo se ven; qué muestran lo dice la bajada
    * de cada uno.
    */
+  /**
+   * Los períodos que ofrece el selector, además del mes suelto de la grilla.
+   *
+   * Cuentan hacia atrás desde HOY y no desde el mes que se está mirando: «los
+   * últimos 3 meses» quiere decir eso en cualquier pantalla, y anclarlo al mes
+   * a la vista haría que el mismo botón dijera cosas distintas según dónde
+   * estuvieras parado.
+   */
+  const RANGOS = [
+    { clave: '3m', meses: 3 },
+    { clave: '6m', meses: 6 },
+    { clave: '12m', meses: 12 },
+  ];
+
+  const fmtMonthShort = new Intl.DateTimeFormat(LOCALE, { month: 'short' });
+
+  /**
+   * Cómo se nombra un período en el rótulo: de qué mes a qué mes.
+   *
+   * «Últimos 6 meses» decía cuántos, no cuáles, y el rótulo es lo único que
+   * dice qué hay dibujado. El año va una sola vez cuando los dos caen en el
+   * mismo —«Feb - Jul 2026»—: repetirlo alarga un rótulo que en un teléfono
+   * comparte fila con dos botones.
+   */
+  function nombreDeRango(rango) {
+    const hasta = new Date(today.getFullYear(), today.getMonth(), 1);
+    const desde = new Date(hasta.getFullYear(), hasta.getMonth() - (rango.meses - 1), 1);
+
+    const mes = d => capitalizeFirstLetter(fmtMonthShort.format(d));
+    const mismoAnio = desde.getFullYear() === hasta.getFullYear();
+    return mismoAnio
+      ? `${mes(desde)} - ${mes(hasta)} ${hasta.getFullYear()}`
+      : `${mes(desde)} ${desde.getFullYear()} - ${mes(hasta)} ${hasta.getFullYear()}`;
+  }
+
+  /** El período puesto, o null si lo que se mira es un mes suelto. */
+  function rangoActivo() {
+    if (ui.page !== 'indicators' || ui.chart !== 'barras') return null;
+    return RANGOS.find(r => r.clave === ui.rango) ?? null;
+  }
+
+  /**
+   * Los días que alimentan el gráfico: el mes a la vista, o los últimos N meses
+   * completos contando el de hoy.
+   *
+   * Los días que todavía no llegaron entran igual y no molestan: `diasMedibles`
+   * los saca, y también a los anteriores a la primera marca. Por eso el rango
+   * se arma con meses enteros y no con «los últimos 90 días».
+   */
+  function diasDelGrafico() {
+    const rango = rangoActivo();
+    if (!rango) return monthDays(ui.year, ui.month);
+
+    const desde = new Date(today.getFullYear(), today.getMonth() - (rango.meses - 1), 1);
+    const dias = [];
+    for (let m = 0; m < rango.meses; m++) {
+      dias.push(...monthDays(desde.getFullYear(), desde.getMonth() + m));
+    }
+    return dias;
+  }
+
   const GRAFICOS = {
     puntos: { boton: 'btn-chart-puntos', dibuja: monthDotsChart },
     porcentajes: { boton: 'btn-chart-porcentajes', dibuja: taskChart },
@@ -3385,13 +3408,11 @@
   /* Uno por vez: los tres apilados obligan a desplazar para llegar al de abajo,
      y casi siempre se quiere mirar uno. Cuál se elige en el cajón. */
   function renderCharts() {
-    const days = monthDays(ui.year, ui.month);
     const elegido = GRAFICOS[ui.chart] ?? GRAFICOS.puntos;
 
     el.charts.innerHTML = '';
-    el.charts.appendChild(elegido.dibuja(days));
+    el.charts.appendChild(elegido.dibuja(diasDelGrafico()));
     renderOrden();
-    renderMesResumen();
 
     for (const [clave, g] of Object.entries(GRAFICOS)) {
       const btn = $(`#${g.boton}`);
@@ -3404,7 +3425,9 @@
   for (const [clave, g] of Object.entries(GRAFICOS)) {
     $(`#${g.boton}`).addEventListener('click', () => {
       ui.chart = clave;
-      renderCharts();
+      /* `render` y no solo `renderCharts`: el período largo es de «Barras», así
+         que cambiar de gráfico cambia lo que dice el rótulo del mes. */
+      render();
     });
   }
 
@@ -3683,8 +3706,14 @@
   let jumpYear = today.getFullYear();
   let jumpMonth = today.getMonth();
 
+  /**
+   * En Análisis se elige un MES, no un día: los gráficos son del mes entero, y
+   * bajar a los días era un paso que no cambiaba nada de lo dibujado.
+   */
+  const soloMeses = () => ui.page === 'indicators';
+
   function openJump() {
-    jumpEscala = 'dias';
+    jumpEscala = soloMeses() ? 'meses' : 'dias';
     jumpYear = ui.year;
     jumpMonth = ui.month;
     renderJump();
@@ -3696,10 +3725,29 @@
   function renderJump() {
     const enDias = jumpEscala === 'dias';
 
+    /* El diálogo contesta una pregunta distinta en cada pantalla, y el título
+       es lo primero que se lee: en el Diario, a qué fecha ir; en Análisis, qué
+       mes mirar; y en «Barras», qué período, porque ahí además hay rangos. */
+    const conRangos = soloMeses() && ui.chart === 'barras';
+    el.jumpTitle.textContent = conRangos
+      ? 'Seleccionar período'
+      : (soloMeses() ? 'Seleccionar mes' : 'Seleccionar fecha');
+
+    el.jumpRangos.hidden = !conRangos;
+    for (const btn of el.jumpRangos.querySelectorAll('.jump-rango')) {
+      btn.setAttribute('aria-pressed', String(btn.dataset.rango === ui.rango));
+    }
+
+    /* Sin días adonde bajar, el rótulo deja de ser un cambio de escala y pasa a
+       ser lo que dice: el año que se está mirando. */
+    el.jumpLabel.disabled = soloMeses();
+
     el.jumpLabel.textContent = enDias
       ? capitalizeFirstLetter(labelDeMes(jumpYear, jumpMonth))
       : String(jumpYear);
-    el.jumpLabel.title = enDias ? 'Ver los meses del año' : 'Volver a los días';
+    el.jumpLabel.title = soloMeses()
+      ? `Los meses de ${jumpYear}`
+      : (enDias ? 'Ver los meses del año' : 'Volver a los días');
     el.jumpLabel.setAttribute('aria-label', el.jumpLabel.title);
 
     $('#jump-prev').setAttribute('aria-label', enDias ? 'Mes anterior' : 'Año anterior');
@@ -3745,7 +3793,9 @@
     for (let m = 0; m < 12; m++) {
       const btn = boton('jump-cell', {
         text: capitalizeFirstLetter(fmtMonthName.format(new Date(jumpYear, m, 1))),
-        title: `Ver los días de ${labelDeMes(jumpYear, m)}`,
+        title: soloMeses()
+          ? `Ver ${labelDeMes(jumpYear, m)}`
+          : `Ver los días de ${labelDeMes(jumpYear, m)}`,
       });
       btn.dataset.month = String(m);
       btn.classList.toggle('is-current', jumpYear === ui.year && m === ui.month);
@@ -3785,6 +3835,16 @@
     renderJump();
   });
 
+  el.jumpRangos.addEventListener('click', e => {
+    const btn = e.target.closest('.jump-rango');
+    if (!btn) return;
+
+    ui.rango = btn.dataset.rango;
+    el.jumpDialog.close();
+    // `render` y no `renderCharts`: el rótulo del mes pasa a decir el período.
+    render();
+  });
+
   el.jumpGrid.addEventListener('click', e => {
     const btn = e.target.closest('.jump-cell');
     if (!btn) return;
@@ -3793,7 +3853,19 @@
        fecha», y un mes todavía no es una — antes caía en el día 1, que era una
        respuesta inventada. */
     if (btn.dataset.month !== undefined) {
-      jumpMonth = Number(btn.dataset.month);
+      const mes = Number(btn.dataset.month);
+
+      /* En Análisis el mes es la respuesta: se va y se cierra. Baja al día 1
+         —o a hoy, si es el mes en curso— para que el Diario, que comparte el
+         mes de trabajo, no quede parado en un día de otro mes. */
+      if (soloMeses()) {
+        ui.rango = 'mes';
+        const esteMes = jumpYear === today.getFullYear() && mes === today.getMonth();
+        el.jumpDialog.close();
+        return irAlDia(esteMes ? today : new Date(jumpYear, mes, 1));
+      }
+
+      jumpMonth = mes;
       jumpEscala = 'dias';
       return renderJump();
     }
@@ -7723,6 +7795,20 @@
          ofrece el recordatorio y qué dice la insignia del menú. Que tarde, o
          que falle por falta de red, no puede demorar el arranque. */
       void cargarRecordatorio();
+    },
+
+    /**
+     * Deja la ruta en el diario. La llama `auth.js` al cerrar sesión.
+     *
+     * Vive acá y no allá porque las rutas son de este módulo. Y es aparte de
+     * `stop`: `stop` corre también cuando no hay sesión al abrir, y ahí la ruta
+     * hay que dejarla como está —alguien pudo entrar por `/pendientes` y querer
+     * volver ahí después de identificarse—.
+     */
+    volverAlDiario() {
+      ui.page = 'home';
+      ui.guia = 'home';
+      history.replaceState({ page: 'home' }, '', urlDe('home'));
     },
 
     /** Llamado al cerrar sesión: no queda nada del usuario anterior en memoria. */

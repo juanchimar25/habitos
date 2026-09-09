@@ -1171,6 +1171,45 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 /* Doce meses entran de a tres, con nombre completo; treinta y un días van de a
    siete, que es como se lee un mes. */
+/* Los períodos largos, debajo de la grilla de meses: tres de lo mismo, en tres
+   columnas iguales. Es la línea de abajo del mismo control —arriba un mes, acá
+   varios—, y la raya de arriba es lo que las separa. */
+.jump-rangos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .35rem;
+  margin-top: .9rem;
+  padding-top: .9rem;
+  border-top: 1px solid var(--border);
+}
+
+.jump-rango {
+  padding: .55rem .4rem;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  color: var(--text);
+  font: inherit;
+  font-size: .9rem;
+  cursor: pointer;
+}
+.jump-rango:hover { background: var(--bg-sunken); }
+.jump-rango[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 620;
+}
+
+/* En Análisis el rótulo del medio no cambia de escala —no hay días que
+   elegir—, así que queda apagado. Y apagado tiene que seguir leyéndose: es el
+   año que se está mirando, no un control gastado. */
+.jump-label:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
 .jump-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .jump-grid.es-dias { grid-template-columns: repeat(7, 1fr); }
 
@@ -1593,6 +1632,17 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   font-size: .85rem;
 }
 .guia-pct { font-weight: 700; color: var(--text); font-size: .78rem; }
+
+/* Las barras del gráfico de barras, en el menú y en la guía. Fue un glifo —▥—
+   que al lado del de Porcentajes —▤— eran dos rectángulos rayados casi iguales:
+   había que leer el nombre para distinguirlos, que es justo lo que un icono
+   viene a evitar. Toma el color de donde esté: apagado en el menú, gris en la
+   tecla de la guía. */
+.icono-barras {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
 
 /* El dibujo del botón de orden, dentro de su tecla: el mismo `path` que lleva
    en la línea del mes, a escala de guía. Un glifo parecido obligaría a

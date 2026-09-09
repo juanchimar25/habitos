@@ -225,6 +225,11 @@ export function moverMeses(doc, delta) {
   if (!celda) throw new Error(`No se encontró ${MESES[destino.getMonth()]} en el calendario`);
   celda.click();
 
+  /* En Análisis el mes ES el destino: el diálogo se cierra ahí y no hay días
+     que elegir. La grilla queda dibujada con los meses, así que sin esto el
+     paso siguiente clickearía un mes creyendo que clickea un día. */
+  if (!doc.querySelector('#jump-dialog').hasAttribute('open')) return;
+
   /* Elegir el mes baja a sus días y no navega: el diálogo contesta «a qué
      fecha», y un mes todavía no es una. El destino es el día 1, salvo que el
      mes sea el de hoy — ahí el destino evidente es hoy, como era antes. */

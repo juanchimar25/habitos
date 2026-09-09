@@ -263,10 +263,14 @@
         <span class="drawer-icon" aria-hidden="true">⣿</span> Puntos
       </button>
       <button type="button" id="btn-chart-porcentajes" class="drawer-item" aria-pressed="false">
-        <span class="drawer-icon" aria-hidden="true">▤</span> Porcentajes
+        <span class="drawer-icon" aria-hidden="true">%</span> Porcentajes
       </button>
       <button type="button" id="btn-chart-barras" class="drawer-item" aria-pressed="false">
-        <span class="drawer-icon" aria-hidden="true">▥</span> Barras
+        <span class="drawer-icon" aria-hidden="true"><svg class="icono-barras" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <rect x="4" y="13" width="4" height="7" rx="1"/>
+          <rect x="10" y="8" width="4" height="12" rx="1"/>
+          <rect x="16" y="4" width="4" height="16" rx="1"/>
+        </svg></span> Barras
       </button>
     </div>
 
@@ -460,15 +464,6 @@
          tarjetas de indicadores que resumían en una línea lo que los gráficos
          muestran con su reparto a la vista. -->
     <section class="analysis" id="analysis" aria-label="Análisis del mes">
-      <!-- Cómo viene el mes, en una línea y siempre a la vista. Lleva el mismo
-           marcado que el «Cumplimiento diario» que encabeza la lista del día:
-           es la misma lectura —un rótulo y su porcentaje en un recuadro del
-           color del nivel—, un piso más arriba. -->
-      <p class="dia-resumen" id="mes-resumen">
-        <span class="dia-resumen-rotulo">Cumplimiento mensual</span>
-        <span class="dia-resumen-valor" id="mes-resumen-valor">—</span>
-      </p>
-
       <div class="charts" id="charts"></div>
     </section>
 
@@ -533,11 +528,6 @@
 
         <ol class="guia-pasos">
         <li class="guia-paso">
-          <span class="guia-muestra" aria-hidden="true"><span class="guia-pct">%</span></span>
-          <p>El porcentaje de arriba de la lista dice cuánto cumpliste de lo requerido para ese mes.</p>
-        </li>
-
-        <li class="guia-paso">
           <span class="guia-muestra" aria-hidden="true"><span class="guia-tecla">☰</span></span>
           <p>En el menú elegí qué gráfico mirar.</p>
         </li>
@@ -551,13 +541,19 @@
         </li>
 
         <li class="guia-paso">
-          <span class="guia-muestra" aria-hidden="true"><span class="guia-tecla">▤</span></span>
+          <span class="guia-muestra" aria-hidden="true"><span class="guia-pct">%</span></span>
           <p><strong>Porcentajes</strong>: a cuánto llegó cada hábito en el mes.</p>
         </li>
 
         <li class="guia-paso">
-          <span class="guia-muestra" aria-hidden="true"><span class="guia-tecla">▥</span></span>
-          <p><strong>Barras</strong>: qué días de la semana te va mejor. Necesita al menos 7 días cargados.</p>
+          <span class="guia-muestra" aria-hidden="true"><span class="guia-tecla">
+            <svg class="icono-barras" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <rect x="4" y="13" width="4" height="7" rx="1"/>
+              <rect x="10" y="8" width="4" height="12" rx="1"/>
+              <rect x="16" y="4" width="4" height="16" rx="1"/>
+            </svg>
+          </span></span>
+          <p><strong>Barras</strong>: qué días de la semana te va mejor. Con el botón del mes elegís mirar uno solo o los últimos 3, 6 o 12.</p>
         </li>
 
         <!-- El botón de orden, con su propio dibujo: el mismo `svg` que lleva en
@@ -1483,6 +1479,15 @@
       <div class="jump-dows" id="jump-dows" hidden></div>
 
       <div class="jump-grid" id="jump-grid"></div>
+
+      <!-- Los períodos largos, solo en «Barras»: es el único gráfico que
+           promedia, y promediar mejora cuanto más largo es el tramo. En los
+           otros dos el botón elige un mes y nada más. -->
+      <div class="jump-rangos" id="jump-rangos" hidden>
+        <button type="button" class="jump-rango" data-rango="3m" aria-pressed="false">3 meses</button>
+        <button type="button" class="jump-rango" data-rango="6m" aria-pressed="false">6 meses</button>
+        <button type="button" class="jump-rango" data-rango="12m" aria-pressed="false">12 meses</button>
+      </div>
     </div>
   </dialog>
 
