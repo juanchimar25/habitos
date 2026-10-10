@@ -58,15 +58,33 @@
   /**
    * Frecuencias disponibles. Definen la META de la tarea, no qué días se pueden
    * marcar: cualquier día del mes es siempre marcable, todas las veces que haga
-   * falta. Las que tienen `period` apuntan a un punto por período; el resto, a
-   * un punto por cada día que les corresponde.
+   * falta.
+   *
+   * `porMes` es una CUOTA MENSUAL, y su nombre dice lo que mide: la semanal
+   * pide cuatro veces en el mes y la quincenal dos, y nada más. El rótulo
+   * —«Una vez por semana»— es descriptivo: dice el ritmo que se busca, no un
+   * calendario que haya que respetar. Hacer las cuatro el mismo lunes cumple el
+   * mes igual que hacer una por semana.
+   *
+   * La cuota no se parte en semanas ni se achica porque el mes esté a medio
+   * correr: el denominador es 4 desde el día 1. Un mes con cinco semanas sigue
+   * pidiendo cuatro, y hacer la quinta no sube de 100% — ahí topea
+   * `complianceOf`. Lo ÚNICO que la reduce es que la tarea no haya estado
+   * vigente el mes entero; ver `metaDeCuota`.
+   *
+   * La de meta mensual tiene cuota también, solo que la elige el usuario: ver
+   * `cuotaMensual`. Son la misma idea —un total del mes— y miden igual, que es
+   * lo que evita que «Una vez por semana» y «4 veces al mes» den distinto.
+   *
+   * `period` dice otra cosa: que no piden ningún día puntual. Eso lo miran
+   * `allowsSkip` e `isRequiredDay`, y no cambia con la cuota.
    */
   const FREQ = {
     daily:    { label: 'Todos los días' },
     weekdays: { label: 'Lunes a viernes' },
-    weekly:   { label: 'Una vez por semana',   period: 'semana' },
-    biweekly: { label: 'Una vez por quincena', period: 'quincena' },
-    monthly:  { label: 'Una vez al mes',       period: 'mes' },
+    weekly:   { label: 'Una vez por semana',   period: 'semana',   porMes: 4 },
+    biweekly: { label: 'Una vez por quincena', period: 'quincena', porMes: 2 },
+    monthly:  { label: 'Una vez al mes',       period: 'mes',      porMes: 1 },
     custom:   { label: null },
   };
   const FREQ_KEYS = Object.keys(FREQ);
@@ -340,8 +358,8 @@
     /**
      * Cómo se ordena cada una de las dos vistas que son listas. Uno por vista
      * porque ordenan cosas distintas —tareas y categorías—, y volver de una a
-     * otra sin perder lo elegido es lo que se espera. No se persiste: es una
-     * postura de pantalla, como el orden de Análisis.
+     * otra sin perder lo elegido es lo que se espera. Se recuerda por aparato,
+     * como el orden de Análisis: ver `VISTAS`.
      */
     ordenPend: /** @type {'personalizado'|'fecha'|'alfabetico'|'cantidad'} */ ('fecha'),
     /** Qué pendiente y qué categoría están abiertos en su diálogo. */
@@ -364,9 +382,11 @@
      */
     ordenPrevio: null,
     /**
-     * Qué gráfico se está mirando en Análisis, nombrado por su forma. No se
-     * persiste: cada visita abre en el primero, que es el que muestra el mes
-     * día por día.
+     * Qué gráfico se está mirando en Análisis, nombrado por su forma.
+     *
+     * Se recuerda por aparato —ver `VISTAS`—, así que Análisis abre en el que
+     * se dejó. Antes abría siempre en «Puntos»: quien entra a mirar lo mismo
+     * todos los días tenía que volver a elegirlo en cada visita.
      * @type {'puntos'|'porcentajes'|'barras'}
      */
     chart: 'puntos',
@@ -386,8 +406,7 @@
     /**
      * Cómo se ordenan las tareas en «Puntos» y en «Porcentajes». `lista` es el
      * orden que uno armó —el mismo que en Hábitos—; los otros dos son por
-     * cumplimiento. Tampoco se persiste: es una manera de mirar, no una
-     * preferencia.
+     * cumplimiento. Se recuerda junto con el gráfico: ver `VISTAS`.
      * @type {'lista'|'desc'|'asc'}
      */
     orden: 'lista',
@@ -596,16 +615,6 @@
     const out = [];
     for (let i = 1; i <= total; i++) out.push(new Date(year, month, i));
     return out;
-  }
-
-  /**
-   * Índice de la semana dentro del mes (0-based), alineada al lunes.
-   * Coincide con el particionado de la vista semanal.
-   */
-  function weekIndexInMonth(date) {
-    const first = new Date(date.getFullYear(), date.getMonth(), 1);
-    const offsetToMonday = (first.getDay() + 6) % 7;
-    return Math.floor((date.getDate() - 1 + offsetToMonday) / 7);
   }
 
   /** El día elegido, como `Date`. Sin nada guardado, hoy. */
@@ -883,13 +892,12 @@
    */
   function periodId(task, date) {
     const month = monthKey(date.getFullYear(), date.getMonth());
-    if (isCountMode(task)) return `${month}#m`;
-    switch (FREQ[task.freq]?.period) {
-      case 'semana':   return `${month}#w${weekIndexInMonth(date)}`;
-      case 'quincena': return `${month}#q${date.getDate() <= 15 ? 0 : 1}`;
-      case 'mes':      return `${month}#m`;
-      default:         return dateKey(date);
-    }
+    /* Todas las periódicas se agrupan por MES, y las demás por día. La semanal
+       ya no se parte en semanas ni la quincenal en quincenas: lo que piden es
+       una cuota del mes —ver `porMes`—, así que el mes es su período. Lo que
+       las distingue es cuántas veces piden, y eso contesta `periodTarget`. */
+    if (isCountMode(task) || FREQ[task.freq]?.period) return `${month}#m`;
+    return dateKey(date);
   }
 
   /**
@@ -902,23 +910,31 @@
    * exigiendo lo mismo que la semana entera.
    */
   function periodLength(task, date) {
-    const delMes = () => monthDays(date.getFullYear(), date.getMonth()).length;
-    if (isCountMode(task)) return delMes();
-    switch (FREQ[task.freq]?.period) {
-      case 'semana':   return 7;
-      // Del 1 al 15, y del 16 a fin de mes: la segunda dura lo que sobre.
-      case 'quincena': return date.getDate() <= 15 ? 15 : delMes() - 15;
-      case 'mes':      return delMes();
-      default:         return 1;
+    if (isCountMode(task) || FREQ[task.freq]?.period) {
+      return monthDays(date.getFullYear(), date.getMonth()).length;
     }
+    return 1;
   }
 
   /**
-   * Cuántas veces pide la tarea en un período COMPLETO. Uno para todas, salvo
-   * la de meta mensual, cuyo período es el mes y pide el número que se cargó.
+   * Cuántas veces al mes pide la tarea, o `null` si no se mide por cuota.
+   *
+   * La meta mensual entra acá: «12 veces al mes» es una cuota igual que la
+   * semanal, solo que el número lo elige el usuario en vez de salir de la
+   * frecuencia. Tenerlas separadas era lo que hacía que «Una vez por semana» y
+   * «4 veces al mes» —que significan lo mismo— midieran distinto.
+   */
+  function cuotaMensual(task) {
+    if (isCountMode(task)) return task.target;
+    return FREQ[task.freq]?.porMes ?? null;
+  }
+
+  /**
+   * Cuántas veces pide la tarea en un período COMPLETO: su cuota si la tiene,
+   * y una por día si no — ahí el período es el día.
    */
   function periodTarget(task) {
-    return isCountMode(task) ? task.target : 1;
+    return cuotaMensual(task) ?? 1;
   }
 
   function statusKey(taskId, date) {
@@ -1049,17 +1065,67 @@
   const PREFS_KEY = 'tareas-diarias/prefs';
   const CAMPOS_PREF = ['recordatorioOfrecido'];
 
-  /** Guarda una preferencia. No toca la red: no hay nada que sincronizar. */
-  function savePrefs() {
-    guardarLocal();
+  /**
+   * Cómo quedó mirándose cada pantalla, con los valores que cada campo admite.
+   *
+   * Vive en `ui` y no en `state` porque es navegación, no datos: no viaja a la
+   * base ni sale en el archivo que exporta la app. Y se guarda por APARATO,
+   * igual que el tema — elegir «Barras» en la compu no tiene por qué cambiar lo
+   * que abre el teléfono, donde la pantalla es otra.
+   *
+   * La lista de valores no es documentación: es la validación. Lo que se lee de
+   * `localStorage` es texto que alguien pudo editar a mano, y una versión
+   * anterior pudo guardar un gráfico que ya no existe. Lo que no está en la
+   * lista se ignora y el campo se queda con su valor por omisión, que es el
+   * mismo criterio con el que `normalize` sanea los datos.
+   */
+  const VISTAS = {
+    // Análisis: qué gráfico, con qué período y en qué orden.
+    chart: ['puntos', 'porcentajes', 'barras'],
+    rango: ['mes', '3m', '6m', '12m'],
+    orden: ['lista', 'desc', 'asc'],
+    // Pendientes: qué vista, cómo se agrupa y cómo se ordena.
+    vistaPendientes: ['lista', 'calendario'],
+    agrupacion: ['categoria', 'estado', 'sin'],
+    ordenPend: ['personalizado', 'fecha', 'alfabetico', 'cantidad'],
+  };
+
+  /**
+   * Escribe el archivo de preferencias de este aparato: las de `state` y las
+   * de pantalla. Va entero cada vez —son nueve campos— en lugar de leer,
+   * mezclar y volver a escribir, que es más código para el mismo resultado.
+   */
+  function escribirPrefs() {
     try {
       const prefs = {};
       for (const campo of CAMPOS_PREF) prefs[campo] = state[campo];
+      for (const campo of Object.keys(VISTAS)) prefs[campo] = ui[campo];
       localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
     } catch { /* sin almacenamiento las preferencias duran lo que la pestaña */ }
   }
 
-  /** Vuelca sobre `state` las preferencias de este dispositivo, si las hay. */
+  /**
+   * Guarda una preferencia que vive en `state`. No toca la red: no hay nada
+   * que sincronizar.
+   */
+  function savePrefs() {
+    guardarLocal();
+    escribirPrefs();
+  }
+
+  /**
+   * Guarda cómo quedó mirándose una pantalla.
+   *
+   * Aparte de `savePrefs` a propósito: esto se llama con cada toque de un botón
+   * de vista, y `savePrefs` serializa el estado entero —todas las tareas y
+   * todos los pendientes— para guardarlo en `localStorage`. Pagar eso por
+   * cambiar de gráfico sería trabajo por nada: las vistas no están en `state`.
+   */
+  function guardarVista() {
+    escribirPrefs();
+  }
+
+  /** Vuelca las preferencias de este dispositivo, si las hay, sobre lo que corresponda. */
   function aplicarPrefsLocales() {
     let prefs = null;
     try {
@@ -1069,6 +1135,10 @@
 
     if (typeof prefs.recordatorioOfrecido === 'boolean') {
       state.recordatorioOfrecido = prefs.recordatorioOfrecido;
+    }
+
+    for (const [campo, validos] of Object.entries(VISTAS)) {
+      if (validos.includes(prefs[campo])) ui[campo] = prefs[campo];
     }
   }
 
@@ -1869,7 +1939,16 @@
        pasado todavía, es que no está a la vista. */
     let points = 0;
 
-    /** Por período: cuántos de sus días vencieron dentro del rango y qué se hizo. */
+    /**
+     * Por período: cuántos de sus días vencieron dentro del rango, cuántos la
+     * tarea estuvo vigente y qué se hizo.
+     *
+     * `dias` y `vigentes` cuentan cosas distintas y se usan para cosas
+     * distintas. `dias` es lo TRANSCURRIDO —no se exige un día que no llegó—;
+     * `vigentes` es lo que la tarea ALCANZÓ a cubrir, haya pasado o no, y es
+     * lo único que achica una cuota. Para una tarea de todo el mes coinciden
+     * hasta que el mes termina, y ahí está la diferencia que importa.
+     */
     const periodos = new Map();
 
     for (const d of days) {
@@ -1879,16 +1958,22 @@
 
       const id = periodId(task, d);
       let p = periodos.get(id);
-      if (!p) periodos.set(id, (p = { dias: 0, puntos: 0, largo: periodLength(task, d) }));
+      if (!p) {
+        periodos.set(id, (p = { dias: 0, vigentes: 0, puntos: 0, largo: periodLength(task, d) }));
+      }
+      p.vigentes++;
       if (d <= today) p.dias++;
       if (s) p.puntos += POINTS[s];
     }
 
     const objetivo = periodTarget(task);
+    const cuota = cuotaMensual(task);
     let max = 0;
     let dias = 0;
     for (const p of periodos.values()) {
-      max += metaEnAcciones(objetivo * (p.dias / p.largo), p.puntos, objetivo);
+      max += cuota !== null
+        ? metaDeCuota(cuota, p)
+        : metaEnAcciones(objetivo * (p.dias / p.largo), p.puntos, objetivo);
       dias += p.dias;
     }
 
@@ -1897,6 +1982,34 @@
        rango —una tarea de lunes a viernes mirada un sábado—, o que los pida
        pero el tramo visible del período sea demasiado corto para pedir una vez. */
     return { points, max, dias };
+  }
+
+  /**
+   * Lo que un mes le pide a una tarea de cuota.
+   *
+   * La cuota es un TOTAL del mes y no se achica porque el mes esté a medio
+   * correr: el día 8, una semanal ya pide sus 4. Es lo que la vuelve
+   * predecible y comparable entre meses, y el precio —que a mitad de mes el
+   * número se lea como avance— es deliberado.
+   *
+   * Las dos excepciones son por motivos opuestos, y conviene no confundirlas:
+   *
+   * - **el mes que no empezó** no pide nada. No hay día vencido, y exigir la
+   *   cuota de un futuro en el que nadie faltó pintaría de rojo un mes que
+   *   todavía no existe;
+   * - **la tarea que no estuvo vigente el mes entero** paga la parte que
+   *   cubrió. Una semanal creada el 28 no debe las cuatro del mes: estuvo
+   *   cuatro días de treinta y uno, así que debe una. Sin esto, estrenar un
+   *   hábito a fin de mes lo dejaba en rojo por existir tarde.
+   *
+   * El prorrateo se redondea HACIA ARRIBA: la cuota se cumple con actos
+   * enteros, y un mes en el que la tarea vivió un solo día igual le pide esa
+   * vez. Nunca da cero mientras haya un día vigente y vencido.
+   */
+  function metaDeCuota(cuota, { dias, vigentes, largo }) {
+    if (!dias) return 0;
+    if (vigentes >= largo) return cuota;
+    return Math.ceil(cuota * (vigentes / largo));
   }
 
   /**
@@ -3273,6 +3386,7 @@
     const opcion = e.target.closest('.orden-opcion');
     if (!opcion) return;
     ui.orden = opcion.dataset.orden;
+    guardarVista();
     el.ordenDialog.close();
     renderCharts();
   });
@@ -3477,6 +3591,7 @@
   for (const [clave, g] of Object.entries(GRAFICOS)) {
     $(`#${g.boton}`).addEventListener('click', () => {
       ui.chart = clave;
+      guardarVista();
       /* `render` y no solo `renderCharts`: el período largo es de «Barras», así
          que cambiar de gráfico cambia lo que dice el rótulo del mes. */
       render();
@@ -3892,6 +4007,7 @@
     if (!btn) return;
 
     ui.rango = btn.dataset.rango;
+    guardarVista();
     el.jumpDialog.close();
     // `render` y no `renderCharts`: el rótulo del mes pasa a decir el período.
     render();
@@ -3911,7 +4027,9 @@
          —o a hoy, si es el mes en curso— para que el Diario, que comparte el
          mes de trabajo, no quede parado en un día de otro mes. */
       if (soloMeses()) {
+        // Elegir un mes suelto apaga el período largo, y eso también se recuerda.
         ui.rango = 'mes';
+        guardarVista();
         const esteMes = jumpYear === today.getFullYear() && mes === today.getMonth();
         el.jumpDialog.close();
         return irAlDia(esteMes ? today : new Date(jumpYear, mes, 1));
@@ -5356,6 +5474,7 @@
   el.pendOrdenOk.addEventListener('click', () => {
     ui.agrupacion = borrador.agrupacion;
     ui.ordenPend = borrador.orden;
+    guardarVista();
     el.pendOrdenDialog.close();
     renderPendientes();
   });
@@ -5959,6 +6078,7 @@
   for (const btn of document.querySelectorAll('.pend-vista')) {
     btn.addEventListener('click', () => {
       ui.vistaPendientes = /** @type {'lista'|'calendario'} */ (btn.dataset.vista);
+      guardarVista();
       render();
     });
   }
@@ -6195,8 +6315,9 @@
 
       /* Mover a mano ES elegir el orden personalizado: con otro puesto, la
          flecha guardaba el cambio y la pantalla no se movía, que se lee como
-         que el botón está roto. */
+         que el botón está roto. Y como es una elección, se recuerda. */
       ui.ordenPend = 'personalizado';
+      guardarVista();
       return true;
     },
   });
@@ -6255,7 +6376,9 @@
       const vecino = hermanos[hermanos.indexOf(p) + delta];
       if (!vecino || !intercambiar(state.pendientes.items, p, vecino)) return false;
 
+      // Igual que con las categorías: mover a mano elige el orden, y se recuerda.
       ui.ordenPend = 'personalizado';
+      guardarVista();
       return true;
     },
   });

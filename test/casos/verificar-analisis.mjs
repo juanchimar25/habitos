@@ -562,10 +562,10 @@ const marcar = (desde, hasta, fn) => {
 {
   /* Dos maneras de no tener meta este mes, que la fila cuenta distinto.
 
-     «Lavar ropa» es semanal y empieza el 28: su única semana dentro del mes
-     entra por tres días, y ese tramo no alcanza para exigir la vez que pide. Sin
-     meta, pero pidiendo días del mes: eso es 0%. Mostraba un guion, el mismo que
-     una tarea que no pide nada, estando las dos igual de sin hacer.
+     «Lavar ropa» es semanal y empieza el 28: el mes ya empezó, así que le pide
+     su cuota entera —4— aunque la tarea lleve tres días de existir. Sin marcar,
+     eso es 0%. Mostraba un guion, el mismo que una tarea que no pide nada,
+     estando las dos igual de sin hacer.
 
      «Correr» empieza en agosto: este mes no pide NADA, y ahí el guion se queda
      —no hay nada que medir, y un 0% la acusaría de algo que no le tocaba—. */
@@ -608,8 +608,8 @@ const marcar = (desde, hasta, fn) => {
      para los dos, uno de los dos quedaba ordenado por algo que no muestra.
 
      «Leer» es diaria y va cumplida 20 días: 20 puntos sobre 30 pedidos, 67%.
-     «Correr» es semanal y va cumplida 4 días: 4 puntos sobre 5, 80%. Por puntos
-     manda «Leer»; por porcentaje, «Correr». */
+     «Correr» es semanal y va cumplida 4 días: 4 puntos sobre su cuota de 4,
+     100%. Por puntos manda «Leer»; por porcentaje, «Correr». */
   const semanal = tarea('sem', 'Correr', 'weekly');
   const status = {
     ...marcar(1, 20, iso => ({ [`d1|${iso}`]: 'done' })),
@@ -894,6 +894,150 @@ const marcar = (desde, hasta, fn) => {
   ok('a doce meses el rótulo lleva los dos años',
     doc.querySelector('#month-label').textContent === 'Ago 2025 - Jul 2026',
     doc.querySelector('#month-label').textContent);
+}
+
+// --- la semanal y la quincenal son una CUOTA DEL MES ----------------------
+{
+  /* El rótulo —«Una vez por semana»— describe el ritmo que se busca; lo que se
+     mide es un total del mes: 4 para la semanal y 2 para la quincenal.
+     CUÁNDO se hicieron no entra en la cuenta, a propósito: hacer las cuatro el
+     mismo lunes cumple el mes igual que hacer una por semana.
+
+     Antes cada semana era su propio período y el denominador se armaba
+     prorrateando lo transcurrido, así que se movía con el calendario y con lo
+     que uno marcaba. Ahora es 4 y 2, y nada lo cambia. */
+  const cuotas = [tarea('sem', 'Correr', 'weekly'), tarea('qui', 'Podar', 'biweekly')];
+  const dias = (id, ds) => Object.fromEntries(ds.map(d => [`${id}|2026-07-${d}`, 'done']));
+
+  const valores = async marcas => {
+    const { doc } = await montar(estado(marcas, cuotas));
+    verGrafico(doc, 'porcentajes');
+    const v = {};
+    for (const f of doc.querySelectorAll('#charts .dots-row')) {
+      v[f.querySelector('.task-name').textContent] = f.querySelector('.meter-value').textContent;
+    }
+    return v;
+  };
+
+  /* Julio 2026 toca CINCO bloques de semana —1-5, 6-12, 13-19, 20-26, 27-31— y
+     aun así pide 4: la cuota no mira el calendario. */
+  const repartida = await valores(dias('sem', ['01', '08', '15', '22']));
+  ok('la semanal hecha 4 veces en 4 semanas cumple', repartida.Correr === '100%',
+    String(repartida.Correr));
+
+  const juntas = await valores(dias('sem', ['01', '02', '03', '04']));
+  ok('  y hecha 4 veces el mismo lunes, también', juntas.Correr === '100%',
+    String(juntas.Correr));
+
+  const media = await valores(dias('sem', ['01', '02']));
+  ok('  dos de las cuatro son la mitad, se hagan cuando se hagan',
+    media.Correr === '50%', String(media.Correr));
+
+  /* De más no sube: `complianceOf` topea en 100 y la quinta semana de un mes
+     de cinco no infla el número. */
+  const deMas = await valores(dias('sem', ['01', '08', '15', '22', '29']));
+  ok('  hacerla de más no pasa de 100%', deMas.Correr === '100%', String(deMas.Correr));
+
+  // La quincenal es lo mismo con 2, que es donde se nota el cambio: antes una
+  // sola marca daba 100% porque la segunda quincena todavía no se exigía.
+  const unaQuincena = await valores(dias('qui', ['01']));
+  ok('la quincenal hecha 1 vez va por la mitad', unaQuincena.Podar === '50%',
+    String(unaQuincena.Podar));
+
+  const dosJuntas = await valores(dias('qui', ['01', '02']));
+  ok('  y hecha 2 veces cumple, aunque sean el mismo día-quincena',
+    dosJuntas.Podar === '100%', String(dosJuntas.Podar));
+}
+
+// --- lo único que achica una cuota es la vigencia -------------------------
+{
+  /* Qué SÍ y qué NO reduce la cuota, que son dos preguntas distintas:
+
+     - el mes a medio correr NO la reduce. Al día 30, una semanal hecha una vez
+       va 1 de 4 y no «al día»: la cuota es un total del mes;
+     - no haber estado vigente el mes entero SÍ. Una creada el 28 estuvo cuatro
+       días de treinta y uno, así que debe una, no cuatro. Sin esto, estrenar
+       un hábito a fin de mes lo dejaba en rojo por existir tarde.
+
+     Lo segundo se redondea hacia arriba y nunca da cero: un mes en el que la
+     tarea vivió un solo día igual le pide esa vez. */
+  const unaMarca = { 'sem|2026-07-01': 'done' };
+  const { doc: todoElMes } = await montar(
+    estado(unaMarca, [tarea('sem', 'Correr', 'weekly')]));
+  verGrafico(todoElMes, 'porcentajes');
+  ok('vigente todo el mes, una de cuatro es 25% aunque el mes siga corriendo',
+    todoElMes.querySelector('#charts .dots-row .meter-value').textContent === '25%',
+    todoElMes.querySelector('#charts .dots-row .meter-value').textContent);
+
+  const nacidaTarde = [tarea('sem', 'Lavar ropa', 'weekly', { start: '2026-07-28' })];
+  const { doc } = await montar(estado({ 'sem|2026-07-28': 'done' }, nacidaTarde));
+  verGrafico(doc, 'porcentajes');
+  const valor = doc.querySelector('#charts .dots-row .meter-value').textContent;
+  ok('  pero creada el 28 debe UNA, y hacerla cumple', valor === '100%', valor);
+
+  const aMitad = [tarea('sem', 'Lavar ropa', 'weekly', { start: '2026-07-20' })];
+  const { doc: medio } = await montar(estado({ 'sem|2026-07-20': 'done' }, aMitad));
+  verGrafico(medio, 'porcentajes');
+  ok('  y creada el 20 debe dos: una hecha es la mitad',
+    medio.querySelector('#charts .dots-row .meter-value').textContent === '50%',
+    medio.querySelector('#charts .dots-row .meter-value').textContent);
+
+  /* Y el mes que NO empezó no pide nada: pedir cuatro de un futuro en el que
+     nadie faltó pintaría de rojo un mes que no existe. Es otra cosa que la
+     vigencia —ahí la tarea existe, lo que falta es el tiempo—. */
+  const { doc: futuro } = await montar(estado({}, [tarea('sem', 'Correr', 'weekly')]));
+  moverMeses(futuro, 1);
+  verGrafico(futuro, 'porcentajes');
+  const enFuturo = futuro.querySelector('#charts .dots-row .meter-value')?.textContent;
+  ok('  y un mes que todavía no empezó no pide la cuota', enFuturo === '—',
+    String(enFuturo));
+}
+
+// --- «Una vez por semana» y «4 veces al mes» miden IGUAL -------------------
+{
+  /* Significan lo mismo, así que tienen que dar lo mismo. Estaban midiendo
+     distinto: la de frecuencia pedía 4 fijo y la de meta mensual prorrateaba
+     por los días transcurridos, de modo que en la misma lista de barras dos
+     tareas idénticas mostraban números distintos.
+
+     Ahora las dos son una cuota del mes —ver `cuotaMensual`— y la única que
+     las achica es la vigencia, que les pega igual a las dos. */
+  const par = [
+    tarea('sem', 'Correr', 'weekly'),
+    tarea('cnt', 'Caminar', 'custom', { customMode: 'count', target: 4 }),
+  ];
+  const ambas = ds => Object.fromEntries(
+    ds.flatMap(d => [[`sem|2026-07-${d}`, 'done'], [`cnt|2026-07-${d}`, 'done']]));
+
+  const valores = async (marcas, tareas = par) => {
+    const { doc } = await montar(estado(marcas, tareas));
+    verGrafico(doc, 'porcentajes');
+    const v = {};
+    for (const f of doc.querySelectorAll('#charts .dots-row')) {
+      v[f.querySelector('.task-name').textContent] = f.querySelector('.meter-value').textContent;
+    }
+    return v;
+  };
+
+  for (const [marcas, rotulo] of [
+    [ambas([]), 'sin marcar'],
+    [ambas(['01']), 'con una marca'],
+    [ambas(['01', '08', '15', '22']), 'con las cuatro'],
+    [ambas(['01', '02', '03', '04']), 'con las cuatro juntas'],
+  ]) {
+    const v = await valores(marcas);
+    ok(`${rotulo}, las dos dan lo mismo`, v.Correr === v.Caminar,
+      `semanal=${v.Correr} · meta mensual=${v.Caminar}`);
+  }
+
+  // Y también cuando la vigencia las recorta.
+  const tarde = [
+    tarea('sem', 'Correr', 'weekly', { start: '2026-07-20' }),
+    tarea('cnt', 'Caminar', 'custom', { customMode: 'count', target: 4, start: '2026-07-20' }),
+  ];
+  const v = await valores(ambas(['20']), tarde);
+  ok('creadas el 20 y hechas una vez, también', v.Correr === v.Caminar,
+    `semanal=${v.Correr} · meta mensual=${v.Caminar}`);
 }
 
 console.log(fallos ? `\n${fallos} FALLA(S)` : '\nTodo en verde.');

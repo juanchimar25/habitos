@@ -642,11 +642,26 @@ se sube. Sin esa comparación, la lectura remota pisaba en silencio justo lo úl
 
 ### Lo que no se sincroniza
 
-El tema, el zoom, el plegado de controles, los paneles del análisis, el modo de la columna
-*Estatus* y la medida del *Análisis diario* describen cómo se ve la app **en este aparato**, no
-qué hizo el usuario. Se guardan solo
-en `localStorage` —en `tareas-diarias/prefs`, y el tema además en `tareas-diarias/theme`, que es
-la que lee el script anti-parpadeo antes de que exista `app.js`— y quedan fuera del payload.
+El tema, el aviso del recordatorio y **cómo quedó mirándose cada pantalla** describen cómo se ve
+la app **en este aparato**, no qué hizo el usuario. Se guardan solo en `localStorage` —en
+`tareas-diarias/prefs`, y el tema además en `tareas-diarias/theme`, que es la que lee el script
+anti-parpadeo antes de que exista `app.js`— y quedan fuera del payload.
+
+Lo que se recuerda de cada pantalla:
+
+| Pantalla | Qué recuerda |
+|---|---|
+| **Análisis** | El gráfico que se estaba viendo, el período de *Barras* y el orden de las tareas |
+| **Pendientes** | La vista (lista o calendario), cómo se agrupa y cómo se ordena la lista |
+
+Volver a entrar abre donde uno dejó, en vez de pedir que se vuelva a elegir todo. Es **por
+aparato y no por usuario**, igual que el tema: la pantalla de la computadora y la del teléfono no
+son la misma, así que elegir *Barras* en una no cambia lo que abre la otra.
+
+Cada campo se valida al leerlo contra los valores que admite. Lo que está en `localStorage` es
+texto que alguien pudo editar a mano, y una versión anterior pudo guardar un gráfico que ya no
+existe: lo que no se reconoce se ignora y ese campo abre en su valor de siempre, sin arrastrar a
+los demás ni romper la pantalla. Es el mismo criterio con el que se sanean los datos al entrar.
 
 Antes iban en el mismo `jsonb` que los datos, con dos consecuencias: elegir tema claro en la
 computadora lo cambiaba también en el teléfono, y cada una de esas preferencias subía el diario
@@ -679,27 +694,31 @@ El nombre se guarda con la **primera letra en mayúscula**, sin importar qué ve
 |---|---|
 | Diaria | Un punto por día |
 | Lunes a viernes | Un punto por día hábil |
-| Semanal | Un punto por semana entera (de lunes a domingo) que el mes contenga: **3 o 4** según el mes |
-| Quincenal | Un punto por quincena — del 1 al 15 y del 16 a fin de mes: 2 |
+| Semanal | **4 en el mes**, siempre |
+| Quincenal | **2 en el mes**, siempre |
 | Mensual | Un punto en todo el mes: 1 |
 | Personalizado | Según el submodo, ver abajo |
 
-> **Semanas enteras, no calendarios tocados.** Un mes toca cinco o seis semanas, pero solo contiene tres o cuatro completas: el resto son tramos partidos que siguen en el mes vecino. La meta cuenta las enteras, y a los tramos les pide la parte proporcional — que casi nunca llega a pedir una vez. Marcar en un tramo partido igual te acredita. El detalle está en [Períodos partidos](#períodos-partidos).
+> **La semanal y la quincenal son una cuota del mes.** El rótulo dice el ritmo que se busca —«Una vez por semana»—, pero lo que se mide es un total: **4 y 2**. *Cuándo* las hiciste no entra en la cuenta. Hacer las cuatro el mismo lunes cumple el mes igual que hacer una por semana, y la cuota no cambia porque el mes toque cinco o seis semanas ni porque todavía no haya terminado.
+>
+> Es a propósito, y tiene un precio que conviene conocer: **a mitad de mes el porcentaje se lee como avance de la cuota**. El día 8, una semanal hecha una vez va 1 de 4 — 25% —, aunque no hayas faltado a nada. Estas frecuencias no prometen un ritmo: prometen un total.
+>
+> **Lo único que achica una cuota es la vigencia.** Si la tarea no estuvo disponible el mes entero, paga solo la parte que cubrió: una semanal creada el 28 estuvo cuatro días de treinta y uno, así que debe **una** y no cuatro. Se redondea hacia arriba y nunca da cero — un mes en el que la tarea vivió un solo día igual le pide esa vez. Sin esto, estrenar un hábito a fin de mes lo dejaba en rojo por existir tarde.
+>
+> Un mes que **todavía no empezó** es otra cosa: ahí no pide nada, porque lo que falta no es vigencia sino tiempo.
+
+> **«Una vez por semana» y «4 veces al mes» miden igual.** Significan lo mismo, así que dan lo mismo: las dos son una cuota, solo que en la segunda el número lo elegís vos. Antes no era así —la de frecuencia pedía 4 fijo y la de meta mensual se prorrateaba por los días transcurridos—, y dos tareas idénticas mostraban números distintos en la misma lista de barras.
 
 **Personalizado** tiene dos formas de medirse:
 
 - **Días fijos de la semana** — elegís los días (L M X J V S D) y la meta es un punto por cada uno que caiga en el mes.
 - **Meta mensual, sin días fijos** — cargás un número (*12 veces al mes*) y no indicás días. Ningún día queda como requerido: hacés la tarea cuando puedas y la marcás ahí.
 
-  En vistas más chicas la meta se reparte proporcionalmente sobre los días del mes y se **redondea hacia arriba a acciones enteras**: 12 al mes son `12 × 7/31 ≈ 2,7` en una semana, o sea **3**. En la vista mensual siempre muestra el número exacto que cargaste.
+  Es una **cuota**, igual que la *Semanal* y la *Quincenal*, solo que el número lo elegís vos: pide ese total en el mes, sin importar cuándo lo hagas ni que el mes esté a medio correr.
 
-  > **Por qué se redondea.** Estas metas se cumplen con actos indivisibles: «socializar» se hace o no se hace, no existe hacer 0,26 de socializar. Sin redondear, la meta de un solo día quedaba en fracciones —`8/31 = 0,26`— y una única marca contra esa meta daba **388%**: aritmética correcta sobre una unidad que no existe.
+  Si la tarea no estuvo vigente el mes entero, la cuota se reparte sobre los **días del mes** que alcanzó a cubrir y se **redondea hacia arriba a acciones enteras**: una de 8 al mes que arranca el 25 cubre 7 de 31 días, así que pide `8 × 7/31 ≈ 1,8` → **2**. Es lo que hace que empezar tarde reduzca lo que se espera en vez de amontonarlo — arrancando el día 31 pide una sola vez, y hacerla da 100%.
 
-  Cuando la ventana es tan chica que ni siquiera llega a pedir una acción —el caso de la vista diaria—, **no hay obligación que incumplir**: ahí el cumplimiento lo fija lo que hiciste. Cumplido da 100%, parcial 50% y un día en blanco muestra `—`, no 0%. Un cero acusaría de incumplida a una tarea que ese día no debía nada.
-
-  El reparto se hace sobre los **días del mes**, no sobre los que la tarea tiene disponibles. Es lo que hace que empezar tarde reduzca lo que se espera en vez de amontonarlo: una tarea de 8 al mes que arranca el día 31 no pide las 8 acciones ese día — pide una, y hacerla da 100%.
-
-  > Esta ya no es una regla propia de la meta mensual: es **la** regla, y la comparten todas las frecuencias — ver [Períodos partidos](#períodos-partidos). Lo único particular de este submodo es que su período es el mes entero y pide el número que cargaste, en vez de una vez.
+  > **Por qué se redondea.** Estas metas se cumplen con actos indivisibles: «socializar» se hace o no se hace, no existe hacer 0,26 de socializar. Sin redondear, la meta de un tramo corto quedaba en fracciones —`8/31 = 0,26`— y una única marca contra esa meta daba **388%**: aritmética correcta sobre una unidad que no existe. Por eso nunca da cero: un mes en el que la tarea vivió un solo día igual le pide esa vez.
 
 ### Nombres únicos
 
@@ -740,7 +759,7 @@ Si una tarea no tiene fecha —por ser anterior a que el campo fuera obligatorio
 
 La fecha de inicio no se escribe en la fila de la tarea para no alargarla; se ve al pasar el mouse sobre la frecuencia y al editar la tarea.
 
-Como marcar de más está permitido, **los puntos pueden superar la meta**: una tarea semanal marcada tres veces en una semana suma 3 contra una meta de 1. Pero **el cumplimiento topea en 100%** — cumplir es cumplir, y de ahí no se sube. Los números crudos siguen a la vista en el tooltip de la celda (*«3 sobre una meta de 1»*), así que hacer de más se ve igual sin inflar la medida.
+Como marcar de más está permitido, **los puntos pueden superar la meta**: una tarea semanal marcada cinco veces en el mes suma 5 contra una cuota de 4. Pero **el cumplimiento topea en 100%** — cumplir es cumplir, y de ahí no se sube. Los números crudos siguen a la vista en el tooltip de la celda (*«3 sobre una meta de 1»*), así que hacer de más se ve igual sin inflar la medida.
 
 **El cumplimiento del día cuenta por día, no por tarea.** Entra en la cuenta lo que ese día se pidió y lo que se hizo aunque no se pidiera, un punto de meta por cada uno: es exactamente lo que la lista muestra encendido. Una tarea de lunes a viernes hecha un domingo cuenta **1 de 1** ese domingo — hacer de más nunca puede empeorar el día.
 
@@ -874,7 +893,7 @@ Además del color, cada estado tiene un símbolo, así la planilla sigue siendo 
   | Entre 45% y 74% | ~ | Amarillo |
   | Menos de 45% | ✕ | Rojo |
 
-  La meta se cuenta **por período**, así que se ajusta a lo que estés mirando: una tarea semanal se mide contra 4 puntos en un mes de cuatro semanas y contra 1 en la vista semanal.
+  La meta se cuenta **por período**. Para casi todas las frecuencias el período es el día, y para las de cuota —*Semanal* y *Quincenal*— es el mes entero: se miden contra 4 y contra 2, sin prorratear. Ver [Tareas](#tareas).
 
   **Lo que no transcurrió no se exige.** La meta cuenta los días del rango que ya vencieron; los que todavía no llegaron quedan afuera, porque en ellos no se incumplió nada. El 20 de agosto, una tarea diaria marcada los veinte días va **20 de 20 — 100%**, no 20 de 31.
 
@@ -882,29 +901,29 @@ Además del color, cada estado tiene un símbolo, así la planilla sigue siendo 
   >
   > Lo que se perdió con el cambio es poder leer *cuánto del mes llevás hecho* de un vistazo: para eso ahora hay que mirar los números crudos del tooltip —*«20 sobre una meta de 20»*— en vez del porcentaje. A cambio, un mes al día se ve al día en cualquier momento.
 
-  **Lo hecho por adelantado sí suma.** Es el mismo criterio de la fila `Cumplimiento diario`: lo hecho es lo hecho; lo que no se cuenta es un incumplimiento que todavía no ocurrió. Un día futuro marcado entra con meta propia —cae en el redondeo a acciones enteras de [Períodos partidos](#períodos-partidos), donde la meta la fija lo que hiciste—, así que da *«31 sobre una meta de 31»* y no *«31 sobre 30»*, que insinuaría haberse pasado. Un ✕ adelantado, en cambio, no agrega nada: cero puntos y cero meta.
+  **Lo hecho por adelantado sí suma.** Es el mismo criterio de la fila `Cumplimiento diario`: lo hecho es lo hecho; lo que no se cuenta es un incumplimiento que todavía no ocurrió. Un día futuro marcado entra con meta propia —ver [Cuotas recortadas por vigencia](#cuotas-recortadas-por-vigencia), donde la meta la fija lo que hiciste—, así que da *«31 sobre una meta de 31»* y no *«31 sobre 30»*, que insinuaría haberse pasado. Un ✕ adelantado, en cambio, no agrega nada: cero puntos y cero meta.
 
   Dentro de un período ya vencido, la meta sigue siendo la del **período completo**: una tarea de lunes, miércoles y viernes vista en una semana terminada apunta a 3, y hacerla dos veces da 67%.
 
   Si la frecuencia no pide ningún día del rango —una *Lunes a viernes* en la vista diaria de un sábado— no hay nada que medir y muestra `—`. Un mes entero por venir tampoco exige nada, así que sus filas abren en `—` en lugar de en rojo.
 
-#### Períodos partidos
+#### Cuotas recortadas por vigencia
 
-Los meses no terminan en domingo y las vistas no se alinean con las semanas, así que casi siempre hay períodos de los que solo se ve un pedazo. **A un período partido se le pide solo la parte que se ve**, prorrateada y redondeada hacia arriba a acciones enteras — la misma regla que las tareas de *meta mensual* (ver [Tareas](#tareas)).
+Hay **dos maneras** de que una tarea no deba el mes entero, y la app las trata distinto a propósito:
 
-Agosto de 2026 arranca sábado, así que toca seis semanas:
-
-| Semana | Días en el mes | Le pide a una tarea semanal |
+| | Qué falta | Qué pide |
 |---|---|---|
-| 1–2 ago | 2 de 7 | `2/7 = 0,29` → nada |
-| 3–9 · 10–16 · 17–23 · 24–30 | 7 de 7 | 1 cada una |
-| 31 ago | 1 de 7 | `1/7 = 0,14` → nada |
+| El mes **todavía no empezó** | tiempo | nada — la fila abre en `—`, no en rojo |
+| La tarea **no estuvo vigente** todo el mes | disponibilidad | la parte que cubrió, redondeada hacia arriba |
+| El mes **está a medio correr** | nada: la tarea existe y el mes ya arrancó | **la cuota entera** |
 
-La meta del mes es **4**, que es la cantidad de semanas que el mes contiene de verdad. Hecha una vez por semana, da 100%.
+La tercera fila es la que sorprende, y es deliberada: una cuota es un total del mes, así que el día 8 una semanal ya debe sus 4. El número se lee como **avance de la cuota**, no como «vas al día».
 
-> **Antes bastaba con que un día del período estuviera a la vista para exigirlo entero**, y eso distorsionaba todos los bordes. Esa misma tarea marcaba **4 sobre 6 — 67%**, pintado de amarillo, habiéndola cumplido todas las semanas del mes. Hacia abajo era peor: en la vista semanal una tarea *Mensual* pedía su única vez en cada una de las seis semanas —0% en cinco de ellas—, y una *Quincenal* pedía **dos** en la semana que cruza el día 15.
->
-> Las quincenas nunca tuvieron el problema en la vista mensual: se cortan por día del mes (1 al 15 y 16 a fin de mes), así que siempre son dos completas.
+El recorte por vigencia se reparte sobre los días del mes: una de *8 veces al mes* que arranca el 25 cubre 7 de 31 días y pide `8 × 7/31 ≈ 1,8` → **2**. Nunca da cero, porque un mes en el que la tarea vivió un solo día igual le pide esa vez.
+
+Las **diarias** y las de **días fijos** no tienen cuota: su período es el día, así que cada día vencido pide uno y los que no llegaron no piden nada. Ahí sí vale *lo que no transcurrió no se exige*, al pie de la letra.
+
+> **Antes las de cuota se partían en semanas y quincenas**, y el borde del mes distorsionaba la cuenta: agosto de 2026 arranca sábado y toca seis bloques de semana, así que una tarea semanal cumplida todas las semanas marcaba **4 sobre 6 — 67%**, en amarillo. Arreglarlo contando solo las semanas enteras dejó un problema peor escondido: como el denominador se armaba con lo transcurrido, una **quincenal hecha una sola vez mostraba 100%** hasta el último día del mes, porque la segunda quincena todavía no se exigía.
 
 Cuando la parte visible **ni llega a pedir una acción**, no hay obligación que incumplir: ahí la meta la fija lo que hiciste. Sin marcar muestra `—` y no un 0%, y marcando te acredita — una semanal hecha el 1 de agosto va 1 sobre 1, no queda invisible.
 

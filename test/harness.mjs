@@ -36,9 +36,20 @@ export const leer = f => fs.readFileSync(path.join(RAIZ, f), 'utf8');
  *   mismo: un `{}` igual pasa por `normalize`, que rellena todas las claves del
  *   estado. Sin la entrada, la app cae en `estadoVacio()` y queda en el estado
  *   que ve una cuenta recién creada, que es el único que nunca se saneó.
+ *
+ *   `prefs` es lo que este APARATO tendría guardado de cómo se dejó mirando
+ *   cada pantalla —el gráfico de Análisis, la vista de Pendientes, los
+ *   órdenes—. Va en su propia clave y no por usuario, igual que en la app, y
+ *   es lo que permite probar que volver a entrar abre donde uno dejó.
+ *
+ *   Como objeto se guarda serializado; como CADENA se guarda tal cual, que es
+ *   la única forma de probar un archivo ilegible —texto que no es JSON, o un
+ *   JSON que no es un diccionario—. Eso también hay que poder escribirlo: en
+ *   el navegador de verdad nadie garantiza que el contenido sea el que la app
+ *   dejó.
  * @returns {Promise<{window: object, doc: Document, Habitos: object}>}
  */
-export async function montar(estado, { ruta = '', sinDatos = false } = {}) {
+export async function montar(estado, { ruta = '', sinDatos = false, prefs = null } = {}) {
   const html = leer('index.html')
     // El módulo de sesión pide un import por CDN: fuera.
     .replace(/<script type="module"[^>]*><\/script>/, '');
@@ -75,6 +86,10 @@ export async function montar(estado, { ruta = '', sinDatos = false } = {}) {
   const guardado = new Map(sinDatos
     ? []
     : [[`tareas-diarias/v1/${usuario.id}`, JSON.stringify(estado)]]);
+  if (prefs != null) {
+    guardado.set('tareas-diarias/prefs',
+      typeof prefs === 'string' ? prefs : JSON.stringify(prefs));
+  }
   Object.defineProperty(window, 'localStorage', {
     configurable: true,
     value: {
