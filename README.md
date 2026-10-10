@@ -890,8 +890,10 @@ Además del color, cada estado tiene un símbolo, así la planilla sigue siendo 
   | Cumplimiento | Símbolo | Color |
   |---|---|---|
   | 75% o más | ✓ | Verde |
-  | Entre 45% y 74% | ~ | Amarillo |
-  | Menos de 45% | ✕ | Rojo |
+  | Entre 50% y 74% | ~ | Amarillo |
+  | Menos de 50% | ✕ | Rojo |
+
+  > **El nivel se decide sobre el número redondeado**, que es el que está a la vista. Comparando el crudo, un 74,6% se rotulaba *75%* y se pintaba de amarillo: el umbral es 75 y el número decía 75, así que la pantalla se contradecía consigo misma y no había forma de entender por qué. El valor exacto se sigue usando donde es una escala y no un umbral — el ancho de las barras.
 
   La meta se cuenta **por período**. Para casi todas las frecuencias el período es el día, y para las de cuota —*Semanal* y *Quincenal*— es el mes entero: se miden contra 4 y contra 2, sin prorratear. Ver [Tareas](#tareas).
 
@@ -1066,7 +1068,7 @@ Notas de lectura:
 
   > **El gráfico crece a lo ancho y se desplaza de costado si no entra.** Con 31 días en una pantalla de teléfono, cada columna quedaría en 10px y un número de dos dígitos legible necesita unos 14: así cada día tiene su lugar siempre, y lo que cede en una pantalla angosta es que haya que arrastrar.
 
-- **Año** es una grilla de doce recuadros, uno por mes. Arriba de cada uno el mes abreviado en mayúsculas —`ENE`, `FEB`, `DIC`—, chico y apagado; abajo el cumplimiento de ese mes, con el recuadro teñido según el nivel y con los umbrales de siempre. Un mes que no pidió nada muestra un guion, no un 0%.
+- **Año** es una grilla de **tres columnas por cuatro filas**: doce recuadros, uno por mes, que se reparten el alto de la pantalla en vez de quedarse en lo que mide su contenido. Tres por fila deja los trimestres alineados; con cuatro, cada fila junta meses de dos trimestres distintos y el corte no significa nada. Arriba de cada uno el mes abreviado en mayúsculas —`ENE`, `FEB`, `DIC`—, chico y apagado; abajo el cumplimiento de ese mes, con el recuadro teñido según el nivel y con los umbrales de siempre. Un mes que no pidió nada muestra un guion, no un 0%.
 
   El porcentaje es **lo obtenido sobre lo pedido**, sumando día por día con la misma cuenta que los otros dos. Un mes es la suma de sus días: si este recuadro saliera de otro lado, el año y el mes podrían contradecirse sobre el mismo período.
 

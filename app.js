@@ -2049,7 +2049,19 @@
   function complianceOf(points, max) {
     if (max <= 0) return null;
     const ratio = Math.min((points / max) * 100, 100);
-    const level = COMPLIANCE.find(l => ratio >= l.min);
+
+    /* El nivel se decide sobre el número REDONDEADO, que es el que se muestra.
+       Comparando el crudo, un 74,6% se rotulaba «75%» y se pintaba de ámbar:
+       el umbral es 75 y el número decía 75, así que la pantalla se
+       contradecía consigo misma y no había forma de saber por qué.
+
+       Es la misma razón por la que el podio de las barras compara redondeado
+       —ver `rinde`—: el color y el símbolo tienen que explicarse con el dato
+       que está a la vista, no con sus decimales.
+
+       `ratio` sigue crudo: lo usan los anchos de las barras, que son una
+       escala y no un umbral. */
+    const level = COMPLIANCE.find(l => Math.round(ratio) >= l.min);
     return { ratio, status: level.status, glyph: STATUS_GLYPH[level.status] };
   }
 
@@ -3953,6 +3965,10 @@
     const elegido = GRAFICOS[ui.chart] ?? GRAFICOS.puntos;
 
     el.charts.innerHTML = '';
+    /* El del año estira sus doce recuadros hasta llenar la pantalla, y para
+       eso necesita que el contenedor tenga alto. Los otros cuatro miden lo
+       que su dibujo pide — ver `.charts.es-anio`. */
+    el.charts.classList.toggle('es-anio', ui.chart === 'anio');
     el.charts.appendChild(elegido.dibuja(diasDelGrafico()));
     renderOrden();
 

@@ -1210,6 +1210,60 @@ const marcar = (desde, hasta, fn) => {
     String(otro.querySelectorAll('#charts .dia-num').length));
 }
 
+// --- el color se decide sobre el número que se muestra -------------------
+{
+  /* El umbral del verde es 75. Un 74,6% se rotulaba «75%» y se pintaba de
+     ámbar: la pantalla decía 75 y lo trataba como si no llegara, y no había
+     forma de entender por qué. Ahora el nivel se decide sobre el redondeado,
+     que es el que está a la vista.
+
+     Se arma un mes con 29 de 39 puntos pedidos = 74,36% → «74%», y otro con
+     29,5 de 39 = 75,64% → «76%». El del medio es el que importa: 29,25/39 =
+     75,0% justo. Lo que se comprueba es que el rótulo y el color no puedan
+     contradecirse, sea cual sea el caso. */
+  /* El denominador no se elige: lo fija cuántos días transcurrieron. Hoy es el
+     30, así que CUATRO tareas diarias piden 4 × 30 = 120. Con pasos de medio
+     punto, 120 es el denominador más chico que permite caer DENTRO de la
+     ventana (74,5 – 75), que es donde vivía el error: menos tareas y el salto
+     entre un valor y el siguiente se la pasa de largo. */
+  const DIARIAS = ['d1', 'd2', 'd3', 'd4'].map(id => tarea(id, id, 'daily'));
+
+  /** Reparte `enteras` cumplidas y `medias` parciales sobre las 120 casillas. */
+  const repartir = (enteras, medias) => {
+    const status = {};
+    let puestas = 0;
+    for (let d = 1; d <= 30 && puestas < enteras + medias; d++) {
+      for (const t of DIARIAS) {
+        if (puestas >= enteras + medias) break;
+        const iso = `2026-07-${String(d).padStart(2, '0')}`;
+        status[`${t.id}|${iso}`] = puestas < enteras ? 'done' : 'partial';
+        puestas++;
+      }
+    }
+    return status;
+  };
+
+  const casos = [
+    // 89 + 0,5 = 89,5 sobre 120 → 74,583%, que se rotula «75%». ESTE es el caso:
+    // antes se pintaba de ámbar porque el crudo no llegaba al umbral.
+    [89, 1, '75%', 'cp-done'],
+    // 88 sobre 120 → 73,3% → «73%». Control: abajo del umbral de verdad.
+    [88, 0, '73%', 'cp-partial'],
+  ];
+
+  for (const [enteras, medias, rotulo, nivel] of casos) {
+    const { doc } = await montar(estado(repartir(enteras, medias), DIARIAS));
+    verGrafico(doc, 'anio');
+
+    const julio = [...doc.querySelectorAll('#anio-grilla .anio-mes')][6];
+    const valor = julio.querySelector('.anio-mes-valor').textContent;
+    ok(`con ${enteras + medias * 0.5} de 120 el recuadro dice ${rotulo}…`,
+      valor === rotulo, valor);
+    ok('  …y se pinta acorde a lo que dice', julio.classList.contains(nivel),
+      julio.className.replace('anio-mes ', ''));
+  }
+}
+
 // --- «Año»: doce recuadros, uno por mes ----------------------------------
 {
   /* El único gráfico que no mira un mes sino un año, y por eso la fila de
@@ -1235,6 +1289,19 @@ const marcar = (desde, hasta, fn) => {
   console.log(`\n=== el año ===\n  ${nombres().join(' ')}\n  ${valores().join(' ')}`);
 
   ok('son doce recuadros, uno por mes', cajas().length === 12, String(cajas().length));
+
+  /* TRES columnas y cuatro filas. Un año se lee por trimestres, y tres por
+     fila los deja alineados: con cuatro, cada fila junta meses de dos
+     trimestres distintos y el corte no significa nada. */
+  const hojaAnio = leerArchivo('styles.css');
+  const bloque = hojaAnio.match(/\n\.anio-grilla \{[\s\S]*?\n\}/)?.[0] ?? '';
+  ok('  en tres columnas, sin excepciones por ancho',
+    /grid-template-columns: repeat\(3, 1fr\)/.test(bloque)
+    && !/\.anio-grilla \{ grid-template-columns: repeat\(4/.test(hojaAnio),
+    bloque.match(/grid-template-columns:[^;]+/)?.[0]);
+  ok('  y las filas se reparten el alto en vez de encogerse al contenido',
+    /grid-auto-rows: minmax\([^,]+, 1fr\)/.test(bloque),
+    bloque.match(/grid-auto-rows:[^;]+/)?.[0]);
 
   /* Tres letras los doce. El locale no es parejo —devuelve «sept» y tres para
      los otros once—, y un recuadro con una letra más se nota en una grilla. */

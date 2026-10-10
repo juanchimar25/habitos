@@ -1651,28 +1651,40 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 /* --- el año: doce recuadros, uno por mes --- */
 
+/* TRES columnas y cuatro filas, siempre. Un año se lee por trimestres, y tres
+   por fila los deja alineados: con cuatro, cada fila junta meses de dos
+   trimestres distintos y el corte no significa nada. */
 .anio-grilla {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  /* Las filas se reparten el alto disponible en lugar de quedarse en lo que
+     mide su contenido: doce recuadros chicos dejaban media pantalla vacía
+     debajo. El mínimo es para que en una ventana baja no se aplasten. */
+  grid-auto-rows: minmax(4.5rem, 1fr);
   gap: .5rem;
+  flex: 1;
+  min-height: 0;
 
   /* Se desliza de costado para pasar de año y a lo largo sigue desplazándose
      la pantalla. Es la misma lección que la lista del Diario: sin `pan-y` el
      navegador se queda con el gesto horizontal y no llega nunca al oyente. */
   touch-action: pan-y;
 }
-/* En cuanto hay lugar, cuatro por fila: tres columnas dejan el año en cuatro
-   renglones y la grilla pide desplazar para ver diciembre. */
-@media (min-width: 420px) {
-  .anio-grilla { grid-template-columns: repeat(4, 1fr); }
-}
+
+/* La cadena que le da el alto a la grilla. Sin esto, `1fr` en las filas se
+   resuelve contra el contenido —que es lo que miden los recuadros— y no
+   contra la pantalla, así que no estira nada. Va solo con este gráfico: los
+   otros cuatro miden lo que su dibujo necesita. */
+.charts.es-anio { flex: 1; min-height: 0; }
+.charts.es-anio .chart-card { min-height: 0; }
 
 .anio-mes {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: .15rem;
-  padding: .6rem .35rem;
+  justify-content: center;
+  gap: .3rem;
+  padding: .7rem .35rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-sunken);
@@ -1689,7 +1701,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 }
 
 .anio-mes-valor {
-  font-size: 1.05rem;
+  font-size: 1.25rem;
   font-weight: 700;
   line-height: 1.15;
 }
