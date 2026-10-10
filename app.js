@@ -308,6 +308,16 @@
     carreteEntraDesde: /** @type {'izquierda'|'derecha'|null} */ (null),
     /** Lo mismo para la rejilla del calendario de Pendientes, que pasa de mes. */
     calEntraDesde: /** @type {'izquierda'|'derecha'|null} */ (null),
+    /**
+     * Y lo mismo para lo que se carga abajo: el resumen del día y su lista.
+     *
+     * Acá sí lo pone TAMBIÉN el movimiento de a un día —el deslizamiento sobre
+     * la lista y las teclas ← →—, al revés que la tira. No es una excepción
+     * caprichosa: correr la tira un lugar se ve solo, porque los otros seis
+     * números siguen ahí de testigos, pero abajo cambia el contenido entero y
+     * sin el movimiento no se distingue de haber marcado algo.
+     */
+    diaEntraDesde: /** @type {'izquierda'|'derecha'|null} */ (null),
     /** El día del calendario que está abierto, si hay alguno. */
     diaDelCalendario: /** @type {string|null} */ (null),
     /**
@@ -2229,6 +2239,40 @@
   // Render
   // ---------------------------------------------------------
 
+  /** Las dos clases que hacen entrar algo de costado, para sacarlas juntas. */
+  const ENTRADAS = ['entra-izq', 'entra-der'];
+
+  /**
+   * Hace entrar un nodo por el lado que diga `desde`, o lo deja quieto si es
+   * `null`.
+   *
+   * La clase se saca SIEMPRE y se vuelve a poner solo si toca, y en el medio se
+   * lee `offsetWidth`. Las dos cosas son necesarias y ninguna se ve:
+   *
+   * - dos deslizamientos seguidos son la misma clase dos veces, y sin quitarla
+   *   en el medio el navegador no reinicia la animación: el segundo gesto no
+   *   movía nada. Leer `offsetWidth` fuerza ese corte;
+   * - sacarla en los dibujados que no entran por ningún lado es lo que hace que
+   *   la clase signifique «está entrando AHORA» y no «entró alguna vez». El
+   *   `animationend` la limpia, pero un dibujado cualquiera puede llegar antes.
+   *
+   * Esto hace falta solo donde el nodo SOBREVIVE al dibujado, que son la tira
+   * de días y lo que se carga abajo. La rejilla del calendario de Pendientes se
+   * arma de cero cada mes, así que allá la clase entra con el nodo.
+   */
+  function entraDeCostado(nodo, desde) {
+    nodo.classList.remove(...ENTRADAS);
+    if (!desde) return;
+    void nodo.offsetWidth;
+    nodo.classList.add(desde === 'derecha' ? 'entra-der' : 'entra-izq');
+  }
+
+  /* Terminada, la clase se va: si se quedara, el próximo dibujado la
+     encontraría puesta y no habría animación que reiniciar. */
+  for (const nodo of [el.carretePista, el.dia, el.empty]) {
+    nodo.addEventListener('animationend', () => nodo.classList.remove(...ENTRADAS));
+  }
+
   function render() {
     const onHome = ui.page === 'home';
     const onIndicators = ui.page === 'indicators';
@@ -2356,6 +2400,17 @@
 
     if (hasTasks) renderDia(days[0]);
     else el.diaLista.innerHTML = '';
+
+    /* Entra lo que se esté mostrando: la lista, o el aviso de que ese día no
+       tiene nada. Pasar a un día vacío es justo cuando más se agradece el
+       movimiento —si no, la pantalla se vacía de golpe y parece que algo se
+       borró—, y al que está oculto la clase no le hace nada.
+
+       Va acá y no adentro de `renderDia` para que el pedido se consuma igual
+       cuando no hay tareas: si no, quedaría puesto esperando y animaría un
+       dibujado posterior que no se movió a ningún lado. */
+    for (const nodo of [el.dia, el.empty]) entraDeCostado(nodo, ui.diaEntraDesde);
+    ui.diaEntraDesde = null;
   }
 
   // ---------------------------------------------------------
@@ -2399,28 +2454,9 @@
     }
 
     el.carretePista.replaceChildren(frag);
-
-    /* Se saca siempre y se vuelve a poner solo si toca. Dos deslizamientos
-       seguidos son la misma clase dos veces, y sin quitarla en el medio el
-       navegador no reinicia la animación; leer `offsetWidth` fuerza ese corte.
-
-       Y sacarla en los dibujados que no entran por ningún lado es lo que hace
-       que la clase signifique «está entrando AHORA» y no «entró alguna vez»:
-       el `animationend` la limpia en un navegador, pero un dibujado cualquiera
-       puede llegar antes. */
-    el.carretePista.classList.remove('entra-izq', 'entra-der');
-    if (!ui.carreteEntraDesde) return;
-    void el.carretePista.offsetWidth;
-    el.carretePista.classList.add(
-      ui.carreteEntraDesde === 'derecha' ? 'entra-der' : 'entra-izq');
+    entraDeCostado(el.carretePista, ui.carreteEntraDesde);
     ui.carreteEntraDesde = null;
   }
-
-  /* Terminada, la clase se va: si se quedara, el próximo dibujado la
-     encontraría puesta y no habría animación que reiniciar. */
-  el.carretePista.addEventListener('animationend', () => {
-    el.carretePista.classList.remove('entra-izq', 'entra-der');
-  });
 
   // ---------------------------------------------------------
   // La lista del día
@@ -7726,8 +7762,18 @@
   function shiftRangeOrMonth(delta) {
     // Fuera del Diario no hay carrete que mover: ahí las teclas cambian de mes,
     // y ahí el salto es de UN mes venga el delta que venga.
-    if (ui.page !== 'home') goToMonth(Math.sign(delta));
-    else irAlDia(addDays(diaActual(), delta));
+    if (ui.page !== 'home') return goToMonth(Math.sign(delta));
+
+    /* Lo de abajo entra por donde fue el dedo: yendo al día siguiente se lo ve
+       venir desde la derecha, como si los días estuvieran puestos en fila.
+
+       Va acá y no en cada gesto porque por esta función pasan TODOS los
+       movimientos relativos del Diario —el deslizamiento sobre la lista, el de
+       la tira y las teclas ← →—, y los tres tienen un lado hacia el que van.
+       Saltar a una fecha con «Ir a…» no pasa por acá, y está bien: un salto a
+       marzo no viene de ningún costado. */
+    ui.diaEntraDesde = delta > 0 ? 'derecha' : 'izquierda';
+    irAlDia(addDays(diaActual(), delta));
   }
 
   // ---------------------------------------------------------

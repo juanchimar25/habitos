@@ -667,6 +667,90 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
   ok('moverse de a un día no anima nada', entrada() === '', entrada());
 }
 
+// --- y lo de abajo entra con cada día --------------------------------------
+{
+  /* La tira no anuncia el movimiento de a un día porque se ve solo: los otros
+     seis números siguen ahí de testigos. Abajo es al revés —cambia el contenido
+     entero—, y sin movimiento pasar de día no se distingue de haber marcado
+     algo. Así que acá SÍ entra, venga de un día o de siete.
+
+     Es el mismo par de clases que la tira y que el calendario de Pendientes:
+     una sola definición para las tres pantallas que se deslizan. */
+  const { doc } = await montar(ESTADO_LLENO);
+  const dia = () => doc.querySelector('#dia');
+  const entrada = n => [...n.classList].filter(c => c.startsWith('entra-')).join(',');
+  const tecla = key => doc.body.dispatchEvent(
+    new doc.defaultView.KeyboardEvent('keydown', { key, bubbles: true }));
+
+  ok('quieto, no entra por ningún lado', entrada(dia()) === '', entrada(dia()));
+
+  deslizar(doc, doc.querySelector('#dia-lista'), -1);
+  ok('deslizando la lista a la izquierda, el día que sigue entra por la derecha',
+    entrada(dia()) === 'entra-der', entrada(dia()) || '(ninguna)');
+  ok('  y de a un día, no de a siete', centro(doc) === '2026-07-31', centro(doc));
+
+  deslizar(doc, doc.querySelector('#dia-lista'), 1);
+  ok('  y al revés, por la izquierda', entrada(dia()) === 'entra-izq', entrada(dia()));
+
+  /* Las teclas son el mismo movimiento sin dedo: mismo lado, misma animación.
+     Lo que NO se mueve con ellas es la tira, que ya se comprueba más arriba. */
+  tecla('ArrowRight');
+  ok('con las teclas también', entrada(dia()) === 'entra-der', entrada(dia()));
+  tecla('ArrowLeft');
+  ok('  y por el lado que corresponde', entrada(dia()) === 'entra-izq', entrada(dia()));
+
+  /* Deslizar la tira mueve las dos cosas, y para el mismo lado: la semana entra
+     por donde fue el dedo y el día que queda al centro, también. */
+  deslizar(doc, doc.querySelector('#carrete'), -1);
+  ok('la tira arrastra al día, para el mismo lado',
+    entrada(dia()) === 'entra-der'
+    && entrada(doc.querySelector('#carrete-pista')) === 'entra-der',
+    `dia=${entrada(dia())} pista=${entrada(doc.querySelector('#carrete-pista'))}`);
+
+  /* Saltar a una fecha no viene de ningún costado: marzo no está «a la
+     derecha» de julio. Un dibujado sin dirección tiene que DEJAR LIMPIO el
+     nodo, si no la clase significaría «entró alguna vez» y el próximo gesto no
+     tendría animación que reiniciar. */
+  verDia(doc, '2026-08-20');
+  doc.querySelector('#btn-hoy').click();
+  ok('volver a hoy no entra de ningún lado',
+    centro(doc) === '2026-07-30' && entrada(dia()) === '',
+    `${centro(doc)} · ${entrada(dia()) || '(ninguna)'}`);
+}
+
+// --- el aviso de día vacío entra igual -------------------------------------
+{
+  /* Pasar a un día sin tareas es justo cuando más se agradece el movimiento: si
+     el aviso apareciera de golpe, la pantalla se vaciaría sin explicar por qué.
+     La única tarea arranca el 1/8, así que julio no tiene ninguna. */
+  const { doc } = await montar({
+    ...ESTADO_LLENO,
+    months: {
+      '2026-08': [{
+        id: 'tarde', name: 'Leer', freq: 'daily',
+        customMode: 'weekdays', weekdays: [], target: 12, start: '2026-08-01',
+      }],
+    },
+    status: {},
+  });
+
+  const vacio = () => doc.querySelector('#empty');
+  const entrada = n => [...n.classList].filter(c => c.startsWith('entra-')).join(',');
+
+  ok('el día de hoy no tiene tareas', vacio().hidden === false);
+  ok('  y la lista está oculta', doc.querySelector('#dia').hidden === true);
+
+  deslizar(doc, doc.querySelector('#board'), -1);
+  ok('el aviso también entra de costado', entrada(vacio()) === 'entra-der',
+    entrada(vacio()) || '(ninguna)');
+
+  /* Y al llegar al día en que la tarea empieza, el que entra es el otro: la
+     clase se reparte según cuál se esté mostrando. */
+  verDia(doc, '2026-08-01');
+  ok('al aparecer las tareas, el aviso se va',
+    vacio().hidden === true && doc.querySelector('#dia').hidden === false);
+}
+
 {
   /* Y el movimiento, leído de la hoja. La definición es UNA sola y la comparten
      las dos pantallas que se deslizan —la tira de días y la rejilla del

@@ -2288,7 +2288,15 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 
 /* Lo que entra se mueve adentro de su caja y no arrastra a la pantalla con
    ella: sin esto, el 35% de corrimiento empuja el ancho y aparece una barra de
-   desplazamiento durante la animación. */
+   desplazamiento durante la animación.
+
+   `#dia` se anima igual que estas dos y NO está acá, a propósito. Recortarlo
+   pediría `overflow` en `.board`, que es su caja, y eso lo volvería un
+   contenedor desplazable: el navegador volvería a arbitrarle el gesto de
+   costado y se perdería el deslizamiento que `.dia-lista` acaba de recuperar
+   —ver el `touch-action` de más abajo—. No hace falta de todos modos: `body`
+   recorta, así que barra no aparece, y el corrimiento arranca con `opacity: 0`,
+   así que lo que se saldría de la caja todavía no se ve. */
 .carrete,
 .pend-cal-rejilla { overflow: hidden; }
 
