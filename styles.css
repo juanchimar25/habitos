@@ -1619,6 +1619,100 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 }
 .bar-value { font-size: 11px; font-weight: 650; fill: var(--text-muted); }
 
+/* --- día por día: una barra fina por día del mes --- */
+
+/* Las marcas del 50 y el 100. Más tenues que la línea de base, que es el cero
+   y el piso de las barras: si pesaran lo mismo, el gráfico se leería como una
+   rejilla con barras adentro en vez de barras con dos referencias. */
+.axis-guia { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 3; }
+
+/* La inicial del día de la semana, arriba de su columna. Chica y apagada: es
+   una referencia de calendario para ubicarse —dónde caen los fines de semana—,
+   no un dato del gráfico. */
+.dia-dow { font-size: 8px; font-weight: 600; fill: var(--text-faint); }
+
+/* El número del día. Con 31 columnas no hay lugar para más cuerpo, y por eso
+   el gráfico crece a lo ancho en vez de apretarlas. */
+.dia-num { font-size: 8.5px; }
+.dia-num.es-hoy { font-weight: 800; fill: var(--text); }
+
+/* Lo que cede cuando el mes no entra: la tarjeta se desplaza de costado en
+   lugar de encoger las columnas hasta que los números se pisen. En una
+   pantalla ancha no se nota —el gráfico entra entero—, y en uno angosta es
+   preferible arrastrar que no poder leer qué día es cada barra. */
+.bars-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* El gesto de costado es de este gráfico y no de la pantalla: sin esto, el
+     navegador se queda con el arrastre para pasar de día. */
+  touch-action: pan-x;
+}
+.bars-scroll .dias-mes { display: block; height: auto; }
+
+/* --- el año: doce recuadros, uno por mes --- */
+
+.anio-grilla {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .5rem;
+
+  /* Se desliza de costado para pasar de año y a lo largo sigue desplazándose
+     la pantalla. Es la misma lección que la lista del Diario: sin `pan-y` el
+     navegador se queda con el gesto horizontal y no llega nunca al oyente. */
+  touch-action: pan-y;
+}
+/* En cuanto hay lugar, cuatro por fila: tres columnas dejan el año en cuatro
+   renglones y la grilla pide desplazar para ver diciembre. */
+@media (min-width: 420px) {
+  .anio-grilla { grid-template-columns: repeat(4, 1fr); }
+}
+
+.anio-mes {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .15rem;
+  padding: .6rem .35rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+}
+
+/* El nombre es la etiqueta del recuadro, no el dato: chico, apagado y en
+   mayúsculas. El locale lo da en minúscula, así que la caja la pone el CSS. */
+.anio-mes-nombre {
+  font-size: .68rem;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.anio-mes-valor {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+/* El color sale del nivel de cumplimiento, con los MISMOS umbrales y los
+   mismos pasos que el resto de la pantalla: verde desde 75, ámbar desde 50,
+   rojo abajo. Se tiñe el recuadro entero y no solo el número, que es lo que
+   deja leer el año de un vistazo sin ir número por número.
+
+   El número usa los colores de texto —`--done-fg` y compañía— y no los de
+   relleno: sobre un fondo teñido, un `--dot-` encima del mismo tono no se
+   despega. */
+.anio-mes.cp-done    { background: var(--done-bg);    border-color: var(--done-fg); }
+.anio-mes.cp-partial { background: var(--partial-bg); border-color: var(--partial-fg); }
+.anio-mes.cp-missed  { background: var(--missed-bg);  border-color: var(--missed-fg); }
+.anio-mes.cp-done    .anio-mes-valor { color: var(--done-fg); }
+.anio-mes.cp-partial .anio-mes-valor { color: var(--partial-fg); }
+.anio-mes.cp-missed  .anio-mes-valor { color: var(--missed-fg); }
+
+/* Un mes que no pidió nada: el guion ya lo dice, y teñirlo lo pondría a
+   competir con los que sí tienen algo que mostrar. */
+.anio-mes.es-vacio .anio-mes-valor { color: var(--text-faint); }
+
 /* --- barras horizontales --- */
 
 /* La barra de cumplimiento de una tarea, en el lugar donde la visualización

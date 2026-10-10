@@ -1060,6 +1060,18 @@ Notas de lectura:
 
 - Los colores son **los mismos estados del tablero**, para que una celda verde y su porción del gráfico se lean como lo mismo. Se usan pasos un punto más oscuros en modo claro para que todos superen 3:1 de contraste contra la tarjeta, y pasos propios —no un volteo automático— en modo oscuro.
 - Verde y amarillo **no se distinguen por tono** bajo protanopia. Por eso en la torta cada color viaja con su símbolo (✓ ~ ✕) y su palabra en la leyenda, y en el de tareas cada barra lleva su porcentaje al lado: la identidad nunca depende del color solo.
+- **Día por día** dibuja una barra fina por cada día del mes, con el cumplimiento de ese día. El eje vertical lleva tres marcas y nada más —`0`, `50` y `100`—, alineadas a la izquierda; abajo van los números de los días, y arriba de cada columna la inicial de su día de la semana, chica y apagada, para ubicar los fines de semana de un vistazo.
+
+  La cuenta de cada día es la misma del renglón *Cumplimiento diario* de Hábitos, y los colores la misma paleta condicional de *Barras*. Un día sin nada pedido ni hecho **no dibuja barra**: eso no es un cero, es que no había nada que medir.
+
+  > **El gráfico crece a lo ancho y se desplaza de costado si no entra.** Con 31 días en una pantalla de teléfono, cada columna quedaría en 10px y un número de dos dígitos legible necesita unos 14: así cada día tiene su lugar siempre, y lo que cede en una pantalla angosta es que haya que arrastrar.
+
+- **Año** es una grilla de doce recuadros, uno por mes. Arriba de cada uno el mes abreviado en mayúsculas —`ENE`, `FEB`, `DIC`—, chico y apagado; abajo el cumplimiento de ese mes, con el recuadro teñido según el nivel y con los umbrales de siempre. Un mes que no pidió nada muestra un guion, no un 0%.
+
+  El porcentaje es **lo obtenido sobre lo pedido**, sumando día por día con la misma cuenta que los otros dos. Un mes es la suma de sus días: si este recuadro saliera de otro lado, el año y el mes podrían contradecirse sobre el mismo período.
+
+  Es el único que no mira un mes sino un año, así que **la fila de arriba cambia con él**: el rótulo del medio pasa a decir el año y aparece **Año actual** del otro lado, que es el gemelo de *Hoy* y se muestra solo estando parado en otro año. Deslizar la grilla pasa de año, con el mismo gesto con el que el carrete pasa de día y el calendario de Pendientes pasa de mes.
+
 - En *Barras*, el **botón de la esquina superior derecha** elige el tramo que se promedia. Muestra el período puesto en corto —`1M`, `3M`, `6M`, `1A`— y abre un diálogo donde se explican enteros: *Este mes*, *Últimos 3 meses*, *Últimos 6 meses*, *Último año*. Va en la misma fila que el nombre del mes y el ☰, y tiene **ancho fijo**: sin eso, pasar de `1M` a `1A` encoge la caja y corre al mes y al ☰ de lugar, porque las columnas de los costados se reparten lo que sobra.
 
   > **Fue un `<select>` nativo y duró poco.** La flecha se le saca con `appearance: none`, pero la lista de opciones la dibuja el sistema operativo y no acepta una línea de CSS: se abría con su azul y su tipografía, sin nada que ver con la app. Es el mismo motivo por el que los otros desplegables son propios. Ahora es un botón con su diálogo, con las mismas clases que el del orden — que es de donde sale que se vea igual que el resto, y no de una paleta aparte.

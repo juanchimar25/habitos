@@ -54,17 +54,19 @@ const centro = doc => doc.querySelector('.carrete-dia.is-centro')?.dataset.date 
      parado en otro día— y el remate de la selección masiva, que se turna con
      «Hoy» en el mismo lugar. */
   /* El ☰ a la izquierda, el mes al medio y, del otro lado, los de Análisis
-     —el orden y el período, que nunca están los dos— compartiendo columna con
-     «Hoy» y con el remate de la selección masiva, que son de Hábitos. Los
-     cuatro se turnan en el mismo lugar: nunca coinciden. */
+     —el orden, el período y «Año actual», que nunca están dos a la vez—
+     compartiendo columna con «Hoy» y con el remate de la selección masiva,
+     que son de Hábitos. Los cinco se turnan en el mismo lugar. */
   const enLinea = () => [...doc.querySelector('.month-nav').children]
     .map(e => e.id).join(',');
-  ok('la línea del mes quedó con el ☰, el mes, el orden, el período, el «Hoy» y el remate',
-    enLinea() === 'btn-menu,month-label,btn-orden,btn-rango,btn-hoy,mode-confirm',
+  ok('la línea del mes quedó con el ☰, el mes y los cinco que se turnan a la derecha',
+    enLinea()
+      === 'btn-menu,month-label,btn-orden,btn-rango,btn-anio-hoy,btn-hoy,mode-confirm',
     enLinea());
-  ok('  y en Hábitos no se ve ninguno de los dos de Análisis',
+  ok('  y en Hábitos no se ve ninguno de los de Análisis',
     doc.querySelector('#btn-orden').hidden === true
-    && doc.querySelector('#btn-rango').hidden === true);
+    && doc.querySelector('#btn-rango').hidden === true
+    && doc.querySelector('#btn-anio-hoy').hidden === true);
   ok('y «Hoy» arranca oculto, porque se abre en hoy',
     doc.querySelector('#btn-hoy').hidden === true);
   ok('y ya no hay rótulo de rango', doc.querySelector('#range-label') === null);

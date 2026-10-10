@@ -1081,7 +1081,7 @@
    */
   const VISTAS = {
     // Análisis: qué gráfico, con qué período y en qué orden.
-    chart: ['puntos', 'porcentajes', 'barras'],
+    chart: ['puntos', 'porcentajes', 'diario', 'barras', 'anio'],
     rango: ['mes', '3m', '6m', '12m'],
     orden: ['lista', 'desc', 'asc'],
     // Pendientes: qué vista, cómo se agrupa y cómo se ordena.
@@ -2345,6 +2345,7 @@
     jumpLabel: $('#jump-label'),
     jumpGrid: $('#jump-grid'),
     jumpDows: $('#jump-dows'),
+    anioHoy: $('#btn-anio-hoy'),
     rangoBtn: $('#btn-rango'),
     rangoDialog: $('#rango-dialog'),
   };
@@ -2415,8 +2416,25 @@
     /* El rótulo dice el MES y nada más. Supo nombrar el período cuando era el
        mismo botón que lo elegía; ahora el período tiene su desplegable al lado
        y su propio renglón bajo el gráfico, así que repetirlo acá era decir lo
-       mismo dos veces en la misma pantalla. */
-    el.monthLabel.textContent = labelDeMes();
+       mismo dos veces en la misma pantalla.
+
+       La excepción es el gráfico del año, que no mira un mes: ahí el mismo
+       botón pasa a decir el AÑO y a abrir el calendario en su escala de
+       meses, que es desde donde se cambia de año. Un rótulo que dijera
+       «octubre 2026» sobre una grilla de doce meses estaría nombrando una
+       parte de lo dibujado. */
+    const enAnio = onIndicators && ui.chart === 'anio';
+    el.monthLabel.textContent = enAnio ? String(ui.year) : labelDeMes();
+    el.monthLabel.title = enAnio ? 'Elegir año' : 'Elegir fecha';
+    el.monthLabel.setAttribute('aria-label', el.monthLabel.title);
+
+    /* «Año actual», el gemelo de «Hoy» para esta pantalla: aparece solo
+       estando parado en otro año, porque en el actual no llevaría a ningún
+       lado. Comparte la columna de la derecha con «Hoy», el orden y el
+       período — los cuatro son de pantallas distintas y nunca coinciden. */
+    el.anioHoy.hidden = !enAnio || ui.year === today.getFullYear();
+    el.anioHoy.title = `Volver a ${today.getFullYear()}`;
+    el.anioHoy.setAttribute('aria-label', el.anioHoy.title);
 
     /* El período es de «Barras» y de nadie más: es el único gráfico que
        promedia, y promediar mejora cuanto más largo es el tramo. El botón
@@ -3249,6 +3267,200 @@
     return caja;
   }
 
+  // ---- Día por día: el cumplimiento de cada día del mes -----------------
+
+  /**
+   * Una barra fina por día del mes, con el cumplimiento de ese día.
+   *
+   * Es la otra mitad de la pregunta que contesta «Por día de la semana»: ese
+   * promedia los lunes de todo el tramo y dice en qué día rendís mejor; este
+   * no promedia nada y dice cómo fue CADA día, en orden. Uno encuentra el
+   * patrón, el otro el bajón concreto — la semana que te fuiste de viaje se ve
+   * acá y queda disuelta allá.
+   *
+   * La cuenta de cada día es `dayCompliance`, la misma del renglón
+   * «Cumplimiento diario» de Hábitos: dos números que contestan lo mismo no
+   * pueden salir de dos lugares distintos.
+   */
+  function monthDaysChart(days) {
+    const card = chartCard('Día por día');
+
+    const data = days.map(d => {
+      const totales = dayCompliance(d);
+      const nivel = complianceOf(totales.points, totales.max);
+      return { d, valor: nivel?.ratio ?? null, status: nivel?.status };
+    });
+
+    /* Un día sin nada pedido ni hecho no tiene barra —no es un cero, es que no
+       había nada que medir—, así que el vacío se decide sobre los que quedaron
+       y no sobre la cantidad de días. */
+    if (!data.some(x => x.valor !== null)) {
+      card.appendChild(emptyChart('Todavía no hay datos cargados'));
+      return card;
+    }
+
+    /* El ancho crece con los días en vez de repartir 31 columnas en un ancho
+       fijo: con una pantalla de teléfono, cada día quedaría en 10px y los
+       números del eje se pisarían entre ellos. Así cada día tiene su lugar
+       siempre, y lo que cede en una pantalla angosta es que la tarjeta se
+       desplace de costado — ver `.bars-scroll`. */
+    const BANDA = 17;
+    const padL = 26, padR = 8, padTop = 16, padBottom = 18;
+    /* Dos veces y media lo que medía. Con 31 columnas finas repartidas en un
+       ancho largo, un alto corto aplastaba las diferencias: entre un día de
+       60% y uno de 80% había tres píxeles y el gráfico se leía como una
+       hilera pareja. El alto es lo único que separa un día de otro acá. */
+    const plotH = 275;
+    const W = padL + days.length * BANDA + padR;
+    const H = padTop + plotH + padBottom;
+    const y = v => padTop + plotH - (v / 100) * plotH;
+
+    const plot = svg('svg', {
+      viewBox: `0 0 ${W} ${H}`,
+      class: 'bars dias-mes',
+      role: 'img',
+      'aria-label': 'Cumplimiento de cada día del mes',
+    });
+    /* El alto se fija en px para que la tarjeta no se estire al crecer el
+       ancho: sin esto, un mes de 31 días dibuja un gráfico altísimo. */
+    plot.style.minWidth = `${days.length * 15 + padL + padR}px`;
+
+    /* Tres marcas y nada más: 0, 50 y 100. Un eje con diez números para un
+       porcentaje es ruido — lo que se quiere saber de un vistazo es si el día
+       estuvo arriba, al medio o abajo. */
+    for (const v of [0, 50, 100]) {
+      plot.appendChild(svg('line', {
+        x1: padL, y1: y(v), x2: W - padR, y2: y(v),
+        class: v === 0 ? 'axis-line' : 'axis-guia',
+      }));
+      /* Alineados a la IZQUIERDA, todos arrancando en el mismo x. Estuvieron
+         pegados al eje por la derecha —`text-anchor: end`—, y ahí «100», «50»
+         y «0» empezaban cada uno en un lugar distinto: tres números con el
+         borde izquierdo en diagonal, que es justo lo que un eje no tiene que
+         hacer. */
+      const rotulo = svg('text', {
+        x: 0, y: y(v) + 3.5, 'text-anchor': 'start', class: 'axis-text',
+      });
+      rotulo.textContent = String(v);
+      plot.appendChild(rotulo);
+    }
+
+    data.forEach(({ d, valor, status }, i) => {
+      const cx = padL + BANDA * i + BANDA / 2;
+
+      /* La inicial del día de la semana va en una fila fija arriba y no sobre
+         cada barra: las barras tienen alturas distintas, así que pegadas a
+         ellas las letras quedaban en una línea quebrada, y las de las barras
+         altas se montaban sobre la marca del 100. */
+      const dow = svg('text', {
+        x: cx, y: padTop - 6, 'text-anchor': 'middle', class: 'dia-dow',
+      });
+      dow.textContent = WEEKDAYS.find(w => w.js === d.getDay()).short;
+      plot.appendChild(dow);
+
+      const numero = svg('text', {
+        x: cx, y: H - 6, 'text-anchor': 'middle', class: 'axis-text dia-num',
+      });
+      numero.textContent = String(d.getDate());
+      if (sameDay(d, today)) numero.classList.add('es-hoy');
+      plot.appendChild(numero);
+
+      if (valor === null) return;
+
+      const h = Math.max((valor / 100) * plotH, 2);
+      const barW = BANDA * 0.5;
+      const bar = svg('path', {
+        /* La MISMA paleta condicional que «Por día de la semana»: verde desde
+           75, ámbar desde 50, rojo abajo. Los dos gráficos se miran de
+           corrido, y con un verde acá y otro allá el mismo nivel parecería
+           dos cosas distintas. */
+        d: columnPath(cx - barW / 2, y(valor), barW, h),
+        fill: `var(--dot-${status})`,
+      });
+      bar.appendChild(svg('title')).textContent =
+        `${capitalizeFirstLetter(fmtFull.format(d))}: ${pct(valor)}`;
+      plot.appendChild(bar);
+    });
+
+    const caja = elem('div', 'bars-scroll');
+    caja.appendChild(plot);
+    card.appendChild(caja);
+    return card;
+  }
+
+  // ---- El año: doce recuadros, uno por mes ------------------------------
+
+  /** ENE, FEB… Para la cabecera de cada recuadro, que va en mayúsculas. */
+  const fmtMesCorto = new Intl.DateTimeFormat(LOCALE, { month: 'short' });
+
+  /**
+   * El cumplimiento de un mes entero: lo obtenido sobre lo pedido.
+   *
+   * Suma `dayCompliance` día por día, que es la MISMA cuenta del renglón
+   * «Cumplimiento diario» de Hábitos y la de las barras de «Día por día». Un
+   * mes es la suma de sus días: si este recuadro saliera de otro lado, el año
+   * y el mes podrían contradecirse sobre el mismo período.
+   *
+   * Devuelve `null` cuando el mes no pidió nada —no empezó, o no había
+   * tareas—: eso no es un cero, es que no hay nada que medir.
+   */
+  function monthCompliance(year, month) {
+    let points = 0;
+    let max = 0;
+    for (const d of monthDays(year, month)) {
+      const t = dayCompliance(d);
+      points += t.points;
+      max += t.max;
+    }
+    return complianceOf(points, max);
+  }
+
+  /**
+   * El año en doce recuadros, uno por mes.
+   *
+   * Es el único gráfico que no mira un mes sino un año, y por eso la fila de
+   * arriba cambia con él: el rótulo del medio pasa a ser el AÑO y aparece
+   * «Año actual» del otro lado. Ver `render`.
+   *
+   * No usa los días que recibe —los arma por su cuenta, mes por mes—, pero la
+   * firma es la de todos: `renderCharts` llama a cualquiera igual.
+   */
+  function yearChart() {
+    const card = chartCard('Año');
+    card.classList.add('is-plana');
+
+    const grilla = elem('div', 'anio-grilla');
+    grilla.id = 'anio-grilla';
+
+    for (let m = 0; m < 12; m++) {
+      const nivel = monthCompliance(ui.year, m);
+      const caja = elem('div', `anio-mes${nivel ? ' cp-' + nivel.status : ' es-vacio'}`);
+
+      /* El nombre arriba, chico y apagado: es la etiqueta del recuadro, no el
+         dato. Las mayúsculas las pone el CSS, como en el resto de la app.
+
+         Se recorta a TRES letras porque el locale no es parejo: devuelve
+         «sept» para septiembre y tres para los otros once, y un recuadro con
+         una letra más que sus vecinos se nota en una grilla. */
+      caja.appendChild(elem('span', 'anio-mes-nombre',
+        fmtMesCorto.format(new Date(ui.year, m, 1)).replace('.', '').slice(0, 3)));
+
+      /* Y abajo el número, que es lo que se viene a ver. Un mes sin nada que
+         medir muestra un guion: un 0% ahí acusaría de incumplido a un mes en
+         el que no se pidió nada. */
+      caja.appendChild(elem('strong', 'anio-mes-valor', nivel ? pct(nivel.ratio) : '—'));
+
+      caja.title = nivel
+        ? `${capitalizeFirstLetter(labelDeMes(ui.year, m))}: ${pct(nivel.ratio)} de cumplimiento`
+        : `${capitalizeFirstLetter(labelDeMes(ui.year, m))}: no hay nada que medir`;
+
+      grilla.appendChild(caja);
+    }
+
+    card.appendChild(grilla);
+    return card;
+  }
+
   // ---- Barras horizontales: cumplimiento por tarea ---------------------
 
   /**
@@ -3729,8 +3941,10 @@
 
   const GRAFICOS = {
     puntos: { boton: 'btn-chart-puntos', dibuja: monthDotsChart },
+    diario: { boton: 'btn-chart-diario', dibuja: monthDaysChart },
     porcentajes: { boton: 'btn-chart-porcentajes', dibuja: taskChart },
     barras: { boton: 'btn-chart-barras', dibuja: weekdayChart },
+    anio: { boton: 'btn-chart-anio', dibuja: yearChart },
   };
 
   /* Uno por vez: los tres apilados obligan a desplazar para llegar al de abajo,
@@ -4041,6 +4255,9 @@
    */
   const soloMeses = () => ui.page === 'indicators';
 
+  /** El gráfico del año puesto, que es el único que mira doce meses de una. */
+  const enGraficoAnual = () => ui.page === 'indicators' && ui.chart === 'anio';
+
   function openJump() {
     jumpEscala = soloMeses() ? 'meses' : 'dias';
     jumpYear = ui.year;
@@ -4058,7 +4275,12 @@
        es lo primero que se lee: en el Diario, a qué fecha ir; en Análisis, qué
        mes mirar. El período ya no se elige acá — tiene su desplegable en la
        fila del mes—, así que el título volvió a hablar de una sola cosa. */
-    el.jumpTitle.textContent = soloMeses() ? 'Seleccionar mes' : 'Seleccionar fecha';
+    /* Con el gráfico del año puesto, lo que se viene a elegir es el AÑO: las
+       flechas del encabezado ya lo cambian y la grilla de meses es el atajo
+       para caer en uno. El título lo dice, o el diálogo parecería pedir otra
+       cosa que la que la pantalla necesita. */
+    el.jumpTitle.textContent = enGraficoAnual() ? 'Seleccionar año'
+      : (soloMeses() ? 'Seleccionar mes' : 'Seleccionar fecha');
 
     /* Sin días adonde bajar, el rótulo deja de ser un cambio de escala y pasa a
        ser lo que dice: el año que se está mirando. */
@@ -4163,6 +4385,27 @@
       btn.setAttribute('aria-pressed', String(btn.dataset.rango === ui.rango));
     }
     abrirDialogo(el.rangoDialog, '#rango-title');
+  });
+
+  /* «Año actual»: el gemelo de «Hoy» para el gráfico del año. Solo cambia el
+     año —no el mes ni el día—, que es lo que esta pantalla mira. */
+  el.anioHoy.addEventListener('click', () => {
+    ui.year = today.getFullYear();
+    render();
+  });
+
+  /* Deslizar la grilla pasa de año, como el carrete pasa de día y el
+     calendario de Pendientes pasa de mes: el mismo gesto para el mismo
+     movimiento en las tres pantallas, con la misma función.
+
+     Va sobre `el.charts`, que sobrevive a los dibujados, y no sobre la grilla,
+     que se arma de cero en cada uno: colgar el oyente del nodo nuevo lo
+     colgaría otra vez cada vez. La guarda es lo que lo deja dormido en los
+     otros cuatro gráficos. */
+  deslizarDeCostado(el.charts, paso => {
+    if (!enGraficoAnual()) return;
+    ui.year += paso;
+    render();
   });
 
   el.rangoDialog.addEventListener('click', e => {

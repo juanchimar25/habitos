@@ -17,7 +17,7 @@
    las comprobaciones que hablaban de ellas.
 
    Arnés: hoy = jueves 30/07/2026. */
-import { montar, moverMeses, leer as leerArchivo } from '../harness.mjs';
+import { montar, moverMeses, deslizar, leer as leerArchivo } from '../harness.mjs';
 
 let fallos = 0;
 const ok = (n, cond, det = '') => {
@@ -1132,6 +1132,170 @@ const marcar = (desde, hasta, fn) => {
   elegir('mes');
   ok('  donde «1M» es ese mismo mes y no el de hoy',
     pie() === 'Octubre 2026', pie());
+}
+
+// --- «Día por día»: una barra fina por día del mes ------------------------
+{
+  /* La otra mitad de la pregunta que contesta «Por día de la semana»: ese
+     promedia los lunes y dice en qué día rendís mejor; este no promedia nada
+     y dice cómo fue CADA día, en orden. Uno encuentra el patrón, el otro el
+     bajón concreto. */
+  const { doc } = await montar(estado(marcar(1, 30, (iso, dow) => ({
+    [`d1|${iso}`]: dow === 0 ? 'missed' : 'done',   // los domingos, flojos
+  }))));
+  verGrafico(doc, 'diario');
+
+  const svg = () => doc.querySelector('#charts .dias-mes');
+  ok('se dibuja', Boolean(svg()));
+  ok('  y se anuncia para quien no ve la pantalla',
+    svg().getAttribute('aria-label') === 'Cumplimiento de cada día del mes',
+    svg().getAttribute('aria-label'));
+
+  /* Tres marcas y nada más. Un eje con diez números para un porcentaje es
+     ruido: lo que se quiere saber es si el día estuvo arriba, al medio o
+     abajo. */
+  const ejeY = [...svg().querySelectorAll('.axis-text:not(.dia-num)')]
+    .map(t => t.textContent);
+  console.log(`\n=== día por día ===\n  eje vertical: ${ejeY.join(' · ')}`);
+  ok('el eje vertical lleva 0, 50 y 100, y nada más',
+    ejeY.join(',') === '0,50,100', ejeY.join(','));
+  ok('  con el cero como línea de base y los otros dos como guía',
+    svg().querySelectorAll('.axis-line').length === 1
+    && svg().querySelectorAll('.axis-guia').length === 2);
+
+  /* Julio tiene 31 días: los 31 llevan número e inicial, tengan barra o no.
+     El eje es el calendario, no la lista de lo que se midió. */
+  const nums = [...svg().querySelectorAll('.dia-num')].map(t => t.textContent);
+  ok('abajo van los 31 días de julio, del 1 al 31',
+    nums.length === 31 && nums[0] === '1' && nums[30] === '31',
+    `${nums.length} · ${nums[0]}…${nums[30]}`);
+
+  const dows = [...svg().querySelectorAll('.dia-dow')].map(t => t.textContent);
+  ok('  y arriba la inicial del día de la semana de cada uno',
+    dows.length === 31 && dows[0] === 'X',   // el 1 de julio de 2026 es miércoles
+    `${dows.length} · ${dows.slice(0, 4).join('')}`);
+
+  /* La MISMA paleta condicional que «Por día de la semana»: los dos se miran
+     de corrido y con un verde acá y otro allá el mismo nivel parecería dos
+     cosas distintas. */
+  const colores = [...svg().querySelectorAll('path[fill]')]
+    .map(b => b.getAttribute('fill'));
+  ok('las barras usan los colores de estado del gráfico de barras',
+    colores.every(c => /^var\(--dot-(done|partial|missed)\)$/.test(c)),
+    [...new Set(colores)].join(' · '));
+  ok('  y los domingos flojos salen en rojo',
+    colores.includes('var(--dot-missed)'), [...new Set(colores)].join(' · '));
+
+  /* Un día sin nada pedido ni hecho no tiene barra: no es un cero, es que no
+     había nada que medir. El 31 todavía no transcurrió. */
+  ok('el día que no transcurrió no dibuja barra',
+    colores.length === 30, `${colores.length} barras para 31 días`);
+
+  /* El mes es el del recuadro del medio, como en el resto de la pantalla, y
+     el eje se estira o se encoge con él. Junio necesita sus propias tareas:
+     un mes anterior al más viejo con lista no hereda ninguna. */
+  const conJunio = {
+    ...estado({ 'd1|2026-06-10': 'done' }, [TAREAS[0]]),
+    months: { '2026-06': [TAREAS[0]], '2026-07': [TAREAS[0]] },
+  };
+  const { doc: otro } = await montar(conJunio);
+  verGrafico(otro, 'diario');
+  ok('en julio el eje tiene 31 días',
+    otro.querySelectorAll('#charts .dia-num').length === 31,
+    String(otro.querySelectorAll('#charts .dia-num').length));
+
+  moverMeses(otro, -1);
+  ok('  y en junio, 30: el eje sigue al mes que se está mirando',
+    otro.querySelectorAll('#charts .dia-num').length === 30,
+    String(otro.querySelectorAll('#charts .dia-num').length));
+}
+
+// --- «Año»: doce recuadros, uno por mes ----------------------------------
+{
+  /* El único gráfico que no mira un mes sino un año, y por eso la fila de
+     arriba cambia con él: el rótulo del medio pasa a decir el AÑO y aparece
+     «Año actual» del otro lado.
+
+     Marcas en junio y en julio nada más, para que se vean las dos clases de
+     recuadro: el que tiene algo que medir y el que no. */
+  const status = {
+    ...marcar(1, 30, iso => ({ [`d1|${iso}`]: 'done' })),
+    'd1|2026-06-05': 'done',
+  };
+  const { doc } = await montar({
+    ...estado(status, [TAREAS[0]]),
+    months: { '2026-06': [TAREAS[0]], '2026-07': [TAREAS[0]] },
+  });
+  verGrafico(doc, 'anio');
+
+  const cajas = () => [...doc.querySelectorAll('#anio-grilla .anio-mes')];
+  const nombres = () => cajas().map(c => c.querySelector('.anio-mes-nombre').textContent);
+  const valores = () => cajas().map(c => c.querySelector('.anio-mes-valor').textContent);
+
+  console.log(`\n=== el año ===\n  ${nombres().join(' ')}\n  ${valores().join(' ')}`);
+
+  ok('son doce recuadros, uno por mes', cajas().length === 12, String(cajas().length));
+
+  /* Tres letras los doce. El locale no es parejo —devuelve «sept» y tres para
+     los otros once—, y un recuadro con una letra más se nota en una grilla. */
+  ok('  con el mes abreviado a tres letras',
+    nombres().join(',') === 'ene,feb,mar,abr,may,jun,jul,ago,sep,oct,nov,dic',
+    nombres().join(','));
+  ok('  en mayúsculas, que las pone la hoja',
+    /\.anio-mes-nombre \{[^}]*text-transform: uppercase/.test(leerArchivo('styles.css')));
+  ok('  y apagado, que es la etiqueta y no el dato',
+    /\.anio-mes-nombre \{[^}]*color: var\(--text-muted\)/.test(leerArchivo('styles.css')));
+
+  /* Un mes que no pidió nada muestra un guion: un 0% ahí acusaría de
+     incumplido a un mes en el que no se pidió nada. */
+  ok('los meses sin nada que medir van con guion',
+    valores().filter(v => v === '—').length === 10, valores().join(' '));
+  ok('  y los que tienen algo, con su porcentaje',
+    /^\d+%$/.test(valores()[5]) && /^\d+%$/.test(valores()[6]),
+    `${valores()[5]} · ${valores()[6]}`);
+
+  /* La MISMA paleta condicional del resto de la pantalla: el recuadro se tiñe
+     según el nivel, con los umbrales de siempre. */
+  const clases = cajas().map(c => c.className.replace('anio-mes ', ''));
+  ok('el recuadro se tiñe con el nivel de cumplimiento',
+    clases.every(c => /^(cp-(done|partial|missed)|es-vacio)$/.test(c)),
+    [...new Set(clases)].join(' · '));
+
+  // --- la cabecera cambia con este gráfico --------------------------------
+  const rotulo = () => doc.querySelector('#month-label').textContent;
+  const anioHoy = () => doc.querySelector('#btn-anio-hoy');
+
+  ok('el rótulo del medio pasa a decir el año', rotulo() === '2026', rotulo());
+  ok('  y anuncia que elige un año',
+    doc.querySelector('#month-label').title === 'Elegir año',
+    doc.querySelector('#month-label').title);
+  ok('«Año actual» no está estando en el año actual', anioHoy().hidden === true);
+
+  /* Deslizar la grilla pasa de año, como el carrete pasa de día. */
+  deslizar(doc, doc.querySelector('#anio-grilla'), -1);
+  ok('deslizar la grilla a la izquierda trae el año siguiente', rotulo() === '2027', rotulo());
+  ok('  y ahí sí aparece «Año actual»', anioHoy().hidden === false);
+
+  deslizar(doc, doc.querySelector('#anio-grilla'), 1);
+  deslizar(doc, doc.querySelector('#anio-grilla'), 1);
+  ok('  y a la derecha, los anteriores', rotulo() === '2025', rotulo());
+
+  anioHoy().click();
+  ok('«Año actual» vuelve a 2026', rotulo() === '2026', rotulo());
+  ok('  y se esconde de nuevo', anioHoy().hidden === true);
+
+  /* Y el calendario del rótulo dice que lo que se elige acá es el año. */
+  doc.querySelector('#month-label').click();
+  ok('el calendario lo dice en el título',
+    doc.querySelector('#jump-title').textContent === 'Seleccionar año',
+    doc.querySelector('#jump-title').textContent);
+  doc.querySelector('#jump-dialog [data-close-dialog]').click();
+
+  /* Volviendo a otro gráfico, la fila vuelve a hablar de meses. */
+  verGrafico(doc, 'barras');
+  ok('en otro gráfico el rótulo vuelve al mes',
+    rotulo().toLowerCase() === 'julio 2026', rotulo());
+  ok('  y «Año actual» no se ve', anioHoy().hidden === true);
 }
 
 // --- la semanal y la quincenal son una CUOTA DEL MES ----------------------

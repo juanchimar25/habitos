@@ -262,6 +262,17 @@
       <button type="button" id="btn-chart-puntos" class="drawer-item" aria-pressed="true">
         <span class="drawer-icon" aria-hidden="true">⣿</span> Puntos
       </button>
+      <!-- Una barra fina por día del mes. Va pegado a «Puntos» porque los dos
+           recorren el mes en orden: uno tarea por tarea y este día por día. -->
+      <button type="button" id="btn-chart-diario" class="drawer-item" aria-pressed="false">
+        <span class="drawer-icon" aria-hidden="true"><svg class="icono-barras" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <rect x="3" y="12" width="2" height="8" rx="1"/>
+          <rect x="7" y="7" width="2" height="13" rx="1"/>
+          <rect x="11" y="14" width="2" height="6" rx="1"/>
+          <rect x="15" y="9" width="2" height="11" rx="1"/>
+          <rect x="19" y="5" width="2" height="15" rx="1"/>
+        </svg></span> Día por día
+      </button>
       <button type="button" id="btn-chart-porcentajes" class="drawer-item" aria-pressed="false">
         <span class="drawer-icon" aria-hidden="true">%</span> Porcentajes
       </button>
@@ -271,6 +282,17 @@
           <rect x="10" y="8" width="4" height="12" rx="1"/>
           <rect x="16" y="4" width="4" height="16" rx="1"/>
         </svg></span> Barras
+      </button>
+      <!-- El único que no mira un mes sino un año: con él puesto, la fila de
+           arriba cambia —el rótulo del medio pasa a ser el año y aparece «Año
+           actual»—. Va último porque es el de mayor alcance. -->
+      <button type="button" id="btn-chart-anio" class="drawer-item" aria-pressed="false">
+        <span class="drawer-icon" aria-hidden="true"><svg class="icono-barras" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <rect x="3" y="4" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="4" width="7" height="7" rx="1.5"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+        </svg></span> Año
       </button>
     </div>
 
@@ -452,6 +474,11 @@
              mismo motivo por el que las vistas tienen su desplegable propio. -->
         <button type="button" id="btn-rango" class="btn month-rango"
                 aria-haspopup="dialog" hidden>Mes</button>
+
+        <!-- Lo mismo que «Hoy», pero para el gráfico del año: aparece solo
+             cuando se está parado en otro año, y comparte la columna de la
+             derecha con los demás — nunca coinciden. -->
+        <button type="button" id="btn-anio-hoy" class="btn month-hoy" hidden>Año actual</button>
 
         <!-- Aparece solo cuando el carrete está parado en otro día. Volver a hoy
              es el salto más frecuente de todos, y con el dedo no había cómo
