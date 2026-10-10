@@ -4259,11 +4259,14 @@
    * son el paso previo cuando el destino está lejos, y se llega a ellos tocando
    * el rótulo del medio — como en cualquier calendario.
    */
-  let jumpEscala = /** @type {'dias'|'meses'} */ ('dias');
+  let jumpEscala = /** @type {'dias'|'meses'|'anios'} */ ('dias');
 
   /** Y qué mes o año, independiente del que está a la vista. */
   let jumpYear = today.getFullYear();
   let jumpMonth = today.getMonth();
+
+  /** El primero de los doce años que muestra la escala `anios`. */
+  let jumpAnioBase = today.getFullYear() - 5;
 
   /**
    * En Análisis se elige un MES, no un día: los gráficos son del mes entero, y
@@ -4275,9 +4278,16 @@
   const enGraficoAnual = () => ui.page === 'indicators' && ui.chart === 'anio';
 
   function openJump() {
-    jumpEscala = soloMeses() ? 'meses' : 'dias';
+    /* Tres escalas, una por pregunta. Con el gráfico del año puesto lo único
+       que se elige es el AÑO: ofrecer los doce meses era contestar otra cosa,
+       y elegir uno dejaba al diálogo decidiendo un mes que esa pantalla ni
+       mira. */
+    jumpEscala = enGraficoAnual() ? 'anios' : (soloMeses() ? 'meses' : 'dias');
     jumpYear = ui.year;
     jumpMonth = ui.month;
+    /* La ventana de años arranca con el actual casi al medio: doce de una,
+       que es la misma cantidad de celdas que los meses. */
+    jumpAnioBase = ui.year - 5;
     renderJump();
     el.jumpDialog.showModal();
     // Al título, no a la grilla: si no, el anillo de foco rodea la grilla entera.
@@ -4286,39 +4296,52 @@
 
   function renderJump() {
     const enDias = jumpEscala === 'dias';
+    const enAnios = jumpEscala === 'anios';
 
     /* El diálogo contesta una pregunta distinta en cada pantalla, y el título
        es lo primero que se lee: en el Diario, a qué fecha ir; en Análisis, qué
        mes mirar. El período ya no se elige acá — tiene su desplegable en la
        fila del mes—, así que el título volvió a hablar de una sola cosa. */
-    /* Con el gráfico del año puesto, lo que se viene a elegir es el AÑO: las
-       flechas del encabezado ya lo cambian y la grilla de meses es el atajo
-       para caer en uno. El título lo dice, o el diálogo parecería pedir otra
-       cosa que la que la pantalla necesita. */
-    el.jumpTitle.textContent = enGraficoAnual() ? 'Seleccionar año'
+    el.jumpTitle.textContent = enAnios ? 'Seleccionar año'
       : (soloMeses() ? 'Seleccionar mes' : 'Seleccionar fecha');
 
-    /* Sin días adonde bajar, el rótulo deja de ser un cambio de escala y pasa a
-       ser lo que dice: el año que se está mirando. */
-    el.jumpLabel.disabled = soloMeses();
+    /* Sin otra escala adonde bajar, el rótulo deja de ser un cambio de escala
+       y pasa a ser lo que dice: el período que se está mirando. */
+    el.jumpLabel.disabled = soloMeses() || enAnios;
 
     el.jumpLabel.textContent = enDias
       ? capitalizeFirstLetter(labelDeMes(jumpYear, jumpMonth))
-      : String(jumpYear);
-    el.jumpLabel.title = soloMeses()
-      ? `Los meses de ${jumpYear}`
-      : (enDias ? 'Ver los meses del año' : 'Volver a los días');
+      : (enAnios ? `${jumpAnioBase} – ${jumpAnioBase + 11}` : String(jumpYear));
+    el.jumpLabel.title = enAnios ? `Los años de ${jumpAnioBase} a ${jumpAnioBase + 11}`
+      : (soloMeses() ? `Los meses de ${jumpYear}`
+        : (enDias ? 'Ver los meses del año' : 'Volver a los días'));
     el.jumpLabel.setAttribute('aria-label', el.jumpLabel.title);
 
-    $('#jump-prev').setAttribute('aria-label', enDias ? 'Mes anterior' : 'Año anterior');
-    $('#jump-next').setAttribute('aria-label', enDias ? 'Mes siguiente' : 'Año siguiente');
+    const anterior = enDias ? 'Mes anterior' : (enAnios ? 'Doce años atrás' : 'Año anterior');
+    const siguiente = enDias ? 'Mes siguiente'
+      : (enAnios ? 'Doce años adelante' : 'Año siguiente');
+    $('#jump-prev').setAttribute('aria-label', anterior);
+    $('#jump-next').setAttribute('aria-label', siguiente);
 
     el.jumpGrid.classList.toggle('es-dias', enDias);
     el.jumpDows.hidden = !enDias;
     el.jumpGrid.innerHTML = '';
 
     if (enDias) renderJumpDias();
+    else if (enAnios) renderJumpAnios();
     else renderJumpMeses();
+  }
+
+  /** Doce años de una, con la misma grilla con la que se eligen los meses. */
+  function renderJumpAnios() {
+    for (let i = 0; i < 12; i++) {
+      const anio = jumpAnioBase + i;
+      const btn = boton('jump-cell', { text: String(anio), title: `Ver ${anio}` });
+      btn.dataset.anio = String(anio);
+      btn.classList.toggle('is-current', anio === ui.year);
+      btn.classList.toggle('is-today', anio === today.getFullYear());
+      el.jumpGrid.appendChild(btn);
+    }
   }
 
   function renderJumpDias() {
@@ -4367,7 +4390,10 @@
 
   /** Las flechas mueven la escala que esté puesta: un mes o un año. */
   function shiftJump(delta) {
-    if (jumpEscala === 'meses') {
+    if (jumpEscala === 'anios') {
+      // De a doce: una ventana entera, como el mes pasa a los doce meses.
+      jumpAnioBase += delta * 12;
+    } else if (jumpEscala === 'meses') {
       jumpYear += delta;
     } else {
       const d = new Date(jumpYear, jumpMonth + delta, 1);
@@ -4410,18 +4436,32 @@
     render();
   });
 
-  /* Deslizar la grilla pasa de año, como el carrete pasa de día y el
-     calendario de Pendientes pasa de mes: el mismo gesto para el mismo
-     movimiento en las tres pantallas, con la misma función.
+  /* Deslizar un gráfico lo mueve un período hacia donde fue el dedo, el mismo
+     gesto con el que el carrete pasa de día y el calendario de Pendientes pasa
+     de mes.
 
-     Va sobre `el.charts`, que sobrevive a los dibujados, y no sobre la grilla,
-     que se arma de cero en cada uno: colgar el oyente del nodo nuevo lo
-     colgaría otra vez cada vez. La guarda es lo que lo deja dormido en los
-     otros cuatro gráficos. */
+     Qué período mueve depende de lo que el gráfico MIRE, no de cuál sea: el
+     del año mira doce meses y pasa de año; los otros cuatro miran un mes y
+     pasan de mes. Un gesto que moviera siempre lo mismo dejaría al del año
+     corriéndose de a un mes sin que se notara, porque dibuja el año entero.
+
+     Va sobre `el.charts`, que sobrevive a los dibujados, y no sobre cada
+     dibujo, que se arma de cero en cada uno: colgar el oyente del nodo nuevo
+     lo colgaría otra vez cada vez. */
   deslizarDeCostado(el.charts, paso => {
-    if (!enGraficoAnual()) return;
-    ui.year += paso;
-    render();
+    if (ui.page !== 'indicators') return;
+    if (enGraficoAnual()) {
+      ui.year += paso;
+      render();
+      return;
+    }
+    goToMonth(paso);
+  }, {
+    /* «Día por día» tiene su propio desplazamiento de costado: un mes de 31
+       columnas no entra en una pantalla angosta. Ahí el gesto es para recorrer
+       el gráfico, no para cambiar de mes — igual que el carrete queda fuera
+       del deslizamiento del tablero. */
+    salvo: '.bars-scroll',
   });
 
   el.rangoDialog.addEventListener('click', e => {
@@ -4439,6 +4479,15 @@
   el.jumpGrid.addEventListener('click', e => {
     const btn = e.target.closest('.jump-cell');
     if (!btn) return;
+
+    /* Un año es la respuesta entera para el gráfico del año: se va y se
+       cierra, sin bajar a meses. El mes de trabajo no se toca — esa pantalla
+       no lo mira, y moverlo cambiaría el Diario por detrás. */
+    if (btn.dataset.anio !== undefined) {
+      ui.year = Number(btn.dataset.anio);
+      el.jumpDialog.close();
+      return render();
+    }
 
     /* Elegir un mes NO navega: baja a sus días. El diálogo contesta «a qué
        fecha», y un mes todavía no es una — antes caía en el día 1, que era una

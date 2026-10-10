@@ -1210,6 +1210,43 @@ const marcar = (desde, hasta, fn) => {
     String(otro.querySelectorAll('#charts .dia-num').length));
 }
 
+// --- deslizar un gráfico lo mueve un período -----------------------------
+{
+  /* El mismo gesto con el que el carrete pasa de día y el calendario de
+     Pendientes pasa de mes. Qué período mueve depende de lo que el gráfico
+     MIRE, no de cuál sea: los cuatro que miran un mes pasan de mes, y el del
+     año pasa de año. Un gesto que moviera siempre lo mismo dejaría al del año
+     corriéndose de a un mes sin que se notara. */
+  const { doc } = await montar(estado(marcar(1, 30, iso => ({ [`d1|${iso}`]: 'done' }))));
+  const rotulo = () => doc.querySelector('#month-label').textContent;
+
+  for (const cual of ['puntos', 'diario', 'porcentajes', 'barras']) {
+    verGrafico(doc, cual);
+    deslizar(doc, doc.querySelector('#charts'), -1);
+    ok(`deslizando «${cual}» a la izquierda viene el mes siguiente`,
+      rotulo().toLowerCase() === 'agosto 2026', `${cual}: ${rotulo()}`);
+    deslizar(doc, doc.querySelector('#charts'), 1);
+    ok('  y a la derecha, el anterior',
+      rotulo().toLowerCase() === 'julio 2026', rotulo());
+  }
+
+  verGrafico(doc, 'anio');
+  deslizar(doc, doc.querySelector('#charts'), -1);
+  ok('pero en «Año» el mismo gesto pasa de AÑO', rotulo() === '2027', rotulo());
+
+  /* «Día por día» se desplaza de costado por su cuenta —31 columnas no entran
+     en una pantalla angosta—, así que ese tramo queda fuera del gesto: ahí el
+     dedo recorre el gráfico y no cambia de mes. Es lo mismo que hace el
+     carrete dentro del tablero. */
+  ok('  y el desplazamiento propio de «Día por día» queda afuera',
+    /salvo: '\.bars-scroll'/.test(leerArchivo('app.js')));
+
+  /* Y la sección cede el gesto horizontal: es `.analysis` la que desplaza, así
+     que es ella la que lo arbitra. */
+  ok('  con la sección dejando pasar el gesto de costado',
+    /\.analysis \{ touch-action: pan-y; \}/.test(leerArchivo('styles.css')));
+}
+
 // --- el color se decide sobre el número que se muestra -------------------
 {
   /* El umbral del verde es 75. Un 74,6% se rotulaba «75%» y se pintaba de
@@ -1351,12 +1388,39 @@ const marcar = (desde, hasta, fn) => {
   ok('«Año actual» vuelve a 2026', rotulo() === '2026', rotulo());
   ok('  y se esconde de nuevo', anioHoy().hidden === true);
 
-  /* Y el calendario del rótulo dice que lo que se elige acá es el año. */
+  /* Y el calendario del rótulo ofrece AÑOS, no meses: con este gráfico puesto
+     un mes no es una respuesta — esta pantalla ni lo mira, y elegir uno movía
+     el Diario por detrás sin cambiar nada de lo dibujado. */
   doc.querySelector('#month-label').click();
   ok('el calendario lo dice en el título',
     doc.querySelector('#jump-title').textContent === 'Seleccionar año',
     doc.querySelector('#jump-title').textContent);
-  doc.querySelector('#jump-dialog [data-close-dialog]').click();
+
+  const celdas = () => [...doc.querySelectorAll('#jump-grid .jump-cell')];
+  ok('  y ofrece doce AÑOS, ninguno de ellos un mes',
+    celdas().length === 12 && celdas().every(c => /^\d{4}$/.test(c.textContent))
+    && !celdas().some(c => c.dataset.month !== undefined),
+    celdas().map(c => c.textContent).join(' '));
+  ok('  con el año que se mira entre ellos',
+    celdas().some(c => c.textContent === '2026' && c.classList.contains('is-current')));
+  ok('  y el rótulo del medio diciendo el tramo, sin otra escala adonde bajar',
+    /^\d{4} – \d{4}$/.test(doc.querySelector('#jump-label').textContent)
+    && doc.querySelector('#jump-label').disabled === true,
+    doc.querySelector('#jump-label').textContent);
+
+  // Las flechas pasan de a doce: una ventana entera.
+  const primero = () => celdas()[0].textContent;
+  const antes = primero();
+  doc.querySelector('#jump-prev').click();
+  ok('  las flechas pasan de a doce años',
+    Number(primero()) === Number(antes) - 12, `${antes} → ${primero()}`);
+  doc.querySelector('#jump-next').click();
+
+  celdas().find(c => c.textContent === '2029').click();
+  ok('  y elegir uno va a ese año y cierra',
+    rotulo() === '2029' && !doc.querySelector('#jump-dialog').hasAttribute('open'),
+    rotulo());
+  anioHoy().click();
 
   /* Volviendo a otro gráfico, la fila vuelve a hablar de meses. */
   verGrafico(doc, 'barras');

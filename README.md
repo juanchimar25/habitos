@@ -1072,7 +1072,11 @@ Notas de lectura:
 
   El porcentaje es **lo obtenido sobre lo pedido**, sumando día por día con la misma cuenta que los otros dos. Un mes es la suma de sus días: si este recuadro saliera de otro lado, el año y el mes podrían contradecirse sobre el mismo período.
 
-  Es el único que no mira un mes sino un año, así que **la fila de arriba cambia con él**: el rótulo del medio pasa a decir el año y aparece **Año actual** del otro lado, que es el gemelo de *Hoy* y se muestra solo estando parado en otro año. Deslizar la grilla pasa de año, con el mismo gesto con el que el carrete pasa de día y el calendario de Pendientes pasa de mes.
+  Es el único que no mira un mes sino un año, así que **la fila de arriba cambia con él**: el rótulo del medio pasa a decir el año y aparece **Año actual** del otro lado, que es el gemelo de *Hoy* y se muestra solo estando parado en otro año. Deslizar la grilla pasa de año, y el rótulo del medio abre un selector que ofrece **años y no meses**: con este gráfico puesto un mes no es una respuesta.
+
+- **Deslizar un gráfico de costado lo mueve un período**, con el mismo gesto con el que el carrete pasa de día y el calendario de Pendientes pasa de mes. Qué período mueve depende de lo que el gráfico **mire**, no de cuál sea: los cuatro que miran un mes pasan de mes, y *Año* pasa de año. Un gesto que moviera siempre lo mismo dejaría a *Año* corriéndose de a un mes sin que se notara, porque dibuja el año entero.
+
+  El desplazamiento propio de *Día por día* queda afuera: ahí el dedo recorre el gráfico, que no entra en una pantalla angosta. Es lo mismo que hace el carrete dentro del tablero del Diario.
 
 - En *Barras*, el **botón de la esquina superior derecha** elige el tramo que se promedia. Muestra el período puesto en corto —`1M`, `3M`, `6M`, `1A`— y abre un diálogo donde se explican enteros: *Este mes*, *Últimos 3 meses*, *Últimos 6 meses*, *Último año*. Va en la misma fila que el nombre del mes y el ☰, y tiene **ancho fijo**: sin eso, pasar de `1M` a `1A` encoge la caja y corre al mes y al ☰ de lugar, porque las columnas de los costados se reparten lo que sobra.
 

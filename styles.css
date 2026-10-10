@@ -1357,6 +1357,13 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
    el armazón no desplaza y el alto sobrante es de acá. */
 .analysis, .help, .todos, .settings { flex: 1; min-height: 0; overflow-y: auto; }
 
+/* Los gráficos se deslizan de costado para pasar de período, y es `.analysis`
+   la que DESPLAZA, así que es ella la que arbitra el gesto: sin `pan-y` el
+   navegador se queda con el horizontal y no llega nunca al oyente. Es la
+   misma lección que costó en la lista del Diario — ahí el `pan-y` del tablero
+   no alcanzaba porque el que scrollea es `.dia-lista`. */
+.analysis { touch-action: pan-y; }
+
 .analysis { display: flex; flex-direction: column; gap: .45rem; }
 
 /* ---------------- Gráficos ---------------- */
