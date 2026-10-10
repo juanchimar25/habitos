@@ -1415,22 +1415,45 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: .9rem;
-  padding: .7rem .95rem;
+  /* Apretado a propósito: cada milímetro que se lleva el hueco se lo saca al
+     renglón largo del texto, que tiene que entrar entero. */
+  gap: .5rem;
+  padding: .7rem .8rem;
   border-radius: var(--radius-sm);
   background: var(--bg-sunken);
 }
 
 .dia-card-texto {
   color: var(--text-muted);
-  font-size: .82rem;
   line-height: 1.35;
+
+  /* El cuerpo sigue al ancho de la pantalla, y no es decoración: el renglón
+     largo —«durante este periodo fueron los:», 31 caracteres— tiene que
+     entrar ENTERO, porque con `nowrap` lo que no entra se desborda en vez de
+     pasar al renglón siguiente.
+
+     A 360px, que es donde se vio el problema, quedan unos 176px para el texto
+     y a .76rem el renglón pedía ~188px. El mínimo de .68rem lo deja en ~169px
+     y entra; de 430px para arriba manda el tope y se lee a .78rem. */
+  font-size: clamp(.68rem, 2.9vw, .78rem);
+
+  /* Puede encogerse hasta cero antes de empujar nada: sin esto, un ítem flex
+     no baja de su contenido y el bloque entero se desborda de la tarjeta. */
+  min-width: 0;
 }
 
-/* Los dos renglones del texto. El corte lo decide el marcado y no el ancho:
-   ver el comentario de `resumenDeDias`. */
+/* DOS renglones, ni uno más. Son dos nodos para que el corte lo decida el
+   marcado —ver `resumenDeDias`—, y `nowrap` es lo que impide el tercero: el
+   renglón largo no entraba y el ancho lo partía por su cuenta, así que lo que
+   se leía era «…fueron» / «los:» en una línea suelta.
+
+   Con los dos nodos solos no alcanzaba: el marcado fija DÓNDE corta, no
+   cuántas veces. */
 .dia-card-l1,
-.dia-card-l2 { display: block; }
+.dia-card-l2 {
+  display: block;
+  white-space: nowrap;
+}
 
 /* El día: el dato de la tarjeta, así que pesa más que la oración que lo
    introduce.
@@ -1445,14 +1468,26 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
    con `border-box`, el área de contenido arranca más adentro y el texto
    centrado se desplaza con ella. Mover la caja en su lugar no habría hecho
    nada —`space-between` ya la tiene contra el borde— y achicar el padding de
-   la tarjeta habría corrido también el margen del texto de la izquierda. */
+   la tarjeta habría corrido también el margen del texto de la izquierda.
+
+   El ancho es el que necesita «Miércoles», el nombre más largo, y ni uno más:
+   estuvo en 7,5rem y los 30px de sobra se los quitaba al renglón largo del
+   texto, que no entraba y se partía en tres líneas.
+
+   Y encoge si hace falta —`0 1` y no `0 0`—: en una pantalla muy angosta algo
+   tiene que ceder, y es preferible que «Miércoles» se parta a que la oración
+   se vaya a un tercer renglón, que es lo que esto tiene que garantizar. */
 .dia-card-dia {
-  flex: 0 0 7.5rem;
+  flex: 0 1 5.6rem;
   padding-left: .7rem;
   text-align: center;
   font-size: 1.02rem;
   font-weight: 700;
   line-height: 1.2;
+  /* Red de seguridad para las pantallas de 320px, donde ni achicando el texto
+     entran las dos cosas: ahí «Miércoles» se parte antes que la oración se
+     desborde. De 360px para arriba no llega a hacer falta. */
+  overflow-wrap: anywhere;
 }
 
 /* El verde del gráfico, un paso corrido para que se pueda leer —ver

@@ -919,6 +919,18 @@ const marcar = (desde, hasta, fn) => {
   ok('  y el segundo, igual en las dos, sin rótulo «Periodo»',
     linea('mejor', 2) === 'durante este periodo fueron los:'
     && linea('peor', 2) === linea('mejor', 2), String(linea('mejor', 2)));
+
+  /* DOS renglones, ni uno más. Los dos nodos fijan dónde corta, no cuántas
+     veces: el renglón largo no entraba y el ancho lo partía por su cuenta,
+     dejando «los:» en una tercera línea suelta. Lo que lo impide es el
+     `nowrap`, y la caja del día tiene que dejarle lugar — por eso también se
+     comprueba que no se haya vuelto a agrandar. */
+  const hoja = leerArchivo('styles.css');
+  ok('  y ninguno de los dos se parte en más líneas',
+    /\.dia-card-l1,\s*\n\.dia-card-l2 \{[^}]*white-space: nowrap/.test(hoja));
+  const anchoDia = hoja.match(/\.dia-card-dia \{[\s\S]*?flex: 0 1 ([\d.]+)rem/)?.[1];
+  ok('    con la caja del día dejándole lugar al texto',
+    Number(anchoDia) <= 5.6, `${anchoDia}rem`);
   ok('  y el día en su propio nodo, que es el que lleva color',
     Boolean(dia('mejor')) && Boolean(dia('peor')), `${dia('mejor')} · ${dia('peor')}`);
 
