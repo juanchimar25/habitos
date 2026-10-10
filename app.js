@@ -199,6 +199,16 @@
      acaba de terminar pasa a estar cerrado. Ver `programarMedianoche`. */
   let today = startOfDay(new Date());
 
+  /**
+   * El estado de la app, con un campo por cada cosa que se guarda.
+   *
+   * Esto es la FORMA, para leerla de un saque y saber qué hay. El valor dura
+   * poco: en cuanto `auth.js` resuelve la sesión, `hydrateStateForUser` lo
+   * reemplaza por `estadoVacio()` o por lo que devuelva `normalize`. Los tres
+   * tienen que coincidir en las claves —ver la nota de `estadoVacio`—, y el
+   * literal no puede llamarlo acá porque `conVarios` necesita constantes que
+   * todavía no existen a esta altura del archivo.
+   */
   let state = {
     /**
      * Listas de tareas por mes, indexadas por `YYYY-MM`.
@@ -209,6 +219,16 @@
     months: /** @type {Record<string, Task[]>} */ ({}),
     /** Estados indexados por `taskId|YYYY-MM-DD`. */
     status: /** @type {Record<string, 'done'|'partial'|'missed'|'skip'>} */ ({}),
+    /**
+     * Las tareas eliminadas que todavía se pueden recuperar: `DIAS_PAPELERA`
+     * días. Cada entrada guarda el cambio entero que hizo la eliminación —la
+     * copia de la tarea en cada mes que tocó, con su índice, y los estados que
+     * se borraron—, que es lo que hace falta para devolverla a donde estaba.
+     * Ver `cleanTrash`.
+     */
+    trash: /** @type {{taskId:string,nombre:string,frecuencia:string,desde:string|null,
+     *   fecha:string,meses:Record<string,{indice:number,task:Task}>,
+     *   estados:Record<string,string>}[]} */ ([]),
     /**
      * Plantillas guardadas por el usuario, con la misma forma que las de
      * `TEMPLATES`. Son datos suyos —una lista de tareas que armó—, no una
@@ -241,8 +261,6 @@
      *   items: {id:string,name:string,categoria:string|null,
      *   estado:'sin-iniciar'|'en-proceso'|'finalizada',fecha:string|null}[] }} */
       ({ categorias: [], items: [], papelera: [] }),
-    /** Qué muestra la columna de estatus: 'glyph' | 'pct' | 'both' | 'none'. */
-    /** Qué miden las barras del análisis diario: 'tareas' | 'pct'. */
     /**
      * Si ya se ofreció el recordatorio en ESTE aparato, se haya aceptado o no.
      *
@@ -252,9 +270,7 @@
      * es lo correcto — ahí todavía no está activo.
      */
     recordatorioOfrecido: false,
-    /** Densidad de la planilla en móvil: 'normal' | 'compacto' | 'comodo'. */
-    /** Controles del período plegados (solo tiene efecto en móvil). */
-    /** Paneles desplegados de la sección Análisis. */
+    /** Tema elegido, o `null` para seguir al sistema. También es de pantalla. */
     theme: /** @type {'light'|'dark'|null} */ (null),
   };
 
@@ -7753,10 +7769,25 @@
     } catch { /* almacenamiento no disponible: se sigue sin migrar */ }
   }
 
+  /**
+   * El estado de una cuenta sin nada. Tiene que traer las MISMAS claves que
+   * devuelve `normalize`, ni una menos.
+   *
+   * No es prolijidad: es el único estado que ve una cuenta recién creada —y
+   * también el que queda si la base no contesta y este navegador no tenía
+   * copia—, así que nunca pasó por `normalize`. El resto del código lee esos
+   * campos sin red, como `state.templates.map(...)` en `plantillasVisibles`.
+   * Una clave de menos acá no es un dato faltante: es un botón que no hace
+   * nada, porque el `TypeError` muere adentro del listener y no se ve.
+   */
   function estadoVacio() {
     return {
       months: {}, status: {}, trash: [],
+      templates: [], removedTemplates: [],
       pendientes: { categorias: conVarios([]), items: [], papelera: [] },
+      /* De pantalla, igual que el tema: `payloadRemoto` lo saca antes de subir.
+         Va igual para que el campo exista desde el arranque. */
+      recordatorioOfrecido: false,
       theme: state.theme,   // el tema es de la pantalla, no del usuario
     };
   }

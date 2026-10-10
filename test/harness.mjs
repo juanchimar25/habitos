@@ -27,12 +27,18 @@ export const leer = f => fs.readFileSync(path.join(RAIZ, f), 'utf8');
 /**
  * Levanta la app con un estado ya cargado.
  * @param {object} estado  lo que habría en localStorage para ese usuario
- * @param {{ ruta?: string }} [opciones] `ruta` es la dirección con la que se
- *   abre la app —`'ajustes'`, `'pendientes'`…—, sin barra inicial. Por defecto
- *   la raíz, que es lo que hacía siempre: el router cae en Diario.
+ * @param {{ ruta?: string, sinDatos?: boolean }} [opciones] `ruta` es la
+ *   dirección con la que se abre la app —`'ajustes'`, `'pendientes'`…—, sin
+ *   barra inicial. Por defecto la raíz, que es lo que hacía siempre: el router
+ *   cae en Diario.
+ *
+ *   `sinDatos` no guarda NADA para este usuario, ni un objeto vacío. No es lo
+ *   mismo: un `{}` igual pasa por `normalize`, que rellena todas las claves del
+ *   estado. Sin la entrada, la app cae en `estadoVacio()` y queda en el estado
+ *   que ve una cuenta recién creada, que es el único que nunca se saneó.
  * @returns {Promise<{window: object, doc: Document, Habitos: object}>}
  */
-export async function montar(estado, { ruta = '' } = {}) {
+export async function montar(estado, { ruta = '', sinDatos = false } = {}) {
   const html = leer('index.html')
     // El módulo de sesión pide un import por CDN: fuera.
     .replace(/<script type="module"[^>]*><\/script>/, '');
@@ -66,9 +72,9 @@ export async function montar(estado, { ruta = '' } = {}) {
   }
 
   // --- almacenamiento --------------------------------------------
-  const guardado = new Map([
-    [`tareas-diarias/v1/${usuario.id}`, JSON.stringify(estado)],
-  ]);
+  const guardado = new Map(sinDatos
+    ? []
+    : [[`tareas-diarias/v1/${usuario.id}`, JSON.stringify(estado)]]);
   Object.defineProperty(window, 'localStorage', {
     configurable: true,
     value: {
