@@ -585,6 +585,19 @@ const filas = doc => [...doc.querySelectorAll('#dia-lista .dia-fila')];
   ok('el tablero deja pasar el gesto de costado',
     /\n\.board \{[\s\S]*?touch-action:\s*pan-y/.test(css),
     css.match(/\n\.board \{[\s\S]*?\n\}/)?.[0]?.replace(/\s+/g, ' ').slice(0, 90));
+
+  /* Y la lista también, aparte: es la que DESPLAZA, así que es ella la que
+     arbitra el gesto y el `pan-y` del tablero no le llega. Faltando esto, el
+     deslizamiento andaba solo sobre «Cumplimiento diario» —lo único de la zona
+     que queda fuera del área que se desplaza— y no sobre las filas, que es
+     donde cae el pulgar. En un teléfono de verdad: jsdom no arbitra gestos, así
+     que esto solo se puede leer de la hoja. */
+  const lista = css.match(/\n\.dia-lista \{[\s\S]*?\n\}/)?.[0] ?? '';
+  ok('  y la lista, que es la que desplaza, también',
+    /touch-action:\s*pan-y/.test(lista),
+    lista.replace(/\s+/g, ' ').slice(0, 110) || '(sin regla)');
+  ok('  sin dejar de desplazarse a lo largo',
+    /overflow-y:\s*auto/.test(lista));
 }
 
 // --- los dos deslizamientos no se pisan ------------------------------------

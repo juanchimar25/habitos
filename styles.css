@@ -2377,6 +2377,18 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   overflow-y: auto;
   margin: 0;
 
+  /* El `pan-y` va acá ADEMÁS de en `.board`, y no es repetirlo al pepe: esta
+     lista es la que DESPLAZA —el `overflow-y` de arriba—, así que es ella la
+     que arbitra el gesto contra el navegador, y el `pan-y` del tablero no la
+     alcanza. Sin esto, el navegador se queda con el dedo apenas toca una fila
+     y el deslizamiento no llega nunca al oyente.
+
+     El síntoma es de los que no se leen como un error de CSS: pasar de día
+     deslizando andaba SOLO sobre «Cumplimiento diario», que es lo único de esta
+     zona que queda fuera del área que se desplaza. Adentro de la lista —que es
+     donde cae el pulgar— no hacía nada. */
+  touch-action: pan-y;
+
   /* Hueco abajo para el «+», que flota fijo sobre esa esquina: sin él la última
      fila queda debajo del botón, y justo ahí está su recuadro de estado. Es el
      mismo motivo por el que la leyenda reserva lugar a la derecha.
