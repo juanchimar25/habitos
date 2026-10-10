@@ -880,16 +880,25 @@ const marcar = (desde, hasta, fn) => {
     campo().textContent === '6M' && pie() === 'Desde Febrero 2026 a Julio 2026',
     `${campo().textContent} · ${pie()}`);
 
-  // Elegir un mes suelto en el calendario lo saca.
+  /* Elegir un mes en el calendario MUEVE el período, no lo apaga: el tramo
+     termina en el mes que se está mirando, así que este calendario es cómo se
+     lo corre. Apagarlo acá —que es lo que hacía cuando el tramo contaba desde
+     hoy— dejaba el período fuera de alcance: cualquier intento de mirar otro
+     trimestre lo devolvía a un mes suelto. */
   doc.querySelector('#month-label').click();
   [...doc.querySelectorAll('#jump-grid .jump-cell')]
-    .find(c => c.textContent.toLowerCase() === 'julio').click();
-  ok('elegir un mes en el calendario deshace el período',
-    campo().textContent === '1M' && pie() === 'Julio 2026',
+    .find(c => c.textContent.toLowerCase() === 'abril').click();
+  ok('elegir un mes corre el período en vez de apagarlo',
+    campo().textContent === '6M' && pie() === 'Desde Noviembre 2025 a Abril 2026',
     `${campo().textContent} · ${pie()}`);
-  ok('  y el calendario volvió a hablar de un mes',
+  ok('  y el calendario sigue hablando de un mes',
     doc.querySelector('#jump-title').textContent === 'Seleccionar mes',
     doc.querySelector('#jump-title').textContent);
+
+  // Y «1M» sigue siendo el mes suelto, el que esté a la vista.
+  elegir('mes');
+  ok('  mientras que «1M» es el mes que se está mirando',
+    pie() === 'Abril 2026', pie());
 }
 
 // --- las dos tarjetas del pie ---------------------------------------------
@@ -1028,8 +1037,9 @@ const marcar = (desde, hasta, fn) => {
      nada más: en julio no hay una sola marca, así que el mes no tiene nada que
      promediar. Con los últimos 3 meses, junio entra y el martes aparece.
 
-     Los meses se cuentan desde HOY y no desde el mes que se está mirando, así
-     que «últimos 3» es mayo, junio y julio se pare uno donde se pare. */
+     Acá se arranca parado en julio, que es el mes de hoy, así que el tramo
+     de tres es mayo, junio y julio. Que siga al mes visible y no a hoy se
+     comprueba en el bloque siguiente, moviéndose de mes. */
   const status = {};
   for (const dia of [2, 9, 16, 23, 30]) {      // los martes de junio
     status[`d1|2026-06-${String(dia).padStart(2, '0')}`] = 'done';
@@ -1071,6 +1081,57 @@ const marcar = (desde, hasta, fn) => {
   const pie = doc.querySelector('#charts .rango-pie').textContent;
   ok('a doce meses el pie lleva los dos años',
     pie === 'Desde Agosto 2025 a Julio 2026', pie);
+}
+
+// --- el tramo termina en el mes que se está mirando -----------------------
+{
+  /* El mes del recuadro del medio y el período son dos controles de la misma
+     fila que se reparten la pregunta: el mes dice dónde TERMINA el tramo y el
+     período cuánto abarca hacia atrás.
+
+     Contó desde hoy, y con eso el mes de al lado quedaba de adorno: con un
+     período puesto no cambiaba nada de lo dibujado, y no había forma de mirar
+     un trimestre que no fuera el último.
+
+     Las marcas van solo en los martes de ABRIL, que es lo que deja ver si la
+     ventana se movió de verdad o solo cambió el rótulo. */
+  const status = {};
+  for (const dia of [7, 14, 21, 28]) {
+    status[`d1|2026-04-${String(dia).padStart(2, '0')}`] = 'done';
+  }
+  const { doc } = await montar({
+    ...estado(status, [TAREAS[0]]),
+    months: { '2026-04': [TAREAS[0]], '2026-07': [TAREAS[0]] },
+  });
+
+  verGrafico(doc, 'barras');
+  const elegir = v => {
+    doc.querySelector('#btn-rango').click();
+    doc.querySelector(`#rango-dialog [data-rango="${v}"]`).click();
+  };
+  const pie = () => doc.querySelector('#charts .rango-pie').textContent;
+  const hayBarras = () => doc.querySelectorAll('#charts .bar-value').length > 0;
+
+  elegir('3m');
+  ok('parado en julio, el tramo termina en julio',
+    pie() === 'Desde Mayo 2026 a Julio 2026', pie());
+  ok('  y abril queda afuera, así que no hay nada que promediar',
+    !hayBarras(), String(doc.querySelectorAll('#charts .bar-value').length));
+
+  moverMeses(doc, -1);
+  ok('retrocediendo a junio, el tramo retrocede con él',
+    pie() === 'Desde Abril 2026 a Junio 2026', pie());
+  ok('  y ahí sí entra abril, con sus martes', hayBarras());
+
+  moverMeses(doc, 4);
+  ok('y en octubre termina en octubre',
+    pie() === 'Desde Agosto 2026 a Octubre 2026', pie());
+
+  /* El mes suelto es el mismo mes visible, no el de hoy: los dos controles
+     contestan sobre el mismo punto. */
+  elegir('mes');
+  ok('  donde «1M» es ese mismo mes y no el de hoy',
+    pie() === 'Octubre 2026', pie());
 }
 
 // --- la semanal y la quincenal son una CUOTA DEL MES ----------------------

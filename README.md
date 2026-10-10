@@ -1064,7 +1064,11 @@ Notas de lectura:
 
   > **Fue un `<select>` nativo y duró poco.** La flecha se le saca con `appearance: none`, pero la lista de opciones la dibuja el sistema operativo y no acepta una línea de CSS: se abría con su azul y su tipografía, sin nada que ver con la app. Es el mismo motivo por el que los otros desplegables son propios. Ahora es un botón con su diálogo, con las mismas clases que el del orden — que es de donde sale que se vea igual que el resto, y no de una paleta aparte.
 
-  Los meses se cuentan **desde hoy** y no desde el mes que estés mirando: «los últimos 3 meses» quiere decir eso en cualquier pantalla. Elegir un mes suelto en el calendario vuelve a `MES`.
+  El tramo **termina en el mes que estés mirando** y retrocede desde ahí. El mes y el período son dos controles de la misma fila que se reparten la pregunta: el mes dice dónde termina y el período cuánto abarca. Parado en *Octubre 2026* con `3M`, lo dibujado es *Desde Agosto 2026 a Octubre 2026*; retrocediendo a junio, pasa a ser *Desde Abril a Junio*.
+
+  Por eso elegir un mes en el calendario **corre** el período en vez de apagarlo: ese calendario es justamente cómo se mueve la ventana.
+
+  > **Contó desde hoy**, con el argumento de que «los últimos 3 meses» quiere decir lo mismo en cualquier pantalla. El costo era que el mes de al lado quedaba de adorno: con un período puesto no cambiaba nada de lo dibujado, y no había forma de mirar un trimestre que no fuera el último.
 
   Es de *Barras* y de nadie más. Es el único que promedia, y un promedio mejora cuanto más largo es el tramo; *Puntos* dibuja un punto por día —365 en una fila no es una fila— y *Porcentajes* mide contra la meta del período, que a un año es otra pregunta. La elección se guarda como [preferencia de pantalla](#lo-que-no-se-sincroniza).
 

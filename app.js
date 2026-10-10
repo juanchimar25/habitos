@@ -3633,10 +3633,15 @@
   /**
    * Los períodos que ofrece el selector, además del mes suelto de la grilla.
    *
-   * Cuentan hacia atrás desde HOY y no desde el mes que se está mirando: «los
-   * últimos 3 meses» quiere decir eso en cualquier pantalla, y anclarlo al mes
-   * a la vista haría que el mismo botón dijera cosas distintas según dónde
-   * estuvieras parado.
+   * Cuentan hacia atrás desde EL MES QUE SE ESTÁ MIRANDO, no desde hoy: el
+   * tramo termina en el mes del recuadro del medio y retrocede desde ahí. Los
+   * dos controles viven uno al lado del otro en la misma fila y se reparten la
+   * pregunta: el mes dice dónde termina y el período cuánto abarca.
+   *
+   * Contaron desde hoy, con el argumento de que «los últimos 3 meses» quiere
+   * decir lo mismo en cualquier pantalla. El costo era que el mes de al lado
+   * quedaba de adorno: con un período puesto no cambiaba nada de lo dibujado,
+   * y no había forma de mirar un trimestre que no fuera el último.
    */
   /* `corto` es lo que dice el botón de la fila del mes —tiene que entrar en un
      ancho fijo— y `largo` lo que dice su diálogo, donde hay lugar para
@@ -3669,11 +3674,11 @@
     const mes = d => capitalizeFirstLetter(monthYearLabel(d));
 
     // Sin período, lo dibujado es el mes que se está mirando.
-    if (!rango) return mes(new Date(ui.year, ui.month, 1));
+    const hasta = new Date(ui.year, ui.month, 1);
+    if (!rango) return mes(hasta);
 
-    const hasta = new Date(today.getFullYear(), today.getMonth(), 1);
-    const desde = new Date(hasta.getFullYear(), hasta.getMonth() - (rango.meses - 1), 1);
-    return `Desde ${mes(desde)} a ${mes(hasta)}`;
+    // El tramo termina en ese mismo mes: el del recuadro del medio.
+    return `Desde ${mes(mesInicialDelRango(rango))} a ${mes(hasta)}`;
   }
 
   /**
@@ -3701,12 +3706,25 @@
     const rango = rangoActivo();
     if (!rango) return monthDays(ui.year, ui.month);
 
-    const desde = new Date(today.getFullYear(), today.getMonth() - (rango.meses - 1), 1);
+    const desde = mesInicialDelRango(rango);
     const dias = [];
     for (let m = 0; m < rango.meses; m++) {
       dias.push(...monthDays(desde.getFullYear(), desde.getMonth() + m));
     }
     return dias;
+  }
+
+  /**
+   * El primer mes de un período: el que se está mirando, menos los que el
+   * período abarque.
+   *
+   * Una sola cuenta para los dos que la necesitan —los días que alimentan el
+   * gráfico y el rótulo que los nombra—, porque tienen que dar lo mismo: un
+   * pie que dijera «Desde Mayo» sobre barras que empiezan en abril es de los
+   * errores que no se ven hasta que alguien suma a mano.
+   */
+  function mesInicialDelRango(rango) {
+    return new Date(ui.year, ui.month - (rango.meses - 1), 1);
   }
 
   const GRAFICOS = {
@@ -4173,9 +4191,11 @@
          —o a hoy, si es el mes en curso— para que el Diario, que comparte el
          mes de trabajo, no quede parado en un día de otro mes. */
       if (soloMeses()) {
-        // Elegir un mes suelto apaga el período largo, y eso también se recuerda.
-        ui.rango = 'mes';
-        guardarVista();
+        /* El período NO se apaga al elegir un mes: ahora el tramo termina en
+           el mes que se está mirando, así que este calendario es justamente
+           cómo se lo mueve. Apagarlo acá —que es lo que hacía cuando el tramo
+           contaba desde hoy— dejaba el período fuera de alcance: cualquier
+           intento de mirar otro trimestre lo devolvía a un mes suelto. */
         const esteMes = jumpYear === today.getFullYear() && mes === today.getMonth();
         el.jumpDialog.close();
         return irAlDia(esteMes ? today : new Date(jumpYear, mes, 1));
