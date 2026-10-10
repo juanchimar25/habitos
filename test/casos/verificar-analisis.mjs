@@ -17,7 +17,7 @@
    las comprobaciones que hablaban de ellas.
 
    Arnés: hoy = jueves 30/07/2026. */
-import { montar, moverMeses } from '../harness.mjs';
+import { montar, moverMeses, leer as leerArchivo } from '../harness.mjs';
 
 let fallos = 0;
 const ok = (n, cond, det = '') => {
@@ -217,14 +217,25 @@ const marcar = (desde, hasta, fn) => {
   // Volver a Análisis para lo que sigue.
   doc.querySelector('[data-page="indicators"]').click();
 
-  for (const [cual, esperado] of [['barras', /^Barras$/],
-    ['porcentajes', /^Porcentajes$/], ['puntos', /^Puntos$/]]) {
+  /* Un gráfico por vez. «Barras» trae DOS tarjetas —el dibujo arriba y el
+     resumen del período abajo—, que es la única excepción: sigue siendo un
+     gráfico, repartido en dos bloques para que cada uno se lea por su cuenta. */
+  for (const [cual, esperado, tarjetas] of [['barras', /^Barras$/, 2],
+    ['porcentajes', /^Porcentajes$/, 1], ['puntos', /^Puntos$/, 1]]) {
     verGrafico(doc, cual);
-    ok(`  elegir «${cual}» deja ese solo`, cuantos() === 1 && esperado.test(titulo()),
+    ok(`  elegir «${cual}» deja ese solo`, cuantos() === tarjetas && esperado.test(titulo()),
       `${cuantos()} · ${titulo()}`);
     ok('    y queda marcado en el menú',
       doc.querySelector(`#btn-chart-${cual}`).getAttribute('aria-pressed') === 'true');
   }
+
+  /* Las dos de «Barras», nombradas: la segunda no es un gráfico más en el
+     menú, es el pie del que está puesto. */
+  verGrafico(doc, 'barras');
+  const rotulos = [...doc.querySelectorAll('#charts .chart-card')]
+    .map(c => c.getAttribute('aria-label'));
+  ok('  y las dos de «Barras» se anuncian por separado',
+    rotulos.join(' · ') === 'Barras · Resumen del período', rotulos.join(' · '));
 
   /* Solo uno queda marcado: son alternativas, no interruptores. */
   const marcados = [...doc.querySelectorAll('#grupo-graficos .drawer-item')]
@@ -780,12 +791,19 @@ const marcar = (desde, hasta, fn) => {
     doc.querySelector('#month-label').textContent);
 }
 
-// --- el período largo, solo en «Barras» -----------------------------------
+// --- el desplegable del período, solo en «Barras» -------------------------
 {
+  /* El período se elige en un desplegable de la fila del mes, al lado del ☰.
+     Vivió adentro del calendario de «Ir a…»: había que abrir un diálogo para
+     cambiar de tramo, y nada anunciaba que ahí hubiera períodos. */
   const { doc } = await montar(estado(marcar(1, 30, iso => ({ [`d1|${iso}`]: 'done' }))));
-  const rangos = () => doc.querySelector('#jump-rangos');
-  const abrir = () => doc.querySelector('#month-label').click();
-  const cerrar = () => doc.querySelector('#jump-dialog [data-close-dialog]').click();
+  const campo = () => doc.querySelector('#btn-rango');
+  const mes = () => doc.querySelector('#month-label').textContent;
+  const pie = () => doc.querySelector('#charts .rango-pie')?.textContent ?? '(sin pie)';
+  const elegir = valor => {
+    campo().click();
+    doc.querySelector(`#rango-dialog [data-rango="${valor}"]`).click();
+  };
 
   doc.querySelector('[data-page="indicators"]').click();
 
@@ -793,60 +811,203 @@ const marcar = (desde, hasta, fn) => {
      período: a un año, el primero no entra en una fila y el segundo contesta
      otra pregunta. El que promedia es «Barras», y promediar mejora cuanto más
      largo es el tramo. */
-  abrir();
-  ok('en «Puntos» no se ofrecen períodos', rangos().hidden === true);
-  ok('  y el título habla de un mes',
-    doc.querySelector('#jump-title').textContent === 'Seleccionar mes',
-    doc.querySelector('#jump-title').textContent);
-  cerrar();
+  ok('en «Puntos» no se ofrece el período', campo().hidden === true);
 
   verGrafico(doc, 'barras');
-  abrir();
-  ok('en «Barras» sí', rangos().hidden === false);
-  ok('  y el título habla del período',
-    doc.querySelector('#jump-title').textContent === 'Seleccionar período',
-    doc.querySelector('#jump-title').textContent);
+  ok('en «Barras» sí', campo().hidden === false);
 
-  const opciones = [...doc.querySelectorAll('.jump-rango')].map(b => b.textContent);
+  /* El botón dice el período PUESTO, no el que se ofrece — igual que el del
+     orden y el del tema. Y las opciones viven en un diálogo propio: fue un
+     `<select>` nativo y su lista la dibujaba el sistema operativo, con su azul
+     y su tipografía, sin aceptar una línea de CSS. */
+  ok('el botón muestra el período puesto', campo().textContent === '1M',
+    campo().textContent);
+
+  campo().click();
+  ok('  y abre un diálogo de la app, no una lista del sistema',
+    doc.querySelector('#rango-dialog').hasAttribute('open'));
+
+  const opciones = [...doc.querySelectorAll('#rango-dialog [data-rango]')]
+    .map(b => `${b.dataset.rango}=${b.textContent.trim()}`);
   console.log(`\n=== períodos ===\n  ${opciones.join(' · ')}`);
-  ok('  ofrece 3, 6 y 12 meses',
-    opciones.join('|') === '3 meses|6 meses|12 meses', opciones.join('|'));
+  ok('  con las cuatro opciones explicadas, el mes primero',
+    opciones.join('|')
+      === 'mes=Este mes|3m=Últimos 3 meses|6m=Últimos 6 meses|12m=Último año',
+    opciones.join('|'));
+  ok('  y la puesta marcada',
+    doc.querySelector('#rango-dialog [data-rango="mes"]').getAttribute('aria-pressed') === 'true');
 
-  // Elegir uno cierra, y el rótulo del mes pasa a nombrar el período.
-  doc.querySelector('[data-rango="6m"]').click();
-  ok('elegir un período cierra el diálogo',
-    doc.querySelector('#jump-dialog').hasAttribute('open') === false);
-  /* Y dice CUÁLES y no cuántos: hoy es el 30 de julio, así que los últimos seis
-     meses son de febrero a julio. El año va una sola vez porque los dos caen en
-     el mismo; cuando el período cruza el año, cada mes lleva el suyo. */
-  ok('  y el rótulo dice de qué mes a qué mes',
-    doc.querySelector('#month-label').textContent === 'Feb - Jul 2026',
-    doc.querySelector('#month-label').textContent);
+  /* Las mismas clases que el diálogo del orden: es de donde sale que se vea
+     igual que el resto de la app, y no de una paleta propia. */
+  ok('  con el mismo marcado que el diálogo del orden',
+    doc.querySelectorAll('#rango-dialog .orden-opciones .btn.orden-opcion').length === 4);
+  doc.querySelector('#rango-dialog [data-close-dialog]').click();
 
-  abrir();
-  ok('  y queda marcado al volver a abrir',
-    doc.querySelector('[data-rango="6m"]').getAttribute('aria-pressed') === 'true');
-  cerrar();
+  /* Las claves que ofrece el diálogo tienen que ser las que `VISTAS` acepta al
+     restaurar: una opción nueva que no esté en esa lista se guardaría y se
+     ignoraría al volver a entrar, sin que nada avise. */
+  const claves = opciones.map(o => o.split('=')[0]).sort().join(',');
+  ok('  y son las que se saben recordar',
+    /rango: \['mes', '3m', '6m', '12m'\]/.test(leerArchivo('app.js'))
+    && claves === '12m,3m,6m,mes', claves);
 
-  /* El período es de «Barras» y de nadie más: en los otros dos el rótulo vuelve
-     a decir el mes, sin que haya que deshacer nada. */
+  /* El rótulo del mes dice el MES y nada más. Supo nombrar el período cuando
+     era el mismo botón que lo elegía; ahora el tramo tiene su renglón al pie
+     del gráfico, y repetirlo arriba sería decirlo dos veces. */
+  ok('el rótulo de arriba dice el mes', mes().toLowerCase() === 'julio 2026', mes());
+  ok('  y el pie dice el mes dibujado', pie() === 'Julio 2026', pie());
+
+  elegir('6m');
+  ok('elegir un período no toca el rótulo del mes',
+    mes().toLowerCase() === 'julio 2026', mes());
+  /* El pie dice CUÁLES y no cuántos, con todas las letras: hoy es el 30 de
+     julio, así que los últimos seis meses son de febrero a julio. */
+  ok('  y el pie dice de qué mes a qué mes',
+    pie() === 'Desde Febrero 2026 a Julio 2026', pie());
+
+  ok('  y el botón pasa a decirlo en corto', campo().textContent === '6M',
+    campo().textContent);
+
+  /* El período es de «Barras» y de nadie más: en los otros dos el botón no
+     está, sin que haya que deshacer nada. */
   verGrafico(doc, 'puntos');
-  ok('en «Puntos» vuelve a mandar el mes',
-    doc.querySelector('#month-label').textContent.toLowerCase() === 'julio 2026',
-    doc.querySelector('#month-label').textContent);
+  ok('en «Puntos» el botón se esconde', campo().hidden === true);
+  ok('  y no queda ningún pie de tramo',
+    doc.querySelector('#charts .rango-pie') === null);
 
   verGrafico(doc, 'barras');
   ok('  y al volver a «Barras» el período sigue puesto',
-    doc.querySelector('#month-label').textContent === 'Feb - Jul 2026',
-    doc.querySelector('#month-label').textContent);
+    campo().textContent === '6M' && pie() === 'Desde Febrero 2026 a Julio 2026',
+    `${campo().textContent} · ${pie()}`);
 
-  // Y elegir un mes suelto lo saca.
-  abrir();
+  // Elegir un mes suelto en el calendario lo saca.
+  doc.querySelector('#month-label').click();
   [...doc.querySelectorAll('#jump-grid .jump-cell')]
     .find(c => c.textContent.toLowerCase() === 'julio').click();
-  ok('elegir un mes deshace el período',
-    doc.querySelector('#month-label').textContent.toLowerCase() === 'julio 2026',
-    doc.querySelector('#month-label').textContent);
+  ok('elegir un mes en el calendario deshace el período',
+    campo().textContent === '1M' && pie() === 'Julio 2026',
+    `${campo().textContent} · ${pie()}`);
+  ok('  y el calendario volvió a hablar de un mes',
+    doc.querySelector('#jump-title').textContent === 'Seleccionar mes',
+    doc.querySelector('#jump-title').textContent);
+}
+
+// --- las dos tarjetas del pie ---------------------------------------------
+{
+  /* Dicen con palabras lo que el podio marca sobre la barra, y tienen que
+     decir LO MISMO: una corona sobre el sábado y una tarjeta que nombre al
+     viernes es de los errores que nadie reporta, porque cada mitad parece
+     correcta por su lado. Por eso los dos salen de `mejorYPeor`. */
+  const { doc } = await montar(estado(marcar(1, 30, iso => ({ [`d1|${iso}`]: 'done' }))));
+  verGrafico(doc, 'barras');
+
+  const card = sel => doc.querySelector(`#charts .dia-card-${sel}`);
+  const dia = sel => card(sel)?.querySelector('.dia-card-dia').textContent;
+  const linea = (sel, n) => card(sel)?.querySelector(`.dia-card-l${n}`)?.textContent;
+
+  console.log(`\n=== tarjetas ===\n  mejor: ${dia('mejor')} · peor: ${dia('peor')}`);
+
+  ok('hay una tarjeta de mejores y otra de peores',
+    Boolean(card('mejor')) && Boolean(card('peor')));
+
+  /* DOS renglones, y son dos nodos: el corte lo decide el marcado y no el
+     ancho, así las dos tarjetas cortan en el mismo lugar. */
+  ok('  el primer renglón dice de quiénes habla',
+    linea('mejor', 1) === 'Tus mejores días en promedio'
+    && linea('peor', 1) === 'Tus peores días en promedio',
+    `${linea('mejor', 1)} / ${linea('peor', 1)}`);
+  ok('  y el segundo, igual en las dos, sin rótulo «Periodo»',
+    linea('mejor', 2) === 'durante este periodo fueron los:'
+    && linea('peor', 2) === linea('mejor', 2), String(linea('mejor', 2)));
+  ok('  y el día en su propio nodo, que es el que lleva color',
+    Boolean(dia('mejor')) && Boolean(dia('peor')), `${dia('mejor')} · ${dia('peor')}`);
+
+  /* Van en dos tarjetas separadas: el dibujo en una y lo que se lee en otra. */
+  ok('  las dos viven en la tarjeta del resumen, no en la del gráfico',
+    doc.querySelectorAll('#charts .resumen-card .dia-card').length === 2
+    && doc.querySelector('#charts .chart-card:first-child .dia-card') === null);
+  ok('  y el tramo encabeza esa misma tarjeta',
+    doc.querySelector('#charts .resumen-card > :first-child')?.className === 'rango-pie',
+    doc.querySelector('#charts .resumen-card > :first-child')?.className);
+
+  /* El verde y el rojo del gráfico, un paso más oscuros para que se puedan
+     leer: los `--dot-` son colores de relleno y como texto quedaban en 1,9:1 y
+     1,7:1 contra la tarjeta. Van en sus propias variables, definidas en los
+     DOS temas — en oscuro el paso es al revés, porque ahí oscurecer es
+     desaparecer. Se lee de la hoja porque jsdom no computa estilos. */
+  const css = leerArchivo('styles.css');
+  const colorDe = cual => css
+    .match(new RegExp(`\\.dia-card-${cual}\\s+\\.dia-card-dia \\{ color: var\\((--[\\w-]+)\\)`))?.[1];
+  ok('el día mejor va con su propio verde', colorDe('mejor') === '--dia-mejor',
+    String(colorDe('mejor')));
+
+  /* El rojo del peor es el MISMO de la cruz del podio, sin variable
+     intermedia: el día que la cruz marca sobre la barra y el que nombra la
+     tarjeta son el mismo, así que tienen que verse del mismo color. Dos
+     variables distintas se separarían en cuanto alguien tocara una. */
+  const cruz = css.match(/\.podio-peor path \{[\s\S]*?stroke: var\((--[\w-]+)\)/)?.[1];
+  ok('  y el peor con el rojo de la cruz del podio',
+    colorDe('peor') === '--chart-missed' && cruz === colorDe('peor'),
+    `tarjeta ${colorDe('peor')} · cruz ${cruz}`);
+
+  /* Definidas en los dos temas: una sola definición dejaría el modo oscuro
+     con el color del claro, que es justo donde un rojo oscuro desaparece. */
+  const claro = css.slice(0, css.indexOf('[data-theme="dark"]'));
+  const oscuro = css.slice(css.indexOf('[data-theme="dark"]'));
+  for (const v of ['--dia-mejor', '--chart-missed']) {
+    ok(`  ${v} está en los dos temas`,
+      new RegExp(`${v}:\\s*#`).test(claro) && new RegExp(`${v}:\\s*#`).test(oscuro));
+  }
+
+  /* Y el gráfico sigue rellenando con los `--dot-`: lo que cambió es el texto
+     de la tarjeta, no las barras. */
+  ok('  y las columnas siguen con los colores de relleno',
+    /fill: `var\(--dot-\$\{nivel\.status\}\)`/.test(leerArchivo('app.js')));
+
+  /* Y lo que dicen coincide con lo que corona el gráfico — como CONJUNTO, que
+     es lo que hay que comparar: los empatados se coronan todos y la tarjeta
+     los nombra a todos, así que acá hay varios de cada lado. El podio se ubica
+     por `transform`, así que se busca la letra del eje más cercana. */
+  const ejes = [...doc.querySelectorAll('#charts .axis-text')]
+    .map(t => ({ letra: t.textContent, x: Number(t.getAttribute('x')) }));
+  const bajoLosPodios = cual => [...doc.querySelectorAll(`#charts .podio-${cual}`)]
+    .map(p => {
+      const x = Number(p.getAttribute('transform').match(/translate\(([\d.]+)/)[1]);
+      return ejes.reduce((a, b) => (Math.abs(b.x - x) < Math.abs(a.x - x) ? b : a)).letra;
+    })
+    .sort().join('');
+
+  const INICIAL = { Lunes: 'L', Martes: 'M', Miércoles: 'X', Jueves: 'J',
+    Viernes: 'V', Sábado: 'S', Domingo: 'D' };
+  const iniciales = texto => texto.split(/,| y /)
+    .map(n => INICIAL[n.trim()]).sort().join('');
+
+  ok('las coronas están sobre los días que nombra la tarjeta',
+    bajoLosPodios('mejor') === iniciales(dia('mejor')),
+    `${bajoLosPodios('mejor')} vs ${dia('mejor')}`);
+  ok('  y las cruces, sobre los de la otra',
+    bajoLosPodios('peor') === iniciales(dia('peor')),
+    `${bajoLosPodios('peor')} vs ${dia('peor')}`);
+}
+
+// --- con el tramo parejo no hay nada que destacar -------------------------
+{
+  /* Con un solo día medible, el mejor y el peor son el mismo. Ahí las
+     tarjetas no se dibujan —«tus mejores días fueron los jueves» y «tus peores
+     días fueron los jueves» sería la pantalla contradiciéndose— y el podio
+     tampoco corona a nadie: no hay diferencia que mostrar. */
+  const sola = tarea('t1', 'Leer', 'daily', { start: '2026-07-30' });
+  const { doc } = await montar(estado({ 't1|2026-07-30': 'done' }, [sola]));
+  verGrafico(doc, 'barras');
+
+  ok('un solo día medible no dibuja tarjetas',
+    doc.querySelectorAll('#charts .dia-card').length === 0,
+    String(doc.querySelectorAll('#charts .dia-card').length));
+  ok('  ni corona a nadie', doc.querySelectorAll('#charts .podio').length === 0,
+    String(doc.querySelectorAll('#charts .podio').length));
+  ok('  pero el tramo se sigue diciendo',
+    doc.querySelector('#charts .rango-pie')?.textContent === 'Julio 2026',
+    String(doc.querySelector('#charts .rango-pie')?.textContent));
 }
 
 // --- el período mira más atrás que el mes ---------------------------------
@@ -873,8 +1034,12 @@ const marcar = (desde, hasta, fn) => {
   ok('julio solo no tiene nada que promediar', valores().length === 0,
     valores().join(' · '));
 
-  doc.querySelector('#month-label').click();
-  doc.querySelector('[data-rango="3m"]').click();
+  const elegirRango = valor => {
+    doc.querySelector('#btn-rango').click();
+    doc.querySelector(`#rango-dialog [data-rango="${valor}"]`).click();
+  };
+
+  elegirRango('3m');
   console.log(`=== últimos 3 meses ===\n  ${valores().join(' · ')}`);
 
   ok('con los últimos 3 meses aparece junio', valores().length > 0,
@@ -887,13 +1052,13 @@ const marcar = (desde, hasta, fn) => {
   ok('  y el resto del período queda en cero',
     valores().filter(v => v !== '0%').length === 1, valores().join(' · '));
 
-  /* Doce meses cruzan el año, y ahí el rótulo tiene que llevar los dos: de
-     agosto de 2025 a julio de 2026. */
-  doc.querySelector('#month-label').click();
-  doc.querySelector('[data-rango="12m"]').click();
-  ok('a doce meses el rótulo lleva los dos años',
-    doc.querySelector('#month-label').textContent === 'Ago 2025 - Jul 2026',
-    doc.querySelector('#month-label').textContent);
+  /* Doce meses cruzan el año, y ahí el pie tiene que llevar los dos: de agosto
+     de 2025 a julio de 2026. El año va en los dos meses aunque coincidan, así
+     que no hay que deducir ninguno. */
+  elegirRango('12m');
+  const pie = doc.querySelector('#charts .rango-pie').textContent;
+  ok('a doce meses el pie lleva los dos años',
+    pie === 'Desde Agosto 2025 a Julio 2026', pie);
 }
 
 // --- la semanal y la quincenal son una CUOTA DEL MES ----------------------

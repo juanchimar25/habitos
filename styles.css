@@ -81,6 +81,16 @@
   --dot-missed:    #f2a5a5;
   --chart-track:   #eef1f8;
 
+  /* El verde del día mejor en las tarjetas del pie de «Barras». Es `--dot-done`
+     un paso más oscuro: el mismo verde del gráfico, pero llevado a algo que se
+     pueda LEER. Los `--dot-` son colores de relleno, calculados para una
+     columna de 24px; como texto, `#63c486` quedaba en 1,9:1 contra la tarjeta,
+     muy por debajo del 3:1 que pide un texto grande en negrita. Así, 3,4:1.
+
+     El rojo del día peor no está acá: usa `--chart-missed`, el de la cruz del
+     podio. Ver `.dia-card-peor`. */
+  --dia-mejor:     #3b9160;
+
   --radius:        12px;
   --radius-sm:     8px;
 
@@ -166,6 +176,13 @@
   --dot-partial:   #86640a;
   --dot-missed:    #781c1c;
   --chart-track:   #1c2439;
+
+  /* Acá el paso es al revés —hacia arriba— y no es una inconsistencia: sobre
+     un fondo oscuro, oscurecer es desaparecer. Queda en 7,8:1.
+
+     Es el mismo criterio que ya siguen `--done-fg` y `--missed-fg`, que en
+     claro son oscuros y en oscuro son claros. */
+  --dia-mejor:     #4ec07d;
 
   --shadow:        0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35);
   --shadow-sm:     0 1px 2px rgba(0, 0, 0, .35);
@@ -941,6 +958,36 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
    con el remate de la selección masiva, que son de Hábitos: nunca coinciden. */
 .month-nav .month-orden { grid-column: 3; justify-self: end; }
 
+/* El período de «Barras» va en la misma columna que el orden: los dos son «con
+   qué se está mirando este gráfico» y nunca están los dos a la vez —el orden es
+   de «Puntos» y «Porcentajes», el período es de «Barras»—. */
+.month-nav .month-rango { grid-column: 3; justify-self: end; }
+
+/* El borde, el fondo, el color y el hover los pone `.btn`: este control se ve
+   como los demás porque ES uno de los demás. Acá va solo lo propio.
+
+   Fue un `<select>` nativo. El problema no era la flecha —`appearance: none`
+   la saca— sino la lista de opciones, que la dibuja el sistema operativo y no
+   acepta CSS: se abría con su azul y su tipografía, sin nada que ver con la
+   app. Por eso ahora es un botón que abre `#rango-dialog`, que es el mismo
+   lenguaje del orden y del calendario. */
+.month-rango {
+  /* ANCHO FIJO, que es el punto de este control: sin él la caja se encoge al
+     pasar de «Mes» a «1A» y arrastra al mes y al ☰ con ella, porque las
+     columnas de los costados son `1fr` y se reparten lo que sobra. Con un
+     ancho puesto, el contenido de la fila no se mueve nunca. */
+  width: 3.1rem;
+
+  /* Fino: el alto lo da el texto y un pelo de aire, no `--ctl-h`. Es un control
+     secundario —se toca una vez y se lo deja puesto—, así que no compite por
+     peso con el nombre del mes, que está al lado. */
+  padding: .22rem .3rem;
+  font-size: .8rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+}
+
 /* Los tres dibujos del orden viven en el mismo botón y se muestra el del orden
    puesto, como el cambio de tema: el botón enseña dónde está. */
 .orden-icon {
@@ -1337,6 +1384,88 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   display: flex;
   flex-direction: column;
 }
+
+/* La segunda tarjeta de «Barras»: el tramo y los dos días. Usa `.chart-card`
+   —mismo marco que el gráfico— y solo cambia el aire de adentro, que acá lo
+   dan los bloques y no un dibujo. */
+.resumen-card { padding: .85rem 1rem 1rem; }
+
+/* El tramo dibujado, encabezando la tarjeta. Sin rótulo que lo anteceda: la
+   fecha se lee sola y un «Período:» delante solo ocuparía lugar. */
+.rango-pie {
+  margin: 0;
+  text-align: center;
+  font-size: .85rem;
+  color: var(--text-muted);
+}
+
+/* Las dos tarjetas del pie, siempre APILADAS y a lo ancho.
+
+   Probaron en dos columnas: la oración de cada una es larga y partida al medio
+   quedaba en cuatro renglones de tres palabras, con el día colgando abajo. A lo
+   ancho entra en dos renglones y el día queda a la derecha, que es donde el ojo
+   lo encuentra solo — es el dato, y lo de la izquierda es la pregunta. */
+.dias-resumen {
+  display: grid;
+  gap: .55rem;
+  margin-top: .75rem;
+}
+
+.dia-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .9rem;
+  padding: .7rem .95rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+}
+
+.dia-card-texto {
+  color: var(--text-muted);
+  font-size: .82rem;
+  line-height: 1.35;
+}
+
+/* Los dos renglones del texto. El corte lo decide el marcado y no el ancho:
+   ver el comentario de `resumenDeDias`. */
+.dia-card-l1,
+.dia-card-l2 { display: block; }
+
+/* El día: el dato de la tarjeta, así que pesa más que la oración que lo
+   introduce.
+
+   ANCHO FIJO y centrado, que es lo que deja «Jueves» y «Lunes» alineados entre
+   las dos tarjetas. Con el ancho librado al contenido, cada uno quedaba a una
+   distancia distinta del borde y las dos tarjetas se veían desparejas aunque
+   fueran idénticas. Entra «Miércoles», que es el nombre más largo; una lista
+   de empatados se parte en varios renglones y sigue centrada.
+
+   El `padding-left` corre el nombre un poco a la derecha sin tocar la caja:
+   con `border-box`, el área de contenido arranca más adentro y el texto
+   centrado se desplaza con ella. Mover la caja en su lugar no habría hecho
+   nada —`space-between` ya la tiene contra el borde— y achicar el padding de
+   la tarjeta habría corrido también el margen del texto de la izquierda. */
+.dia-card-dia {
+  flex: 0 0 7.5rem;
+  padding-left: .7rem;
+  text-align: center;
+  font-size: 1.02rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* El verde del gráfico, un paso corrido para que se pueda leer —ver
+   `--dia-mejor`—. El rojo es el MISMO de la cruz del podio, sin variable
+   intermedia: el día que la cruz marca sobre la barra y el que nombra esta
+   tarjeta son el mismo, así que tienen que verse del mismo color, y
+   apuntar los dos a `--chart-missed` es lo que lo garantiza.
+
+   El color NO es lo que informa: la oración de al lado ya dice si son los
+   mejores o los peores. Es un refuerzo, que es lo que lo deja funcionar
+   también bajo daltonismo, donde verde y rojo pueden no separarse. */
+.dia-card-mejor .dia-card-dia { color: var(--dia-mejor); }
+.dia-card-peor  .dia-card-dia { color: var(--chart-missed); }
 
 .chart-empty {
   margin: 1.25rem 0;

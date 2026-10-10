@@ -434,6 +434,25 @@
           </svg>
         </button>
 
+        <!-- El período de «Barras», en la misma fila que el mes y el ☰ porque
+             es el otro control de lo que se está mirando. Vivió adentro del
+             calendario de «Ir a…», donde había que abrir un diálogo para
+             cambiar de tramo y nada anunciaba que ahí hubiera períodos.
+
+             Es un <select> y no una fila de botones: son cuatro opciones
+             excluyentes, y cuatro botones en esta fila no entran en un
+             teléfono. El ancho es FIJO —ver `.month-rango` en la hoja—, así
+             que pasar de «MES» a «1A» no corre el mes ni el ☰ de lugar. -->
+        <!-- Muestra el período PUESTO y abre el suyo para cambiarlo, igual que
+             el botón del orden que tiene al lado.
+
+             Fue un `<select>` nativo y duró poco: la lista de opciones la
+             dibuja el sistema operativo y no se puede estilar, así que se abría
+             con su azul y su tipografía, sin nada que ver con el resto. Es el
+             mismo motivo por el que las vistas tienen su desplegable propio. -->
+        <button type="button" id="btn-rango" class="btn month-rango"
+                aria-haspopup="dialog" hidden>Mes</button>
+
         <!-- Aparece solo cuando el carrete está parado en otro día. Volver a hoy
              es el salto más frecuente de todos, y con el dedo no había cómo
              hacerlo sin abrir el calendario — la tecla `t` no existe en un
@@ -919,6 +938,32 @@
         </button>
         <button type="button" class="btn orden-opcion" data-orden="asc" aria-pressed="false">
           De menor a mayor
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- El período de «Barras». Mismo diálogo y mismas clases que el orden: es el
+       lenguaje que la app ya usa para elegir entre pocas cosas. El botón dice
+       el período en corto —entra en la fila del mes— y acá se explica entero. -->
+  <dialog id="rango-dialog" class="dialog">
+    <div class="dialog-form">
+      <button type="button" class="dialog-close" data-close-dialog
+              aria-label="Cerrar" title="Cerrar">✕</button>
+      <h2 id="rango-title" tabindex="-1">Período</h2>
+
+      <div class="orden-opciones">
+        <button type="button" class="btn orden-opcion" data-rango="mes" aria-pressed="true">
+          Este mes
+        </button>
+        <button type="button" class="btn orden-opcion" data-rango="3m" aria-pressed="false">
+          Últimos 3 meses
+        </button>
+        <button type="button" class="btn orden-opcion" data-rango="6m" aria-pressed="false">
+          Últimos 6 meses
+        </button>
+        <button type="button" class="btn orden-opcion" data-rango="12m" aria-pressed="false">
+          Último año
         </button>
       </div>
     </div>
@@ -1480,14 +1525,10 @@
 
       <div class="jump-grid" id="jump-grid"></div>
 
-      <!-- Los períodos largos, solo en «Barras»: es el único gráfico que
-           promedia, y promediar mejora cuanto más largo es el tramo. En los
-           otros dos el botón elige un mes y nada más. -->
-      <div class="jump-rangos" id="jump-rangos" hidden>
-        <button type="button" class="jump-rango" data-rango="3m" aria-pressed="false">3 meses</button>
-        <button type="button" class="jump-rango" data-rango="6m" aria-pressed="false">6 meses</button>
-        <button type="button" class="jump-rango" data-rango="12m" aria-pressed="false">12 meses</button>
-      </div>
+      <!-- Los períodos largos estuvieron acá. Se fueron al desplegable de la
+           fila del mes: este diálogo contesta «a qué fecha» y el período es
+           otra pregunta, que además quedaba escondida detrás de un botón que
+           no la anunciaba. -->
     </div>
   </dialog>
 

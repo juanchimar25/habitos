@@ -53,13 +53,18 @@ const centro = doc => doc.querySelector('.carrete-dia.is-centro')?.dataset.date 
      —que abre su calendario—, «Hoy» —que aparece solo cuando el carrete está
      parado en otro día— y el remate de la selección masiva, que se turna con
      «Hoy» en el mismo lugar. */
-  /* El ☰ a la izquierda, el mes al medio y, del otro lado, el orden —solo en
-     Análisis— compartiendo columna con «Hoy» y con el remate de la selección
-     masiva, que son de Hábitos: nunca coinciden. */
-  ok('la línea del mes quedó con el ☰, el mes, el orden, el «Hoy» y el remate',
-    [...doc.querySelector('.month-nav').children].map(e => e.id).join(',')
-      === 'btn-menu,month-label,btn-orden,btn-hoy,mode-confirm',
-    [...doc.querySelector('.month-nav').children].map(e => e.id).join(','));
+  /* El ☰ a la izquierda, el mes al medio y, del otro lado, los de Análisis
+     —el orden y el período, que nunca están los dos— compartiendo columna con
+     «Hoy» y con el remate de la selección masiva, que son de Hábitos. Los
+     cuatro se turnan en el mismo lugar: nunca coinciden. */
+  const enLinea = () => [...doc.querySelector('.month-nav').children]
+    .map(e => e.id).join(',');
+  ok('la línea del mes quedó con el ☰, el mes, el orden, el período, el «Hoy» y el remate',
+    enLinea() === 'btn-menu,month-label,btn-orden,btn-rango,btn-hoy,mode-confirm',
+    enLinea());
+  ok('  y en Hábitos no se ve ninguno de los dos de Análisis',
+    doc.querySelector('#btn-orden').hidden === true
+    && doc.querySelector('#btn-rango').hidden === true);
   ok('y «Hoy» arranca oculto, porque se abre en hoy',
     doc.querySelector('#btn-hoy').hidden === true);
   ok('y ya no hay rótulo de rango', doc.querySelector('#range-label') === null);

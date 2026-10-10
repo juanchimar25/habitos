@@ -108,8 +108,12 @@ const abrirPendientes = doc => doc.querySelector('[data-page="todos"]').click();
   abrirAnalisis(doc);
 
   ok('abre en «Barras»', graficoActivo(doc) === 'barras', graficoActivo(doc));
-  const rotulo = doc.querySelector('#month-label').textContent;
-  ok('  con el período de seis meses puesto', /feb.*jul/i.test(rotulo), rotulo);
+  ok('  con el desplegable en el período que se dejó',
+    doc.querySelector('#btn-rango').textContent === '6M',
+    doc.querySelector('#btn-rango').textContent);
+  const pie = doc.querySelector('#charts .rango-pie')?.textContent;
+  ok('  y el pie del gráfico diciendo el tramo',
+    pie === 'Desde Febrero 2026 a Julio 2026', String(pie));
 }
 
 // --- 5. lo que no se reconoce se ignora ------------------------------------

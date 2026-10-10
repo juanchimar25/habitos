@@ -2345,7 +2345,8 @@
     jumpLabel: $('#jump-label'),
     jumpGrid: $('#jump-grid'),
     jumpDows: $('#jump-dows'),
-    jumpRangos: $('#jump-rangos'),
+    rangoBtn: $('#btn-rango'),
+    rangoDialog: $('#rango-dialog'),
   };
 
   // ---------------------------------------------------------
@@ -2411,11 +2412,21 @@
     } else if (el.controls.parentElement !== el.main) {
       el.main.prepend(el.controls);
     }
-    /* Con un período puesto, el rótulo lo nombra: es el mismo botón que lo
-       eligió, y decir «Julio 2026» mientras el gráfico promedia seis meses
-       sería mentir sobre lo que está dibujado. */
-    const rango = rangoActivo();
-    el.monthLabel.textContent = rango ? nombreDeRango(rango) : labelDeMes();
+    /* El rótulo dice el MES y nada más. Supo nombrar el período cuando era el
+       mismo botón que lo elegía; ahora el período tiene su desplegable al lado
+       y su propio renglón bajo el gráfico, así que repetirlo acá era decir lo
+       mismo dos veces en la misma pantalla. */
+    el.monthLabel.textContent = labelDeMes();
+
+    /* El período es de «Barras» y de nadie más: es el único gráfico que
+       promedia, y promediar mejora cuanto más largo es el tramo. El botón
+       muestra el que está puesto, no el que se ofrece — igual que el del orden
+       y el del tema: el control enseña dónde está parado. */
+    el.rangoBtn.hidden = !(onIndicators && ui.chart === 'barras');
+    const puesto = RANGOS.find(r => r.clave === ui.rango) ?? RANGOS[0];
+    el.rangoBtn.textContent = puesto.corto;
+    el.rangoBtn.title = `Período del gráfico: ${puesto.largo.toLowerCase()}`;
+    el.rangoBtn.setAttribute('aria-label', el.rangoBtn.title);
 
     /* El ☰ está donde hay algo que elegir: en Hábitos, lo que se le hace a las
        tareas; en Análisis, qué gráfico se mira. En Pendientes y en Ajustes no
@@ -3012,15 +3023,50 @@
     /* Un día puede no tener nada que medir —ninguna tarea le pedía nada— y viene
        en `null`, así que el vacío se decide sobre los valores que quedaron y no
        sobre la cantidad de días. */
+    /* DOS tarjetas y no una: arriba el dibujo, abajo lo que se lee. Juntas, el
+       gráfico y los dos párrafos competían dentro del mismo marco y nada decía
+       dónde terminaba uno y empezaba lo otro. Separadas, cada bloque es una
+       cosa: las barras se miran y el resumen se lee. */
+    const todo = document.createDocumentFragment();
+    todo.appendChild(card);
+
     const values = data.filter(d => d.avg !== null).map(d => d.avg);
     if (!values.length || values.every(v => v === 0)) {
       card.appendChild(sinNingunHabito()
         ? ejemploDeGrafico('barras')
         : emptyChart('Todavía no hay datos cargados'));
-      return card;
+      /* El tramo se dice igual: sin datos, saber QUÉ se miró es justamente lo
+         que hace falta para entender por qué está vacío — quizá el período
+         elegido es anterior a la primera marca. */
+      todo.appendChild(tarjetaDelTramo(null));
+      return todo;
     }
 
-    return dibujarBarras(card, data);
+    dibujarBarras(card, data);
+
+    /* El tramo y las tarjetas van ACÁ y no en `dibujarBarras`, que es la que
+       usa también el ejemplo de la pantalla vacía: sus números son inventados,
+       y «tus mejores días fueron los viernes» sobre datos de muestra sería
+       decirle al usuario algo sobre sí mismo que no se midió. */
+    todo.appendChild(tarjetaDelTramo(data));
+    return todo;
+  }
+
+  /**
+   * La segunda tarjeta: el tramo dibujado y, debajo, las dos de los días.
+   *
+   * `data` en `null` —o un tramo parejo— deja solo el tramo. Saber qué se miró
+   * sirve igual cuando no hay nada que destacar, y es lo que explica un
+   * gráfico vacío: quizá el período elegido es anterior a la primera marca.
+   */
+  function tarjetaDelTramo(data) {
+    const card = elem('section', 'chart-card resumen-card');
+    card.setAttribute('aria-label', 'Resumen del período');
+    card.appendChild(elem('p', 'rango-pie', rotuloDelRango()));
+
+    const resumen = data && resumenDeDias(data);
+    if (resumen) card.appendChild(resumen);
+    return card;
   }
 
   /**
@@ -3030,21 +3076,49 @@
    * dibujar las mismas barras con números inventados: si fuera un dibujo aparte,
    * el ejemplo mostraría algo que la app no hace.
    */
-  function dibujarBarras(card, data) {
-    const values = data.filter(d => d.avg !== null).map(d => d.avg);
+  /**
+   * Compara dos días por lo que se ve: el porcentaje REDONDEADO y, cuando eso
+   * empata, cuántas tareas se hicieron en promedio — entre dos días que
+   * cumplieron igual, rindió más el que hizo más cosas.
+   *
+   * Comparar sobre el promedio con decimales decidía por un dato que la barra
+   * no muestra: dos días rotulados «75%» podían ser 75,4 y 74,8, y la corona
+   * caía en uno sin que se viera por qué.
+   */
+  const rinde = (a, b) => (Math.round(a.avg) - Math.round(b.avg)) || (a.tareas - b.tareas);
 
-    /* El podio compara lo MISMO que se muestra —el porcentaje redondeado— y,
-       cuando eso empata, mira cuántas tareas se hicieron en promedio ese día:
-       entre dos días que cumplieron igual, rindió más el que hizo más cosas.
-
-       Comparar sobre el promedio con decimales decidía por un dato que la barra
-       no muestra: dos días rotulados «75%» podían ser 75,4 y 74,8, y la corona
-       caía en uno sin que se viera por qué. */
-    const rinde = (a, b) => (Math.round(a.avg) - Math.round(b.avg)) || (a.tareas - b.tareas);
-
+  /**
+   * El mejor y el peor día del tramo, con sus empatados.
+   *
+   * Lo contestan el podio de las barras y las dos tarjetas de abajo, y tiene
+   * que ser la MISMA respuesta: una corona sobre el sábado y una tarjeta que
+   * dijera «tus mejores días fueron los viernes» es de los errores que nadie
+   * reporta porque cada mitad parece correcta por su lado.
+   *
+   * `parejo` dice que no hay diferencia que mostrar —todos los días medidos
+   * rinden igual, que es lo normal cuando hay un solo día con datos—. Ahí el
+   * podio no corona a nadie y las tarjetas no tienen nada que decir.
+   */
+  function mejorYPeor(data) {
     const medidos = data.filter(d => d.avg !== null);
+    if (!medidos.length) return null;
+
     const mejor = medidos.reduce((x, y) => (rinde(y, x) > 0 ? y : x));
     const peor = medidos.reduce((x, y) => (rinde(y, x) < 0 ? y : x));
+    return {
+      mejor,
+      peor,
+      parejo: rinde(mejor, peor) === 0,
+      /* Empatar en los dos criterios corona a los dos: ahí no hay diferencia
+         que mostrar, y elegir uno sería inventarla. */
+      mejores: medidos.filter(d => rinde(d, mejor) === 0),
+      peores: medidos.filter(d => rinde(d, peor) === 0),
+    };
+  }
+
+  function dibujarBarras(card, data) {
+    const values = data.filter(d => d.avg !== null).map(d => d.avg);
+    const { mejor, peor, parejo } = mejorYPeor(data);
 
     // La altura sí sale del valor exacto: es una escala, no un ranking.
     const top = Math.max(...values);
@@ -3083,11 +3157,13 @@
       const h = Math.max(top > 0 ? (d.avg / top) * plotH : 0, 2);
       const y = padTop + plotH - h;
 
-      /* Empatar en los dos criterios corona a los dos: ahí no hay diferencia que
-         mostrar, y elegir uno sería inventarla. Y sin diferencia entre el mejor
-         y el peor no hay podio: el mes está parejo. */
-      const esTope = rinde(d, mejor) === 0;
-      const esPiso = rinde(d, peor) === 0 && rinde(mejor, peor) !== 0;
+      /* Los empatados se coronan todos —ver `mejorYPeor`—, y con el tramo
+         parejo no se corona a nadie: no hay diferencia que mostrar. La corona
+         sola, sin cruz, decía «este fue el mejor» de un día que no le ganó a
+         ninguno, y además dejaba al gráfico contradiciendo a las tarjetas del
+         pie, que en ese caso no se dibujan. */
+      const esTope = rinde(d, mejor) === 0 && !parejo;
+      const esPiso = rinde(d, peor) === 0 && !parejo;
 
       /* El color dice qué tan bien está ese día, con el mismo umbral que el
          resto de la app: verde desde 75, ámbar desde 50, rojo abajo. Antes decía
@@ -3121,6 +3197,56 @@
 
     card.appendChild(plot);
     return card;
+  }
+
+  /** «Sábado», o «Sábado y Domingo» cuando empataron. */
+  function nombresDeDias(dias) {
+    const nombres = dias.map(d => capitalizeFirstLetter(d.w.long));
+    if (nombres.length <= 1) return nombres.join('');
+    return `${nombres.slice(0, -1).join(', ')} y ${nombres.at(-1)}`;
+  }
+
+  /**
+   * Las dos tarjetas del pie: qué días rindieron mejor y cuáles peor.
+   *
+   * Dicen con palabras lo que el podio marca con un dibujo sobre la barra. No
+   * es repetir por repetir: la corona se entiende después de mirar el gráfico
+   * y esto se lee de una, que es lo que se quiere saber al entrar.
+   *
+   * Con el tramo parejo no se dibujan. Pasa siempre que hay un solo día con
+   * datos, y ahí «tus mejores días fueron los lunes» y «tus peores días fueron
+   * los lunes» serían dos tarjetas contradiciéndose sobre el mismo día.
+   */
+  function resumenDeDias(data) {
+    const podios = mejorYPeor(data);
+    if (!podios || podios.parejo) return null;
+
+    const caja = elem('div', 'dias-resumen');
+    for (const [cual, dias, quienes] of [
+      ['mejor', podios.mejores, 'Tus mejores días en promedio'],
+      ['peor', podios.peores, 'Tus peores días en promedio'],
+    ]) {
+      const tarjeta = elem('div', `dia-card dia-card-${cual}`);
+
+      /* Dos renglones SIEMPRE, y por eso son dos nodos y no una oración que el
+         ancho parta donde le toque: así las dos tarjetas cortan en el mismo
+         lugar y los dos «fueron los:» quedan uno debajo del otro. Con el corte
+         librado al ancho, una decía «...en promedio durante» y la otra «...en
+         promedio» y el bloque se veía desparejo. */
+      const texto = elem('span', 'dia-card-texto');
+      texto.append(
+        elem('span', 'dia-card-l1', quienes),
+        elem('span', 'dia-card-l2', 'durante este periodo fueron los:'),
+      );
+      tarjeta.appendChild(texto);
+
+      /* El día va en su propio nodo porque lleva color —verde el bueno, rojo
+         el malo—, y el color solo no puede ser el que informa: la frase ya
+         dice cuál de los dos es, así que se entiende leyéndola. */
+      tarjeta.appendChild(elem('strong', 'dia-card-dia', nombresDeDias(dias)));
+      caja.appendChild(tarjeta);
+    }
+    return caja;
   }
 
   // ---- Barras horizontales: cumplimiento por tarea ---------------------
@@ -3512,37 +3638,55 @@
    * a la vista haría que el mismo botón dijera cosas distintas según dónde
    * estuvieras parado.
    */
+  /* `corto` es lo que dice el botón de la fila del mes —tiene que entrar en un
+     ancho fijo— y `largo` lo que dice su diálogo, donde hay lugar para
+     explicarlo. Los dos salen de acá: tenerlos en el HTML y en el JS era la
+     forma segura de que un día dijeran cosas distintas.
+
+     «Mes» no lleva `meses`, y esa ausencia es la que lo distingue: no es un
+     período largo, es no tener ninguno. Ver `rangoActivo`. */
   const RANGOS = [
-    { clave: '3m', meses: 3 },
-    { clave: '6m', meses: 6 },
-    { clave: '12m', meses: 12 },
+    { clave: 'mes', corto: '1M', largo: 'Este mes' },
+    { clave: '3m', meses: 3, corto: '3M', largo: 'Últimos 3 meses' },
+    { clave: '6m', meses: 6, corto: '6M', largo: 'Últimos 6 meses' },
+    { clave: '12m', meses: 12, corto: '1A', largo: 'Último año' },
   ];
 
-  const fmtMonthShort = new Intl.DateTimeFormat(LOCALE, { month: 'short' });
-
   /**
-   * Cómo se nombra un período en el rótulo: de qué mes a qué mes.
+   * El tramo que está dibujado, con todas las letras y sin rótulo que lo
+   * anteceda: «Octubre 2026», «Desde Agosto 2026 a Octubre 2026».
    *
-   * «Últimos 6 meses» decía cuántos, no cuáles, y el rótulo es lo único que
-   * dice qué hay dibujado. El año va una sola vez cuando los dos caen en el
-   * mismo —«Feb - Jul 2026»—: repetirlo alarga un rótulo que en un teléfono
-   * comparte fila con dos botones.
+   * Va debajo del gráfico y es lo único que dice qué hay dibujado, así que se
+   * escribe entero. Estuvo abreviado —«Feb - Jul 2026»— cuando compartía la
+   * fila del mes con dos botones y el espacio mandaba; abajo sobra el ancho, y
+   * «Desde … a …» se lee sin tener que deducir que el guion es un rango.
+   *
+   * El año va en los dos meses aunque coincidan: «Desde Agosto a Octubre 2026»
+   * obliga a entender que el primer año está implícito.
    */
-  function nombreDeRango(rango) {
+  function rotuloDelRango() {
+    const rango = rangoActivo();
+    const mes = d => capitalizeFirstLetter(monthYearLabel(d));
+
+    // Sin período, lo dibujado es el mes que se está mirando.
+    if (!rango) return mes(new Date(ui.year, ui.month, 1));
+
     const hasta = new Date(today.getFullYear(), today.getMonth(), 1);
     const desde = new Date(hasta.getFullYear(), hasta.getMonth() - (rango.meses - 1), 1);
-
-    const mes = d => capitalizeFirstLetter(fmtMonthShort.format(d));
-    const mismoAnio = desde.getFullYear() === hasta.getFullYear();
-    return mismoAnio
-      ? `${mes(desde)} - ${mes(hasta)} ${hasta.getFullYear()}`
-      : `${mes(desde)} ${desde.getFullYear()} - ${mes(hasta)} ${hasta.getFullYear()}`;
+    return `Desde ${mes(desde)} a ${mes(hasta)}`;
   }
 
-  /** El período puesto, o null si lo que se mira es un mes suelto. */
+  /**
+   * El período puesto, o null si lo que se mira es un mes suelto.
+   *
+   * `r.meses` filtra a «Mes», que está en `RANGOS` para que el diálogo lo
+   * ofrezca pero no es un período: elegirlo es no tener ninguno, y de ahí que
+   * sus dos consumidores —`diasDelGrafico` y `rotuloDelRango`— caigan en el
+   * mes visible cuando esto devuelve null.
+   */
   function rangoActivo() {
     if (ui.page !== 'indicators' || ui.chart !== 'barras') return null;
-    return RANGOS.find(r => r.clave === ui.rango) ?? null;
+    return RANGOS.find(r => r.clave === ui.rango && r.meses) ?? null;
   }
 
   /**
@@ -3894,16 +4038,9 @@
 
     /* El diálogo contesta una pregunta distinta en cada pantalla, y el título
        es lo primero que se lee: en el Diario, a qué fecha ir; en Análisis, qué
-       mes mirar; y en «Barras», qué período, porque ahí además hay rangos. */
-    const conRangos = soloMeses() && ui.chart === 'barras';
-    el.jumpTitle.textContent = conRangos
-      ? 'Seleccionar período'
-      : (soloMeses() ? 'Seleccionar mes' : 'Seleccionar fecha');
-
-    el.jumpRangos.hidden = !conRangos;
-    for (const btn of el.jumpRangos.querySelectorAll('.jump-rango')) {
-      btn.setAttribute('aria-pressed', String(btn.dataset.rango === ui.rango));
-    }
+       mes mirar. El período ya no se elige acá — tiene su desplegable en la
+       fila del mes—, así que el título volvió a hablar de una sola cosa. */
+    el.jumpTitle.textContent = soloMeses() ? 'Seleccionar mes' : 'Seleccionar fecha';
 
     /* Sin días adonde bajar, el rótulo deja de ser un cambio de escala y pasa a
        ser lo que dice: el año que se está mirando. */
@@ -4002,14 +4139,23 @@
     renderJump();
   });
 
-  el.jumpRangos.addEventListener('click', e => {
-    const btn = e.target.closest('.jump-rango');
-    if (!btn) return;
+  el.rangoBtn.addEventListener('click', () => {
+    // La puesta queda marcada: el diálogo enseña dónde está, no solo qué hay.
+    for (const btn of el.rangoDialog.querySelectorAll('[data-rango]')) {
+      btn.setAttribute('aria-pressed', String(btn.dataset.rango === ui.rango));
+    }
+    abrirDialogo(el.rangoDialog, '#rango-title');
+  });
 
-    ui.rango = btn.dataset.rango;
+  el.rangoDialog.addEventListener('click', e => {
+    const opcion = e.target.closest('[data-rango]');
+    if (!opcion) return;
+
+    ui.rango = opcion.dataset.rango;
     guardarVista();
-    el.jumpDialog.close();
-    // `render` y no `renderCharts`: el rótulo del mes pasa a decir el período.
+    el.rangoDialog.close();
+    /* `render` y no solo `renderCharts`: el rótulo del botón, el renglón del
+       tramo y las dos tarjetas cambian juntos. */
     render();
   });
 

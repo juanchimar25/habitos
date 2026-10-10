@@ -1060,16 +1060,40 @@ Notas de lectura:
 
 - Los colores son **los mismos estados del tablero**, para que una celda verde y su porción del gráfico se lean como lo mismo. Se usan pasos un punto más oscuros en modo claro para que todos superen 3:1 de contraste contra la tarjeta, y pasos propios —no un volteo automático— en modo oscuro.
 - Verde y amarillo **no se distinguen por tono** bajo protanopia. Por eso en la torta cada color viaja con su símbolo (✓ ~ ✕) y su palabra en la leyenda, y en el de tareas cada barra lleva su porcentaje al lado: la identidad nunca depende del color solo.
-- En *Análisis diario*, el botón de la **esquina superior derecha** alterna las dos medidas de un día — las mismas dos que muestran las tarjetas de productividad:
+- En *Barras*, el **botón de la esquina superior derecha** elige el tramo que se promedia. Muestra el período puesto en corto —`1M`, `3M`, `6M`, `1A`— y abre un diálogo donde se explican enteros: *Este mes*, *Últimos 3 meses*, *Últimos 6 meses*, *Último año*. Va en la misma fila que el nombre del mes y el ☰, y tiene **ancho fijo**: sin eso, pasar de `1M` a `1A` encoge la caja y corre al mes y al ☰ de lugar, porque las columnas de los costados se reparten lo que sobra.
 
-  | Botón | Qué miden las barras |
-  |---|---|
-  | `123` | Cantidad de tareas hechas por día, en promedio |
-  | `%` | Porcentaje de cumplimiento de cada día |
+  > **Fue un `<select>` nativo y duró poco.** La flecha se le saca con `appearance: none`, pero la lista de opciones la dibuja el sistema operativo y no acepta una línea de CSS: se abría con su azul y su tipografía, sin nada que ver con la app. Es el mismo motivo por el que los otros desplegables son propios. Ahora es un botón con su diálogo, con las mismas clases que el del orden — que es de donde sale que se vea igual que el resto, y no de una paleta aparte.
 
-  El botón muestra la medida **activa**, no la siguiente, igual que el de zoom muestra el nivel puesto; el tooltip nombra las dos. La elección se guarda como [preferencia de pantalla](#lo-que-no-se-sincroniza), junto al zoom y al plegado: describe cómo mirás la app en este aparato, así que no viaja a la base.
+  Los meses se cuentan **desde hoy** y no desde el mes que estés mirando: «los últimos 3 meses» quiere decir eso en cualquier pantalla. Elegir un mes suelto en el calendario vuelve a `MES`.
 
-  Las dos medidas coronan días distintos y por eso conviene poder ver las dos: el lunes suele ganar por cantidad porque tiene más tareas asignadas, no porque rindas mejor. Con `%` un día puede quedar **sin barra** si ninguna tarea le pedía nada — ahí no hay nada que medir, y no es lo mismo que un cero.
+  Es de *Barras* y de nadie más. Es el único que promedia, y un promedio mejora cuanto más largo es el tramo; *Puntos* dibuja un punto por día —365 en una fila no es una fila— y *Porcentajes* mide contra la meta del período, que a un año es otra pregunta. La elección se guarda como [preferencia de pantalla](#lo-que-no-se-sincroniza).
+
+  **«Barras» se dibuja en DOS tarjetas.** Arriba, el gráfico y nada más. Abajo, lo que se lee: el tramo encabezando, y debajo las dos de los días. Juntas en un solo marco, el dibujo y los dos párrafos competían y nada decía dónde terminaba uno y empezaba lo otro.
+
+  El **tramo** va con todas las letras y sin rótulo que lo anteceda: *Octubre 2026*, *Desde Agosto 2026 a Octubre 2026*. Es lo único que dice qué hay dibujado, así que se escribe entero; el año va en los dos meses aunque coincidan, para no tener que deducir ninguno.
+
+  Las **dos tarjetas de los días** van apiladas y a lo ancho: la pregunta a la izquierda, en dos renglones fijos, y el día a la derecha, centrado en un ancho fijo para que *Jueves* y *Lunes* queden alineados entre las dos. Los renglones los corta el marcado y no el ancho de la pantalla — si no, cada tarjeta cortaba en un lugar distinto y el bloque se veía desparejo.
+
+  Dicen con palabras lo que el podio marca sobre la barra —la corona y la cruz—, y salen del mismo cálculo, así que no pueden contradecirse. Cuando varios días empatan se nombran todos, igual que se coronan todos.
+
+  El **rojo del peor día es `--chart-missed`, el mismo de la cruz del podio**, y lo toma de esa variable y no de una copia: el día que la cruz marca sobre la barra y el que nombra la tarjeta son el mismo, así que dos variables distintas se habrían separado en cuanto alguien tocara una.
+
+  El **verde del mejor** es `--dia-mejor`: `--dot-done` un paso más oscuro. Los `--dot-` son colores de relleno, calculados para una columna de 24px; como texto, el verde quedaba en 1,9:1 contra la tarjeta, muy por debajo del 3:1 que pide WCAG AA para un texto grande en negrita.
+
+  | | Texto de la tarjeta | Contraste |
+  |---|---|---|
+  | Claro, mejor | `#3b9160` | 3,4:1 |
+  | Claro, peor | `#dc2626` | 4,3:1 |
+  | Oscuro, mejor | `#4ec07d` | 7,8:1 |
+  | Oscuro, peor | `#ef4444` | 4,8:1 |
+
+  > **En oscuro el verde va al revés —más claro, no más oscuro—**, y no es una inconsistencia: sobre un fondo oscuro, oscurecer es desaparecer. Es el mismo criterio que ya siguen `--done-fg` y `--missed-fg`, que en claro son oscuros y en oscuro son claros.
+
+  De todos modos **el color no es lo que informa**: la oración de al lado ya dice si son los mejores o los peores, así que la tarjeta se entiende sin distinguir el tono. Es lo que la deja funcionar bajo daltonismo, donde verde y rojo pueden no separarse.
+
+  Con el tramo **parejo** no se dibujan, y el podio tampoco corona a nadie. Pasa siempre que hay un solo día con datos, y ahí «tus mejores días fueron los jueves» junto a «tus peores días fueron los jueves» sería la pantalla contradiciéndose sobre el mismo día.
+
+  Un día puede quedar **sin barra** si ninguna tarea le pedía nada — ahí no hay nada que medir, y no es lo mismo que un cero.
 - En *Cumplimiento por tarea* la barra se topea en la meta. Si una tarea llega al 600%, escalar a ese máximo aplastaría a todas las demás y el rango que importa —45 a 100%— dejaría de leerse; el número al costado conserva el valor exacto y la barra que se pasa termina en escuadra contra el borde.
 
 #### Indicadores
