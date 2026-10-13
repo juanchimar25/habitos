@@ -237,6 +237,30 @@ const marcar = (desde, hasta, fn) => {
   ok('  y las dos de «Barras» se anuncian por separado',
     rotulos.join(' · ') === 'Barras · Resumen del período', rotulos.join(' · '));
 
+  /* En orden ALFABÉTICO. Estuvieron agrupados por parecido, y ese criterio
+     solo lo conocía quien lo había puesto: desde afuera el orden parecía
+     casual, y con cinco entradas encontrar una pedía leerlas todas.
+
+     El esperado se CALCULA ordenando los rótulos que hay, no se copia a mano:
+     así un gráfico nuevo o un renombre quedan cubiertos sin que nadie tenga
+     que acordarse de venir a actualizar una lista. `localeCompare` con el
+     locale de la app es lo que pone «Año» antes que «Barras» y no al final
+     por la eñe. */
+  /* Solo el rótulo: dos de los cinco llevan el ícono como carácter —«%» y
+     «⣿»— y `textContent` se los traía puestos, con lo que «% Porcentajes»
+     ordenaba por el símbolo y no por la palabra. Los otros tres son SVG y no
+     aportan texto, así que el error pasaba desapercibido en tres de cinco. */
+  const entradas = [...doc.querySelectorAll('#grupo-graficos .drawer-item')]
+    .map(b => [...b.childNodes]
+      .filter(n => n.nodeType === 3)
+      .map(n => n.textContent).join('').trim());
+  const esperado = [...entradas].sort((a, b) => a.localeCompare(b, 'es-AR'));
+  console.log(`\n=== orden del menú ===\n  ${entradas.join(' · ')}`);
+  ok('los gráficos van en orden alfabético',
+    entradas.join('|') === esperado.join('|'),
+    `${entradas.join(' · ')}  vs  ${esperado.join(' · ')}`);
+  ok('  y están los cinco', entradas.length === 5, String(entradas.length));
+
   /* Solo uno queda marcado: son alternativas, no interruptores. */
   const marcados = [...doc.querySelectorAll('#grupo-graficos .drawer-item')]
     .filter(b => b.getAttribute('aria-pressed') === 'true');

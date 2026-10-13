@@ -252,18 +252,37 @@
          en la barra: dos menús para el mismo mes, y el de la barra pedía un
          clic más para llegar a lo mismo que ya estaba a un ☰ de distancia. -->
 
-    <!-- Solo en Análisis: elige cuál de los tres gráficos se mira. Apilados
+    <!-- Solo en Análisis: elige cuál de los cinco gráficos se mira. Apilados
          obligan a desplazar para llegar al de abajo, y casi siempre se quiere
          ver uno. Van marcados con `aria-pressed` porque son un grupo de
-         alternativas, del que siempre hay exactamente una puesta. -->
+         alternativas, del que siempre hay exactamente una puesta.
+
+         EN ORDEN ALFABÉTICO. Estuvieron agrupados por parecido —los dos que
+         recorren el mes juntos, el del año al final por ser el de mayor
+         alcance—, y ese criterio solo lo conocía quien lo había puesto: desde
+         afuera el orden parecía casual, y con cinco entradas encontrar una
+         pedía leerlas todas. Alfabético no explica nada, pero se adivina.
+
+         Si mañana se renombra alguno, su lugar en esta lista cambia con él.
+         Hay una comprobación que lo recuerda. -->
     <div class="drawer-group" id="grupo-graficos">
       <p class="drawer-label">Gráficos</p>
 
-      <button type="button" id="btn-chart-puntos" class="drawer-item" aria-pressed="true">
-        <span class="drawer-icon" aria-hidden="true">⣿</span> Puntos
+      <button type="button" id="btn-chart-anio" class="drawer-item" aria-pressed="false">
+        <span class="drawer-icon" aria-hidden="true"><svg class="icono-barras" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <rect x="3" y="4" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="4" width="7" height="7" rx="1.5"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+        </svg></span> Año
       </button>
-      <!-- Una barra fina por día del mes. Va pegado a «Puntos» porque los dos
-           recorren el mes en orden: uno tarea por tarea y este día por día. -->
+      <button type="button" id="btn-chart-barras" class="drawer-item" aria-pressed="false">
+        <span class="drawer-icon" aria-hidden="true"><svg class="icono-barras" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <rect x="4" y="13" width="4" height="7" rx="1"/>
+          <rect x="10" y="8" width="4" height="12" rx="1"/>
+          <rect x="16" y="4" width="4" height="16" rx="1"/>
+        </svg></span> Barras
+      </button>
       <button type="button" id="btn-chart-diario" class="drawer-item" aria-pressed="false">
         <span class="drawer-icon" aria-hidden="true"><svg class="icono-barras" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <rect x="3" y="12" width="2" height="8" rx="1"/>
@@ -276,23 +295,8 @@
       <button type="button" id="btn-chart-porcentajes" class="drawer-item" aria-pressed="false">
         <span class="drawer-icon" aria-hidden="true">%</span> Porcentajes
       </button>
-      <button type="button" id="btn-chart-barras" class="drawer-item" aria-pressed="false">
-        <span class="drawer-icon" aria-hidden="true"><svg class="icono-barras" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <rect x="4" y="13" width="4" height="7" rx="1"/>
-          <rect x="10" y="8" width="4" height="12" rx="1"/>
-          <rect x="16" y="4" width="4" height="16" rx="1"/>
-        </svg></span> Barras
-      </button>
-      <!-- El único que no mira un mes sino un año: con él puesto, la fila de
-           arriba cambia —el rótulo del medio pasa a ser el año y aparece «Año
-           actual»—. Va último porque es el de mayor alcance. -->
-      <button type="button" id="btn-chart-anio" class="drawer-item" aria-pressed="false">
-        <span class="drawer-icon" aria-hidden="true"><svg class="icono-barras" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <rect x="3" y="4" width="7" height="7" rx="1.5"/>
-          <rect x="14" y="4" width="7" height="7" rx="1.5"/>
-          <rect x="3" y="14" width="7" height="7" rx="1.5"/>
-          <rect x="14" y="14" width="7" height="7" rx="1.5"/>
-        </svg></span> Año
+      <button type="button" id="btn-chart-puntos" class="drawer-item" aria-pressed="true">
+        <span class="drawer-icon" aria-hidden="true">⣿</span> Puntos
       </button>
     </div>
 
