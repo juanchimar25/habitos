@@ -4502,10 +4502,15 @@
      pasan de mes. Un gesto que moviera siempre lo mismo dejaría al del año
      corriéndose de a un mes sin que se notara, porque dibuja el año entero.
 
-     Va sobre `el.charts`, que sobrevive a los dibujados, y no sobre cada
-     dibujo, que se arma de cero en cada uno: colgar el oyente del nodo nuevo
-     lo colgaría otra vez cada vez. */
-  deslizarDeCostado(el.charts, paso => {
+     Va sobre la SECCIÓN y no sobre el contenedor de los gráficos: la sección
+     se estira hasta la barra del pie, así que el hueco que queda debajo del
+     dibujo también responde. Con el oyente en `#charts`, un dedo apoyado en
+     esa franja vacía no hacía nada —y es donde cae naturalmente el pulgar,
+     justo encima de la barra—.
+
+     Los dos sobreviven a los dibujados, que es lo que importa para colgar el
+     oyente una sola vez: el dibujo de adentro se arma de cero en cada uno. */
+  deslizarDeCostado(el.analysis, paso => {
     if (ui.page !== 'indicators') return;
     if (enGraficoAnual()) {
       ui.year += paso;

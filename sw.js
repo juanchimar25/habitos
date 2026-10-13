@@ -15,7 +15,7 @@
 
 /* Subir la versión invalida el caché entero. Hay que tocarla cuando cambie
    cualquiera de los archivos de abajo; `test/pwa.mjs` avisa si se olvidó. */
-const VERSION = 'habitos-v139';
+const VERSION = 'habitos-v140';
 
 /**
  * El armazón: lo mínimo para que la app dibuje algo estando sin red.

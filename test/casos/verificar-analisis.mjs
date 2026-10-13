@@ -1312,6 +1312,24 @@ const marcar = (desde, hasta, fn) => {
   deslizar(doc, doc.querySelector('#charts'), -1);
   ok('pero en «Año» el mismo gesto pasa de AÑO', rotulo() === '2027', rotulo());
 
+  /* El oyente cuelga de la SECCIÓN y no del contenedor de los gráficos: la
+     sección se estira hasta la barra del pie, así que el hueco que queda
+     debajo del dibujo también responde. Es donde cae naturalmente el pulgar
+     —justo encima de la barra—, y ahí antes no pasaba nada. */
+  deslizar(doc, doc.querySelector('#analysis'), 1);
+  ok('  y el hueco de abajo responde igual que el dibujo', rotulo() === '2026',
+    rotulo());
+
+  /* Y en los cuatro mensuales, lo mismo. El año quedó en 2026 recién, así que
+     el mes vuelve a ser el de partida. */
+  for (const cual of ['puntos', 'diario', 'porcentajes', 'barras']) {
+    verGrafico(doc, cual);
+    deslizar(doc, doc.querySelector('#analysis'), 1);
+    ok(`    también en «${cual}»`, rotulo().toLowerCase() === 'junio 2026',
+      `${cual}: ${rotulo()}`);
+    deslizar(doc, doc.querySelector('#analysis'), -1);
+  }
+
   /* Y la sección cede el gesto horizontal: es `.analysis` la que desplaza, así
      que es ella la que lo arbitra. */
   ok('  con la sección dejando pasar el gesto de costado',

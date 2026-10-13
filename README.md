@@ -1078,7 +1078,7 @@ Notas de lectura:
 
 - **Deslizar un gráfico de costado lo mueve un período**, con el mismo gesto con el que el carrete pasa de día y el calendario de Pendientes pasa de mes. Qué período mueve depende de lo que el gráfico **mire**, no de cuál sea: los cuatro que miran un mes pasan de mes, y *Año* pasa de año. Un gesto que moviera siempre lo mismo dejaría a *Año* corriéndose de a un mes sin que se notara, porque dibuja el año entero.
 
-  En *Día por día*, un toque sobre una columna abre su cartel y un deslizamiento cambia de mes: el gesto se separa por el recorrido, no por la zona.
+  El gesto responde en toda la sección, incluido el hueco que queda entre el gráfico y la barra del pie — que es donde cae naturalmente el pulgar. Y en *Día por día*, un toque sobre una columna abre su cartel mientras que un deslizamiento cambia de mes: se separan por el recorrido, no por la zona.
 
 - En *Barras*, el **botón de la esquina superior derecha** elige el tramo que se promedia. Muestra el período puesto en corto —`1M`, `3M`, `6M`, `1A`— y abre un diálogo donde se explican enteros: *Este mes*, *Últimos 3 meses*, *Últimos 6 meses*, *Último año*. Va en la misma fila que el nombre del mes y el ☰, y tiene **ancho fijo**: sin eso, pasar de `1M` a `1A` encoge la caja y corre al mes y al ☰ de lugar, porque las columnas de los costados se reparten lo que sobra.
 
