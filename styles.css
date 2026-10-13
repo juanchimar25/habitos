@@ -1700,7 +1700,9 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 /* El nombre es la etiqueta del recuadro, no el dato: chico, apagado y en
    mayúsculas. El locale lo da en minúscula, así que la caja la pone el CSS. */
 .anio-mes-nombre {
-  font-size: .68rem;
+  /* La única pieza del recuadro que no baja al 70%: el 70% exacto la dejaba
+     en 7,6px, que no se lee. Baja lo que puede sin dejar de ser legible. */
+  font-size: .62rem;
   font-weight: 650;
   letter-spacing: .06em;
   text-transform: uppercase;
