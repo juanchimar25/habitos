@@ -3345,10 +3345,11 @@
       'aria-label': 'Cumplimiento de cada día del mes',
     });
 
-    /* Tres marcas y nada más: 0, 50 y 100. Un eje con diez números para un
-       porcentaje es ruido — lo que se quiere saber de un vistazo es si el día
-       estuvo arriba, al medio o abajo. */
-    for (const v of [0, 50, 100]) {
+    /* Cinco marcas, de 25 en 25. Empezó con tres —0, 50 y 100—, y con la
+       franja más alta sobraba lugar para los cuartos: el 75 es además el
+       umbral del verde, así que la guía dice de un vistazo qué días lo
+       cruzaron y cuáles se quedaron cerca. */
+    for (const v of [0, 25, 50, 75, 100]) {
       plot.appendChild(svg('line', {
         x1: padL, y1: y(v), x2: W - padR, y2: y(v),
         class: v === 0 ? 'axis-line' : 'axis-guia',
@@ -3397,7 +3398,15 @@
       });
       zona.dataset.dia = dateKey(d);
       zona.dataset.rotulo = capitalizeFirstLetter(fmtFull.format(d));
-      zona.dataset.valor = valor === null ? '' : pct(valor);
+      /* Un día sin nada que medir dice «0%». No es lo mismo que un cero
+         —ahí nadie incumplió nada, simplemente no había qué contar—, pero en
+         este gráfico sí se lee igual: la columna está vacía, y poner en
+         palabras una distinción que el dibujo no hace obligaba a leer el
+         cartel para entender una barra que no está.
+
+         Dónde la distinción SÍ se sostiene es en los recuadros del año, que
+         muestran un guion: ahí no hay dibujo que lo diga. */
+      zona.dataset.valor = pct(valor ?? 0);
       /* Dónde cae la columna, en PORCENTAJE del ancho: es lo único que
          sobrevive al escalado del SVG, y se calcula acá —donde `cx` y `W` ya
          están— en vez de leerlo después del `viewBox`, que obliga a una API
@@ -3405,9 +3414,8 @@
       zona.dataset.centro = String((cx / W) * 100);
       /* Para el mouse de escritorio, que ya lo tenía: no cuesta nada y
          funciona aunque el cartel falle. */
-      zona.appendChild(svg('title')).textContent = valor === null
-        ? `${capitalizeFirstLetter(fmtFull.format(d))}: sin nada que medir`
-        : `${capitalizeFirstLetter(fmtFull.format(d))}: ${pct(valor)}`;
+      zona.appendChild(svg('title')).textContent =
+        `${capitalizeFirstLetter(fmtFull.format(d))}: ${pct(valor ?? 0)}`;
       plot.appendChild(zona);
     });
 
@@ -3438,7 +3446,7 @@
       const t = cartel();
       if (!t) return;
       const { rotulo, valor } = zona.dataset;
-      t.textContent = valor ? `${rotulo} · ${valor}` : `${rotulo} · sin nada que medir`;
+      t.textContent = `${rotulo} · ${valor}`;
 
       /* Se recorta a los bordes para que el cartel de un 1 o un 31 no se
          salga de la tarjeta. */

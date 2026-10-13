@@ -1175,17 +1175,17 @@ const marcar = (desde, hasta, fn) => {
     svg().getAttribute('aria-label') === 'Cumplimiento de cada día del mes',
     svg().getAttribute('aria-label'));
 
-  /* Tres marcas y nada más. Un eje con diez números para un porcentaje es
-     ruido: lo que se quiere saber es si el día estuvo arriba, al medio o
-     abajo. */
-  const ejeY = [...svg().querySelectorAll('.axis-text:not(.dia-num)')]
-    .map(t => t.textContent);
+  /* Cinco marcas, de 25 en 25. Empezó con tres —0, 50 y 100—, y con la franja
+     más alta hay lugar para los cuartos: el 75 es además el umbral del verde,
+     así que la guía dice de un vistazo qué días lo cruzaron. */
+  const ejeY = [...svg().querySelectorAll('.axis-text')].map(t => t.textContent);
   console.log(`\n=== día por día ===\n  eje vertical: ${ejeY.join(' · ')}`);
-  ok('el eje vertical lleva 0, 50 y 100, y nada más',
-    ejeY.join(',') === '0,50,100', ejeY.join(','));
-  ok('  con el cero como línea de base y los otros dos como guía',
+  ok('el eje vertical va de 25 en 25',
+    ejeY.join(',') === '0,25,50,75,100', ejeY.join(','));
+  ok('  con el cero como línea de base y los otros cuatro como guía',
     svg().querySelectorAll('.axis-line').length === 1
-    && svg().querySelectorAll('.axis-guia').length === 2);
+    && svg().querySelectorAll('.axis-guia').length === 4,
+    `${svg().querySelectorAll('.axis-line').length} / ${svg().querySelectorAll('.axis-guia').length}`);
 
   /* Sin letras arriba ni números abajo. Eran una referencia de calendario y
      costaban caro: los números pedían 14px por columna —y con eso, desplazar
@@ -1276,12 +1276,14 @@ const marcar = (desde, hasta, fn) => {
   ok('y con un toque también', /^Sábado, 11 de julio · /.test(cartel().textContent),
     cartel().textContent);
 
-  /* Un día sin nada que medir también contesta: que no haya barra es parte de
-     lo que se vino a mirar. */
+  /* Un día sin barra dice 0%. No es lo mismo que un cero —ahí nadie incumplió
+     nada—, pero en este gráfico se lee igual: la columna está vacía, y poner
+     en palabras una distinción que el dibujo no hace obligaba a leer el
+     cartel para entender una barra que no está. Donde la distinción SÍ se
+     sostiene es en los recuadros del año, que muestran un guion. */
   tocar(30, 'pointerover');
-  ok('  incluso en un día sin barra',
-    cartel().textContent === 'Viernes, 31 de julio · sin nada que medir',
-    cartel().textContent);
+  ok('  y un día sin barra dice 0%, no una frase aparte',
+    cartel().textContent === 'Viernes, 31 de julio · 0%', cartel().textContent);
 
   /* En los bordes el cartel se recorta para no salirse de la tarjeta. */
   ok('    sin salirse por el borde', Number.parseFloat(cartel().style.left) <= 88,
