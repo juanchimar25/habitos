@@ -3318,7 +3318,9 @@
 
        Las bandas se reparten el ancho en vez de medir un fijo, que es lo que
        deja a febrero y a un mes de 31 ocupando lo mismo. */
-    const padL = 26, padR = 8, padTop = 10, padBottom = 10;
+    /* `padL` deja lugar al «100» del eje, que ahora va a 15px: a 26 el número
+       llegaba justo hasta la línea, sin aire entre medio. */
+    const padL = 34, padR = 8, padTop = 10, padBottom = 10;
     const BANDA = (561 - padL - padR) / days.length;
     /* Pegadas pero sin tocarse: dos unidades de aire entre una y la
        siguiente, que a 360px de ancho es poco más de un píxel. */
@@ -3327,7 +3329,11 @@
        ancho largo, un alto corto aplastaba las diferencias: entre un día de
        60% y uno de 80% había tres píxeles y el gráfico se leía como una
        hilera pareja. El alto es lo único que separa un día de otro acá. */
-    const plotH = 275;
+    /* El alto manda sobre la proporción del dibujo: el SVG escala al ancho de
+       la tarjeta, así que lo alto que se ve sale de la relación entre este
+       número y `W`. A 275 la franja quedaba chata —unos 190px en un teléfono—
+       y las diferencias entre un día y otro se perdían. */
+    const plotH = 345;
     const W = 561;
     const H = padTop + plotH + padBottom;
     const y = v => padTop + plotH - (v / 100) * plotH;

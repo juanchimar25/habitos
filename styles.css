@@ -1633,6 +1633,12 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
    rejilla con barras adentro en vez de barras con dos referencias. */
 .axis-guia { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 3; }
 
+/* Los números del eje, más grandes que los de las otras barras: este dibujo
+   es mucho más ancho que alto, así que el SVG se escala bastante hacia abajo
+   y 11px terminaban en 7 en un teléfono. Solo acá — el gráfico por día de la
+   semana tiene siete columnas y no necesita el refuerzo. */
+.dias-mes .axis-text { font-size: 15px; }
+
 /* El envoltorio del gráfico y su cartel. `relative` es lo que deja ubicar el
    cartel en porcentajes del ancho, que es lo único que sobrevive al escalado
    del SVG. */
@@ -1673,11 +1679,16 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .anio-grilla {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  /* Al 70% de lo que medían. Estiradas para llenar la pantalla quedaban
-     enormes —doce recuadros con dos renglones adentro ocupando una ventana
-     entera—, así que dejaron de estirarse: ahora miden lo suyo. */
-  grid-auto-rows: minmax(3.15rem, auto);
-  gap: .35rem;
+  /* A MITAD DE CAMINO entre los dos tamaños que tuvieron. Estiradas para
+     llenar la pantalla quedaban enormes —doce recuadros con dos renglones
+     adentro ocupando una ventana entera—; al 70% quedaron chicas. Así que no
+     se estiran, pero miden más que su contenido.
+
+     Las cinco medidas del recuadro —alto, relleno, hueco, número y rótulo—
+     se movieron juntas al punto medio: achicar solo la caja habría dejado el
+     número tocando los bordes. */
+  grid-auto-rows: minmax(3.8rem, auto);
+  gap: .42rem;
 
   /* Se desliza de costado para pasar de año y a lo largo sigue desplazándose
      la pantalla. Es la misma lección que la lista del Diario: sin `pan-y` el
@@ -1690,8 +1701,8 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: .2rem;
-  padding: .49rem .25rem;
+  gap: .25rem;
+  padding: .6rem .3rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-sunken);
@@ -1702,7 +1713,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .anio-mes-nombre {
   /* La única pieza del recuadro que no baja al 70%: el 70% exacto la dejaba
      en 7,6px, que no se lee. Baja lo que puede sin dejar de ser legible. */
-  font-size: .62rem;
+  font-size: .65rem;
   font-weight: 650;
   letter-spacing: .06em;
   text-transform: uppercase;
@@ -1710,7 +1721,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 }
 
 .anio-mes-valor {
-  font-size: .88rem;
+  font-size: 1.06rem;
   font-weight: 700;
   line-height: 1.15;
 }

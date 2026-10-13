@@ -1206,10 +1206,18 @@ const marcar = (desde, hasta, fn) => {
      uno de 28 ocupan lo mismo y las columnas se acomodan solas. */
   const zonas = () => [...svg().querySelectorAll('.dia-zona')];
   ok('hay una columna por día del mes', zonas().length === 31, String(zonas().length));
+  /* Las columnas EMBALDOSAN la franja: pegadas una a la siguiente, sin huecos
+     ni solapes. Se comprueba contra ellas mismas y no contra los rellenos del
+     dibujo, que son números que se ajustan cada tanto. */
+  const izq = z => Number(z.getAttribute('x'));
+  const der = z => izq(z) + Number(z.getAttribute('width'));
   const banda = Number(zonas()[0].getAttribute('width'));
   const ancho = Number(svg().getAttribute('viewBox').split(' ')[2]);
-  ok('  que se reparten el ancho del dibujo',
-    Math.abs(banda * 31 - (ancho - 34)) < 0.5, `banda ${banda.toFixed(2)} × 31`);
+  ok('  que se reparten la franja sin huecos ni solapes',
+    Math.abs((der(zonas().at(-1)) - izq(zonas()[0])) - banda * 31) < 0.5,
+    `banda ${banda.toFixed(2)} × 31`);
+  ok('    y sin pasarse del dibujo', der(zonas().at(-1)) <= ancho,
+    `${der(zonas().at(-1)).toFixed(1)} de ${ancho}`);
 
   /* La MISMA paleta condicional que «Por día de la semana»: los dos se miran
      de corrido y con un verde acá y otro allá el mismo nivel parecería dos
