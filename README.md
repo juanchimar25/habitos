@@ -1062,13 +1062,15 @@ Notas de lectura:
 
 - Los colores son **los mismos estados del tablero**, para que una celda verde y su porción del gráfico se lean como lo mismo. Se usan pasos un punto más oscuros en modo claro para que todos superen 3:1 de contraste contra la tarjeta, y pasos propios —no un volteo automático— en modo oscuro.
 - Verde y amarillo **no se distinguen por tono** bajo protanopia. Por eso en la torta cada color viaja con su símbolo (✓ ~ ✕) y su palabra en la leyenda, y en el de tareas cada barra lleva su porcentaje al lado: la identidad nunca depende del color solo.
-- **Día por día** dibuja una barra fina por cada día del mes, con el cumplimiento de ese día. El eje vertical lleva tres marcas y nada más —`0`, `50` y `100`—, alineadas a la izquierda; abajo van los números de los días, y arriba de cada columna la inicial de su día de la semana, chica y apagada, para ubicar los fines de semana de un vistazo.
+- **Día por día** dibuja una barra fina por cada día del mes, con el cumplimiento de ese día. El eje vertical lleva tres marcas y nada más —`0`, `50` y `100`—, alineadas a la izquierda. No hay nada más alrededor: las barras van pegadas, repartiéndose el ancho, y **el mes entra entero sin desplazarse de costado**.
+
+  Qué día es cada barra lo contesta un **cartel** que aparece al pasar por encima o al tocarla, con la fecha completa y el porcentaje. La zona que responde es la columna entera y no la barra: la de un día flojo mide tres píxeles, y pedirle al dedo que acierte ahí sería pedir puntería. Un día sin nada que medir también contesta — que no haya barra es parte de lo que se vino a mirar.
+
+  > **Tuvo los números de los días abajo y la inicial de su día de la semana arriba.** Costaban caro: los números pedían unos 14px por columna para ser legibles, y con 31 días eso obligaba a desplazar el mes de costado; las letras ocupaban una franja entera para decir algo que el gráfico no mide. Sin ellos las barras entran en lo que haya, y la fecha la da el cartel — que además es exacta, en vez de un número que hay que cruzar con el calendario.
 
   La cuenta de cada día es la misma del renglón *Cumplimiento diario* de Hábitos, y los colores la misma paleta condicional de *Barras*. Un día sin nada pedido ni hecho **no dibuja barra**: eso no es un cero, es que no había nada que medir.
 
-  > **El gráfico crece a lo ancho y se desplaza de costado si no entra.** Con 31 días en una pantalla de teléfono, cada columna quedaría en 10px y un número de dos dígitos legible necesita unos 14: así cada día tiene su lugar siempre, y lo que cede en una pantalla angosta es que haya que arrastrar.
-
-- **Año** es una grilla de **tres columnas por cuatro filas**: doce recuadros, uno por mes, que se reparten el alto de la pantalla en vez de quedarse en lo que mide su contenido. Tres por fila deja los trimestres alineados; con cuatro, cada fila junta meses de dos trimestres distintos y el corte no significa nada. Arriba de cada uno el mes abreviado en mayúsculas —`ENE`, `FEB`, `DIC`—, chico y apagado; abajo el cumplimiento de ese mes, con el recuadro teñido según el nivel y con los umbrales de siempre. Un mes que no pidió nada muestra un guion, no un 0%.
+- **Año** es una grilla de **tres columnas por cuatro filas**: doce recuadros, uno por mes. Tres por fila deja los trimestres alineados; con cuatro, cada fila junta meses de dos trimestres distintos y el corte no significa nada. Arriba de cada uno el mes abreviado en mayúsculas —`ENE`, `FEB`, `DIC`—, chico y apagado; abajo el cumplimiento de ese mes, con el recuadro teñido según el nivel y con los umbrales de siempre. Un mes que no pidió nada muestra un guion, no un 0%.
 
   El porcentaje es **lo obtenido sobre lo pedido**, sumando día por día con la misma cuenta que los otros dos. Un mes es la suma de sus días: si este recuadro saliera de otro lado, el año y el mes podrían contradecirse sobre el mismo período.
 
@@ -1076,7 +1078,7 @@ Notas de lectura:
 
 - **Deslizar un gráfico de costado lo mueve un período**, con el mismo gesto con el que el carrete pasa de día y el calendario de Pendientes pasa de mes. Qué período mueve depende de lo que el gráfico **mire**, no de cuál sea: los cuatro que miran un mes pasan de mes, y *Año* pasa de año. Un gesto que moviera siempre lo mismo dejaría a *Año* corriéndose de a un mes sin que se notara, porque dibuja el año entero.
 
-  El desplazamiento propio de *Día por día* queda afuera: ahí el dedo recorre el gráfico, que no entra en una pantalla angosta. Es lo mismo que hace el carrete dentro del tablero del Diario.
+  En *Día por día*, un toque sobre una columna abre su cartel y un deslizamiento cambia de mes: el gesto se separa por el recorrido, no por la zona.
 
 - En *Barras*, el **botón de la esquina superior derecha** elige el tramo que se promedia. Muestra el período puesto en corto —`1M`, `3M`, `6M`, `1A`— y abre un diálogo donde se explican enteros: *Este mes*, *Últimos 3 meses*, *Últimos 6 meses*, *Último año*. Va en la misma fila que el nombre del mes y el ☰, y tiene **ancho fijo**: sin eso, pasar de `1M` a `1A` encoge la caja y corre al mes y al ☰ de lugar, porque las columnas de los costados se reparten lo que sobra.
 

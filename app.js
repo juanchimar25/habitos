@@ -3311,19 +3311,24 @@
       return card;
     }
 
-    /* El ancho crece con los días en vez de repartir 31 columnas en un ancho
-       fijo: con una pantalla de teléfono, cada día quedaría en 10px y los
-       números del eje se pisarían entre ellos. Así cada día tiene su lugar
-       siempre, y lo que cede en una pantalla angosta es que la tarjeta se
-       desplace de costado — ver `.bars-scroll`. */
-    const BANDA = 17;
-    const padL = 26, padR = 8, padTop = 16, padBottom = 18;
+    /* El ancho es FIJO y el SVG escala al de la tarjeta, así que el mes entra
+       siempre entero: se acabó el desplazamiento de costado. Lo que lo hacía
+       falta eran los números de los días, que pedían 14px por columna para
+       ser legibles; sin ellos, las barras entran en lo que haya.
+
+       Las bandas se reparten el ancho en vez de medir un fijo, que es lo que
+       deja a febrero y a un mes de 31 ocupando lo mismo. */
+    const padL = 26, padR = 8, padTop = 10, padBottom = 10;
+    const BANDA = (561 - padL - padR) / days.length;
+    /* Pegadas pero sin tocarse: dos unidades de aire entre una y la
+       siguiente, que a 360px de ancho es poco más de un píxel. */
+    const barW = Math.max(BANDA - 2, 1);
     /* Dos veces y media lo que medía. Con 31 columnas finas repartidas en un
        ancho largo, un alto corto aplastaba las diferencias: entre un día de
        60% y uno de 80% había tres píxeles y el gráfico se leía como una
        hilera pareja. El alto es lo único que separa un día de otro acá. */
     const plotH = 275;
-    const W = padL + days.length * BANDA + padR;
+    const W = 561;
     const H = padTop + plotH + padBottom;
     const y = v => padTop + plotH - (v / 100) * plotH;
 
@@ -3333,9 +3338,6 @@
       role: 'img',
       'aria-label': 'Cumplimiento de cada día del mes',
     });
-    /* El alto se fija en px para que la tarjeta no se estire al crecer el
-       ancho: sin esto, un mes de 31 días dibuja un gráfico altísimo. */
-    plot.style.minWidth = `${days.length * 15 + padL + padR}px`;
 
     /* Tres marcas y nada más: 0, 50 y 100. Un eje con diez números para un
        porcentaje es ruido — lo que se quiere saber de un vistazo es si el día
@@ -3357,47 +3359,100 @@
       plot.appendChild(rotulo);
     }
 
+    /* Sin letras arriba ni números abajo. Eran una referencia de calendario y
+       costaban caro: los números obligaban a 14px por columna —y con eso, a
+       desplazar el mes de costado—, y las letras ocupaban una franja entera
+       para decir algo que el gráfico no mide. Qué día es cada barra lo
+       contesta ahora el cartel, que aparece sobre la que se toca. */
     data.forEach(({ d, valor, status }, i) => {
       const cx = padL + BANDA * i + BANDA / 2;
 
-      /* La inicial del día de la semana va en una fila fija arriba y no sobre
-         cada barra: las barras tienen alturas distintas, así que pegadas a
-         ellas las letras quedaban en una línea quebrada, y las de las barras
-         altas se montaban sobre la marca del 100. */
-      const dow = svg('text', {
-        x: cx, y: padTop - 6, 'text-anchor': 'middle', class: 'dia-dow',
-      });
-      dow.textContent = WEEKDAYS.find(w => w.js === d.getDay()).short;
-      plot.appendChild(dow);
+      if (valor !== null) {
+        const h = Math.max((valor / 100) * plotH, 2);
+        const bar = svg('path', {
+          /* La MISMA paleta condicional que «Por día de la semana»: verde
+             desde 75, ámbar desde 50, rojo abajo. Los dos gráficos se miran de
+             corrido, y con un verde acá y otro allá el mismo nivel parecería
+             dos cosas distintas. */
+          d: columnPath(cx - barW / 2, y(valor), barW, h),
+          fill: `var(--dot-${status})`,
+        });
+        plot.appendChild(bar);
+      }
 
-      const numero = svg('text', {
-        x: cx, y: H - 6, 'text-anchor': 'middle', class: 'axis-text dia-num',
+      /* Una zona de toque del alto entero, por encima de la barra y
+         transparente. La barra de un día flojo mide tres píxeles: pedir que
+         el dedo acierte ahí sería pedir puntería. Así toda la columna
+         responde, tenga o no barra — un día sin nada que medir también tiene
+         algo que decir. */
+      const zona = svg('rect', {
+        x: cx - BANDA / 2, y: padTop, width: BANDA, height: plotH,
+        class: 'dia-zona',
       });
-      numero.textContent = String(d.getDate());
-      if (sameDay(d, today)) numero.classList.add('es-hoy');
-      plot.appendChild(numero);
-
-      if (valor === null) return;
-
-      const h = Math.max((valor / 100) * plotH, 2);
-      const barW = BANDA * 0.5;
-      const bar = svg('path', {
-        /* La MISMA paleta condicional que «Por día de la semana»: verde desde
-           75, ámbar desde 50, rojo abajo. Los dos gráficos se miran de
-           corrido, y con un verde acá y otro allá el mismo nivel parecería
-           dos cosas distintas. */
-        d: columnPath(cx - barW / 2, y(valor), barW, h),
-        fill: `var(--dot-${status})`,
-      });
-      bar.appendChild(svg('title')).textContent =
-        `${capitalizeFirstLetter(fmtFull.format(d))}: ${pct(valor)}`;
-      plot.appendChild(bar);
+      zona.dataset.dia = dateKey(d);
+      zona.dataset.rotulo = capitalizeFirstLetter(fmtFull.format(d));
+      zona.dataset.valor = valor === null ? '' : pct(valor);
+      /* Dónde cae la columna, en PORCENTAJE del ancho: es lo único que
+         sobrevive al escalado del SVG, y se calcula acá —donde `cx` y `W` ya
+         están— en vez de leerlo después del `viewBox`, que obliga a una API
+         de geometría que no todos los entornos implementan. */
+      zona.dataset.centro = String((cx / W) * 100);
+      /* Para el mouse de escritorio, que ya lo tenía: no cuesta nada y
+         funciona aunque el cartel falle. */
+      zona.appendChild(svg('title')).textContent = valor === null
+        ? `${capitalizeFirstLetter(fmtFull.format(d))}: sin nada que medir`
+        : `${capitalizeFirstLetter(fmtFull.format(d))}: ${pct(valor)}`;
+      plot.appendChild(zona);
     });
 
-    const caja = elem('div', 'bars-scroll');
+    /* El cartel vive en un envoltorio posicionado y no adentro del SVG: así se
+       ubica en porcentajes del ancho —que es lo único que sobrevive al
+       escalado— y se puede escribir con CSS como cualquier otra tarjeta. */
+    const caja = elem('div', 'dia-chart');
     caja.appendChild(plot);
+    // Nace oculto: vacío y con fondo propio, se vería como una mancha suelta.
+    const cartel = elem('div', 'dia-tooltip');
+    cartel.hidden = true;
+    caja.appendChild(cartel);
     card.appendChild(caja);
     return card;
+  }
+
+  /**
+   * El cartel del gráfico diario: qué día es esa barra y cuánto marcó.
+   *
+   * Se engancha UNA vez sobre `el.charts`, que sobrevive a los dibujados. El
+   * gráfico se arma de cero en cada uno, así que colgarlo de sus nodos lo
+   * colgaría de nuevo cada vez.
+   */
+  function montarCartelDiario() {
+    const cartel = () => el.charts.querySelector('.dia-tooltip');
+
+    const mostrar = zona => {
+      const t = cartel();
+      if (!t) return;
+      const { rotulo, valor } = zona.dataset;
+      t.textContent = valor ? `${rotulo} · ${valor}` : `${rotulo} · sin nada que medir`;
+
+      /* Se recorta a los bordes para que el cartel de un 1 o un 31 no se
+         salga de la tarjeta. */
+      t.style.left = `${Math.min(Math.max(Number(zona.dataset.centro), 12), 88)}%`;
+      t.hidden = false;
+    };
+
+    const ocultar = () => { const t = cartel(); if (t) t.hidden = true; };
+
+    /* `pointerover` cubre el mouse y `click` el dedo, que no tiene hover. Los
+       dos resuelven contra la zona de toque, así que da igual por cuál
+       entre. */
+    for (const evento of ['pointerover', 'click']) {
+      el.charts.addEventListener(evento, e => {
+        const zona = e.target.closest?.('.dia-zona');
+        if (zona) mostrar(zona);
+        else if (evento === 'click') ocultar();
+      });
+    }
+    el.charts.addEventListener('pointerleave', ocultar);
   }
 
   // ---- El año: doce recuadros, uno por mes ------------------------------
@@ -3965,10 +4020,6 @@
     const elegido = GRAFICOS[ui.chart] ?? GRAFICOS.puntos;
 
     el.charts.innerHTML = '';
-    /* El del año estira sus doce recuadros hasta llenar la pantalla, y para
-       eso necesita que el contenedor tenga alto. Los otros cuatro miden lo
-       que su dibujo pide — ver `.charts.es-anio`. */
-    el.charts.classList.toggle('es-anio', ui.chart === 'anio');
     el.charts.appendChild(elegido.dibuja(diasDelGrafico()));
     renderOrden();
 
@@ -4456,13 +4507,11 @@
       return;
     }
     goToMonth(paso);
-  }, {
-    /* «Día por día» tiene su propio desplazamiento de costado: un mes de 31
-       columnas no entra en una pantalla angosta. Ahí el gesto es para recorrer
-       el gráfico, no para cambiar de mes — igual que el carrete queda fuera
-       del deslizamiento del tablero. */
-    salvo: '.bars-scroll',
   });
+
+  /* El cartel del gráfico diario, enganchado una sola vez sobre el mismo
+     contenedor. Ver `montarCartelDiario`. */
+  montarCartelDiario();
 
   el.rangoDialog.addEventListener('click', e => {
     const opcion = e.target.closest('[data-rango]');

@@ -1633,28 +1633,37 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
    rejilla con barras adentro en vez de barras con dos referencias. */
 .axis-guia { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 3; }
 
-/* La inicial del día de la semana, arriba de su columna. Chica y apagada: es
-   una referencia de calendario para ubicarse —dónde caen los fines de semana—,
-   no un dato del gráfico. */
-.dia-dow { font-size: 8px; font-weight: 600; fill: var(--text-faint); }
+/* El envoltorio del gráfico y su cartel. `relative` es lo que deja ubicar el
+   cartel en porcentajes del ancho, que es lo único que sobrevive al escalado
+   del SVG. */
+.dia-chart { position: relative; }
+.dia-chart .dias-mes { display: block; height: auto; }
 
-/* El número del día. Con 31 columnas no hay lugar para más cuerpo, y por eso
-   el gráfico crece a lo ancho en vez de apretarlas. */
-.dia-num { font-size: 8.5px; }
-.dia-num.es-hoy { font-weight: 800; fill: var(--text); }
+/* La zona de toque de cada columna: invisible y del alto entero. La barra de
+   un día flojo mide tres píxeles, así que pedirle al dedo que acierte ahí
+   sería pedir puntería. */
+.dia-zona { fill: transparent; cursor: pointer; }
+.dia-zona:hover { fill: var(--bg-sunken); fill-opacity: .55; }
 
-/* Lo que cede cuando el mes no entra: la tarjeta se desplaza de costado en
-   lugar de encoger las columnas hasta que los números se pisen. En una
-   pantalla ancha no se nota —el gráfico entra entero—, y en uno angosta es
-   preferible arrastrar que no poder leer qué día es cada barra. */
-.bars-scroll {
-  overflow-x: auto;
-  overflow-y: hidden;
-  /* El gesto de costado es de este gráfico y no de la pantalla: sin esto, el
-     navegador se queda con el arrastre para pasar de día. */
-  touch-action: pan-x;
+/* El cartel: qué día es esa barra y cuánto marcó. Flota sobre el gráfico,
+   centrado en su columna, y no empuja nada — por eso es `absolute` y no un
+   renglón más. */
+.dia-tooltip {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  padding: .3rem .55rem;
+  border-radius: var(--radius-sm);
+  background: var(--text);
+  color: var(--bg-elev);
+  font-size: .75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  /* El dedo y el mouse tienen que llegar a la barra de abajo, no al cartel:
+     si lo interceptara, moverse de una columna a la vecina lo apagaría. */
+  pointer-events: none;
+  z-index: 1;
 }
-.bars-scroll .dias-mes { display: block; height: auto; }
 
 /* --- el año: doce recuadros, uno por mes --- */
 
@@ -1664,13 +1673,11 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 .anio-grilla {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  /* Las filas se reparten el alto disponible en lugar de quedarse en lo que
-     mide su contenido: doce recuadros chicos dejaban media pantalla vacía
-     debajo. El mínimo es para que en una ventana baja no se aplasten. */
-  grid-auto-rows: minmax(4.5rem, 1fr);
-  gap: .5rem;
-  flex: 1;
-  min-height: 0;
+  /* Al 70% de lo que medían. Estiradas para llenar la pantalla quedaban
+     enormes —doce recuadros con dos renglones adentro ocupando una ventana
+     entera—, así que dejaron de estirarse: ahora miden lo suyo. */
+  grid-auto-rows: minmax(3.15rem, auto);
+  gap: .35rem;
 
   /* Se desliza de costado para pasar de año y a lo largo sigue desplazándose
      la pantalla. Es la misma lección que la lista del Diario: sin `pan-y` el
@@ -1678,20 +1685,13 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
   touch-action: pan-y;
 }
 
-/* La cadena que le da el alto a la grilla. Sin esto, `1fr` en las filas se
-   resuelve contra el contenido —que es lo que miden los recuadros— y no
-   contra la pantalla, así que no estira nada. Va solo con este gráfico: los
-   otros cuatro miden lo que su dibujo necesita. */
-.charts.es-anio { flex: 1; min-height: 0; }
-.charts.es-anio .chart-card { min-height: 0; }
-
 .anio-mes {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: .3rem;
-  padding: .7rem .35rem;
+  gap: .2rem;
+  padding: .49rem .25rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-sunken);
@@ -1708,7 +1708,7 @@ body.drawer-open .drawer { visibility: visible; transform: none; }
 }
 
 .anio-mes-valor {
-  font-size: 1.25rem;
+  font-size: .88rem;
   font-weight: 700;
   line-height: 1.15;
 }

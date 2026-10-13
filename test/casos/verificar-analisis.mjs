@@ -1187,17 +1187,29 @@ const marcar = (desde, hasta, fn) => {
     svg().querySelectorAll('.axis-line').length === 1
     && svg().querySelectorAll('.axis-guia').length === 2);
 
-  /* Julio tiene 31 días: los 31 llevan número e inicial, tengan barra o no.
-     El eje es el calendario, no la lista de lo que se midió. */
-  const nums = [...svg().querySelectorAll('.dia-num')].map(t => t.textContent);
-  ok('abajo van los 31 días de julio, del 1 al 31',
-    nums.length === 31 && nums[0] === '1' && nums[30] === '31',
-    `${nums.length} · ${nums[0]}…${nums[30]}`);
+  /* Sin letras arriba ni números abajo. Eran una referencia de calendario y
+     costaban caro: los números pedían 14px por columna —y con eso, desplazar
+     el mes de costado—, y las letras ocupaban una franja entera para decir
+     algo que el gráfico no mide. Qué día es cada barra lo contesta el cartel. */
+  ok('no quedan letras de día arriba', svg().querySelectorAll('.dia-dow').length === 0,
+    String(svg().querySelectorAll('.dia-dow').length));
+  ok('  ni números de fecha abajo', svg().querySelectorAll('.dia-num').length === 0,
+    String(svg().querySelectorAll('.dia-num').length));
 
-  const dows = [...svg().querySelectorAll('.dia-dow')].map(t => t.textContent);
-  ok('  y arriba la inicial del día de la semana de cada uno',
-    dows.length === 31 && dows[0] === 'X',   // el 1 de julio de 2026 es miércoles
-    `${dows.length} · ${dows.slice(0, 4).join('')}`);
+  /* Y por eso el mes entra entero: ni envoltorio que desplace ni ancho
+     mínimo que lo fuerce. El SVG escala al de la tarjeta. */
+  ok('el mes entra sin desplazarse de costado',
+    doc.querySelector('#charts .bars-scroll') === null && !svg().style.minWidth,
+    svg().style.minWidth || '(sin ancho mínimo)');
+
+  /* Las bandas se reparten el ancho fijo del dibujo, así que un mes de 31 y
+     uno de 28 ocupan lo mismo y las columnas se acomodan solas. */
+  const zonas = () => [...svg().querySelectorAll('.dia-zona')];
+  ok('hay una columna por día del mes', zonas().length === 31, String(zonas().length));
+  const banda = Number(zonas()[0].getAttribute('width'));
+  const ancho = Number(svg().getAttribute('viewBox').split(' ')[2]);
+  ok('  que se reparten el ancho del dibujo',
+    Math.abs(banda * 31 - (ancho - 34)) < 0.5, `banda ${banda.toFixed(2)} × 31`);
 
   /* La MISMA paleta condicional que «Por día de la semana»: los dos se miran
      de corrido y con un verde acá y otro allá el mismo nivel parecería dos
@@ -1224,14 +1236,48 @@ const marcar = (desde, hasta, fn) => {
   };
   const { doc: otro } = await montar(conJunio);
   verGrafico(otro, 'diario');
-  ok('en julio el eje tiene 31 días',
-    otro.querySelectorAll('#charts .dia-num').length === 31,
-    String(otro.querySelectorAll('#charts .dia-num').length));
+  ok('en julio hay 31 columnas',
+    otro.querySelectorAll('#charts .dia-zona').length === 31,
+    String(otro.querySelectorAll('#charts .dia-zona').length));
 
   moverMeses(otro, -1);
-  ok('  y en junio, 30: el eje sigue al mes que se está mirando',
-    otro.querySelectorAll('#charts .dia-num').length === 30,
-    String(otro.querySelectorAll('#charts .dia-num').length));
+  ok('  y en junio, 30: el gráfico sigue al mes que se está mirando',
+    otro.querySelectorAll('#charts .dia-zona').length === 30,
+    String(otro.querySelectorAll('#charts .dia-zona').length));
+
+  // --- el cartel ----------------------------------------------------------
+  /* Sin las etiquetas, qué día es cada barra lo contesta el cartel. La zona
+     de toque es del alto entero: la barra de un día flojo mide tres píxeles,
+     y pedirle al dedo que acierte ahí sería pedir puntería. */
+  const cartel = () => doc.querySelector('#charts .dia-tooltip');
+  const tocar = (i, tipo) => zonas()[i]
+    .dispatchEvent(new doc.defaultView.Event(tipo, { bubbles: true }));
+
+  ok('el cartel arranca oculto', cartel().hidden === true);
+  ok('  y la columna se puede tocar entera, no solo la barra',
+    Number(zonas()[0].getAttribute('height')) > 200,
+    zonas()[0].getAttribute('height'));
+
+  tocar(5, 'pointerover');
+  ok('al pasar por encima dice la fecha y el porcentaje',
+    /^Lunes, 6 de julio · \d+%$/.test(cartel().textContent), cartel().textContent);
+  ok('  y se ubica sobre su columna', /^\d/.test(cartel().style.left), cartel().style.left);
+
+  /* El dedo no tiene hover: el clic hace lo mismo. */
+  tocar(10, 'click');
+  ok('y con un toque también', /^Sábado, 11 de julio · /.test(cartel().textContent),
+    cartel().textContent);
+
+  /* Un día sin nada que medir también contesta: que no haya barra es parte de
+     lo que se vino a mirar. */
+  tocar(30, 'pointerover');
+  ok('  incluso en un día sin barra',
+    cartel().textContent === 'Viernes, 31 de julio · sin nada que medir',
+    cartel().textContent);
+
+  /* En los bordes el cartel se recorta para no salirse de la tarjeta. */
+  ok('    sin salirse por el borde', Number.parseFloat(cartel().style.left) <= 88,
+    cartel().style.left);
 }
 
 // --- deslizar un gráfico lo mueve un período -----------------------------
@@ -1257,13 +1303,6 @@ const marcar = (desde, hasta, fn) => {
   verGrafico(doc, 'anio');
   deslizar(doc, doc.querySelector('#charts'), -1);
   ok('pero en «Año» el mismo gesto pasa de AÑO', rotulo() === '2027', rotulo());
-
-  /* «Día por día» se desplaza de costado por su cuenta —31 columnas no entran
-     en una pantalla angosta—, así que ese tramo queda fuera del gesto: ahí el
-     dedo recorre el gráfico y no cambia de mes. Es lo mismo que hace el
-     carrete dentro del tablero. */
-  ok('  y el desplazamiento propio de «Día por día» queda afuera',
-    /salvo: '\.bars-scroll'/.test(leerArchivo('app.js')));
 
   /* Y la sección cede el gesto horizontal: es `.analysis` la que desplaza, así
      que es ella la que lo arbitra. */
@@ -1360,9 +1399,14 @@ const marcar = (desde, hasta, fn) => {
     /grid-template-columns: repeat\(3, 1fr\)/.test(bloque)
     && !/\.anio-grilla \{ grid-template-columns: repeat\(4/.test(hojaAnio),
     bloque.match(/grid-template-columns:[^;]+/)?.[0]);
-  ok('  y las filas se reparten el alto en vez de encogerse al contenido',
-    /grid-auto-rows: minmax\([^,]+, 1fr\)/.test(bloque),
+  /* Los recuadros miden lo suyo y ya no se estiran para llenar la pantalla:
+     doce cajas con dos renglones adentro ocupando una ventana entera eran
+     demasiado para lo que dicen. */
+  ok('  con los recuadros midiendo lo suyo, sin estirarse',
+    /grid-auto-rows: minmax\([^,]+, auto\)/.test(bloque),
     bloque.match(/grid-auto-rows:[^;]+/)?.[0]);
+  ok('  y sin la cadena que los estiraba',
+    !/\.charts\.es-anio/.test(hojaAnio));
 
   /* Tres letras los doce. El locale no es parejo —devuelve «sept» y tres para
      los otros once—, y un recuadro con una letra más se nota en una grilla. */
